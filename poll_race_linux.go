@@ -220,7 +220,7 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollWritable:
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
-		op, evt.Events = syscall.EPOLL_CTL_ADD, (-syscall.EPOLLET)|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R:
