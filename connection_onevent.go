@@ -17,6 +17,7 @@ package netpoll
 import (
 	"context"
 	"log"
+	"sync"
 	"sync/atomic"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -34,9 +35,10 @@ type gracefulExit interface {
 // OnPrepare, OnRequest, CloseCallback share the lock processing,
 // which is a CAS lock and can only be cleared by OnRequest.
 type onEvent struct {
-	ctx       context.Context
-	process   atomic.Value // value is OnRequest
-	callbacks atomic.Value // value is latest *callbackNode
+	ctx           context.Context
+	process       atomic.Value // value is OnRequest
+	callbacks     atomic.Value // value is latest *callbackNode
+	callbacksOnce sync.Once
 }
 
 type callbackNode struct {
@@ -127,13 +129,15 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
 	}
-	var latest = c.callbacks.Load()
-	if latest == nil {
-		return nil
-	}
-	for callback := latest.(*callbackNode); callback != nil; callback = callback.pre {
-		callback.fn(c)
-	}
+	c.callbacksOnce.Do(func() {
+		var latest = c.callbacks.Load()
+		if latest == nil {
+			return
+		}
+		for callback := latest.(*callbackNode); callback != nil; callback = callback.pre {
+			callback.fn(c)
+		}
+	})
 	return nil
 }
 
