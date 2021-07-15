@@ -33,7 +33,6 @@ const (
 	closing key = iota
 	processing
 	writing
-	outputBuffer
 	// total must be at the bottom.
 	total
 )

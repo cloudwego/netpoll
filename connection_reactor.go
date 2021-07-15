@@ -59,10 +59,8 @@ func (c *connection) closeBuffer() {
 	c.stop(writing)
 	c.inputBuffer.Close()
 	barrierPool.Put(c.inputBarrier)
-	if c.lock(outputBuffer) {
-		c.outputBuffer.Close()
-		barrierPool.Put(c.outputBarrier)
-	}
+	c.outputBuffer.Close()
+	barrierPool.Put(c.outputBarrier)
 }
 
 // inputs implements FDOperator.
@@ -124,6 +122,7 @@ func (c *connection) rw2r() {
 	c.operator.Control(PollRW2R)
 	// double check outputs is empty
 	if !c.outputBuffer.IsEmpty() {
+		//trigger writing again
 		go c.flush()
 	}
 }
