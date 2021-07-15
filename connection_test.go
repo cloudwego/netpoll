@@ -161,29 +161,34 @@ func TestLargeBufferWrite(t *testing.T) {
 	MustNil(t, err)
 	rfd := <-trigger
 
-	conn.Writer().Malloc(2 * 1024 * 1024)
-	conn.Writer().Flush()
-
-	var wg sync.WaitGroup
+	var (
+		wg sync.WaitGroup
+	)
 	wg.Add(1)
+	//start large buffer writing
 	go func() {
-		defer wg.Done()
 		for i := 0; i < 128; i++ {
-			_, err := conn.Writer().Malloc(1024)
+			_, err := conn.Writer().Malloc(1024 * 1024)
 			MustNil(t, err)
 			err = conn.Writer().Flush()
-			MustNil(t, err)
+			if i < 64 {
+				MustNil(t, err)
+			} else if i == 64 {
+				wg.Done()
+			}
 		}
 	}()
+
+	time.Sleep(time.Millisecond * 100)
 	buf := make([]byte, 1024)
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 64*1024; i++ {
 		_, err := syscall.Read(rfd, buf)
 		MustNil(t, err)
 	}
-	wg.Wait()
 	// close success
 	err = conn.Close()
 	MustNil(t, err)
+	wg.Wait()
 }
 
 // TestConnectionLargeMemory is used to verify the memory usage in the large package scenario.
