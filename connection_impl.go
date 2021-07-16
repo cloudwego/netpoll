@@ -33,7 +33,7 @@ type connection struct {
 	operator        *FDOperator
 	readTimeout     time.Duration
 	readTimer       *time.Timer
-	readTrigger     chan int
+	readTrigger     chan struct{}
 	waitReadSize    int32
 	inputBuffer     *LinkBuffer
 	outputBuffer    *LinkBuffer
@@ -257,7 +257,7 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	syscall.SetNonblock(c.fd, true)
 
 	// init buffer, barrier, finalizer
-	c.readTrigger = make(chan int, 1)
+	c.readTrigger = make(chan struct{}, 1)
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
 	c.setFinalizer()
@@ -306,7 +306,7 @@ func (c *connection) setFinalizer() {
 
 func (c *connection) triggerRead() {
 	select {
-	case c.readTrigger <- 0:
+	case c.readTrigger <- struct{}{}:
 	default:
 	}
 }
@@ -316,24 +316,29 @@ func (c *connection) waitRead(n int) (err error) {
 	if c.inputBuffer.Len() >= n {
 		return nil
 	}
-	atomic.StoreInt32(&c.waitReadSize, int32(n))
+	atomic.StoreInt32(&c.waitReadSize, int32(n-c.inputBuffer.Len()))
 	defer atomic.StoreInt32(&c.waitReadSize, 0)
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "wait read")
+	}
 	if c.readTimeout > 0 {
 		return c.waitReadWithTimeout(n)
 	}
 	// wait full n
-	for c.inputBuffer.Len() < n {
-		if c.IsActive() {
-			<-c.readTrigger
-			continue
+	if c.inputBuffer.Len() < n {
+		// wait for read/close
+		<-c.readTrigger
+
+		if c.inputBuffer.Len() < n {
+			// confirm that fd is still valid.
+			if atomic.LoadUint32(&c.netFD.closed) == 0 {
+				err = c.fill(n)
+			} else {
+				err = Exception(ErrConnClosed, "wait read")
+			}
 		}
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			return c.fill(n)
-		}
-		return Exception(ErrConnClosed, "wait read")
 	}
-	return nil
+	return err
 }
 
 // waitReadWithTimeout will wait full n bytes or until timeout.
@@ -344,23 +349,21 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	} else {
 		c.readTimer.Reset(c.readTimeout)
 	}
-	for c.inputBuffer.Len() < n {
-		if c.IsActive() {
-			select {
-			case <-c.readTimer.C:
-				return Exception(ErrReadTimeout, c.readTimeout.String())
-			case <-c.readTrigger:
-				continue
+	if c.inputBuffer.Len() < n {
+		select {
+		case <-c.readTimer.C:
+			return Exception(ErrReadTimeout, c.readTimeout.String())
+		case <-c.readTrigger:
+			if c.inputBuffer.Len() < n {
+				// cannot return directly, stop timer before !
+				// confirm that fd is still valid.
+				if atomic.LoadUint32(&c.netFD.closed) == 0 {
+					err = c.fill(n)
+				} else {
+					err = Exception(ErrConnClosed, "wait read")
+				}
 			}
 		}
-		// cannot return directly, stop timer before !
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			err = c.fill(n)
-		} else {
-			err = Exception(ErrConnClosed, "wait read")
-		}
-		break
 	}
 	// clean timer.C
 	if !c.readTimer.Stop() {
