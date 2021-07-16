@@ -137,6 +137,10 @@ func (c *connection) rw2r() {
 
 // flush write data directly.
 func (c *connection) flush() error {
+	if !c.lock(writing) {
+		return nil
+	}
+	defer c.unlock(writing)
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
