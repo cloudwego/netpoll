@@ -69,10 +69,13 @@ func TestConnectionRead(t *testing.T) {
 
 	var size = 256
 	var msg = make([]byte, size)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			buf, err := rconn.Reader().Next(size)
-			if err != nil && errors.Is(err, ErrConnClosed) {
+			if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
 				return
 			}
 			rconn.Reader().Release()
@@ -86,6 +89,7 @@ func TestConnectionRead(t *testing.T) {
 		Equal(t, n, len(msg))
 	}
 	rconn.Close()
+	wg.Wait()
 }
 
 func TestConnectionReadAfterClosed(t *testing.T) {
