@@ -140,7 +140,12 @@ func (c *connection) flush() error {
 	if !c.lock(writing) {
 		return nil
 	}
-	defer c.unlock(writing)
+	locked := true
+	defer func() {
+		if locked {
+			c.unlock(writing)
+		}
+	}()
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
@@ -166,6 +171,8 @@ func (c *connection) flush() error {
 		return Exception(err, "when flush")
 	}
 
+	locked = false
+	c.unlock(writing)
 	err = <-c.writeTrigger
 	return err
 }
