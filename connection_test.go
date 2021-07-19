@@ -165,27 +165,25 @@ func TestLargeBufferWrite(t *testing.T) {
 	MustNil(t, err)
 	rfd := <-trigger
 
-	var (
-		wg sync.WaitGroup
-	)
+	var wg sync.WaitGroup
 	wg.Add(1)
+	bufferSize := 2 * 1024 * 1024
 	//start large buffer writing
 	go func() {
-		for i := 0; i < 128; i++ {
-			_, err := conn.Writer().Malloc(1024 * 1024)
+		defer wg.Done()
+		for i := 0; i < 129; i++ {
+			_, err := conn.Writer().Malloc(bufferSize)
 			MustNil(t, err)
 			err = conn.Writer().Flush()
-			if i < 64 {
+			if i < 128 {
 				MustNil(t, err)
-			} else if i == 64 {
-				wg.Done()
 			}
 		}
 	}()
 
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 50)
 	buf := make([]byte, 1024)
-	for i := 0; i < 64*1024; i++ {
+	for i := 0; i < 128*bufferSize/1024; i++ {
 		_, err := syscall.Read(rfd, buf)
 		MustNil(t, err)
 	}
