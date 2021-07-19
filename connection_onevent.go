@@ -92,28 +92,19 @@ func (c *connection) onRequest() (err error) {
 	}
 	// add new task
 	var task = func() {
+		defer c.unlock(processing)
 		if c.ctx == nil {
 			c.ctx = context.Background()
 		}
 		var handler = process.(OnRequest)
-	START:
-		// NOTE: loop processing, which is useful for streaming.
-		for c.Reader().Len() > 0 && c.IsActive() {
+		if c.IsActive() {
 			// Single request processing, blocking allowed.
 			handler(c.ctx, c)
 		}
-		// Handling callback if connection has been closed.
+		// Handling callback if connection has been closed in handler.
 		if !c.IsActive() {
 			c.closeCallback(false)
 			return
-		}
-		// Double check when exiting.
-		c.unlock(processing)
-		if c.Reader().Len() > 0 {
-			if !c.lock(processing) {
-				return
-			}
-			goto START
 		}
 	}
 	gopool.CtxGo(c.ctx, task)

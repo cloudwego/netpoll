@@ -33,13 +33,20 @@ func TestConnectionWrite(t *testing.T) {
 	wg.Add(1)
 	var count int32
 	var expect = int32(cycle * caps)
-	onRequest := func(ctx context.Context, connection Connection) error {
-		n, err := connection.Read(buf)
-		MustNil(t, err)
-		if atomic.AddInt32(&count, int32(n)) >= expect {
-			wg.Done()
+	onRequest := func(ctx context.Context, connection Connection) (err error) {
+		var n int
+		for {
+			n, err = connection.Read(buf)
+			atomic.AddInt32(&count, int32(n))
+			if n == 0 {
+				MustTrue(t, errors.Is(err, ErrEOF))
+				wg.Done()
+				return
+			} else if n < len(buf) {
+				return
+			}
+			MustNil(t, err)
 		}
-		return nil
 	}
 	var prepare = func(connection Connection) context.Context {
 		connection.SetOnRequest(onRequest)
@@ -56,6 +63,8 @@ func TestConnectionWrite(t *testing.T) {
 		MustNil(t, err)
 		Equal(t, n, len(msg))
 	}
+	// send EOF
+	wconn.Close()
 	wg.Wait()
 	Equal(t, atomic.LoadInt32(&count), expect)
 	rconn.Close()
