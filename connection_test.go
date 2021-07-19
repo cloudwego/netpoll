@@ -69,10 +69,13 @@ func TestConnectionRead(t *testing.T) {
 
 	var size = 256
 	var msg = make([]byte, size)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			buf, err := rconn.Reader().Next(size)
-			if err != nil && errors.Is(err, ErrConnClosed) {
+			if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
 				return
 			}
 			rconn.Reader().Release()
@@ -86,6 +89,7 @@ func TestConnectionRead(t *testing.T) {
 		Equal(t, n, len(msg))
 	}
 	rconn.Close()
+	wg.Wait()
 }
 
 func TestConnectionReadAfterClosed(t *testing.T) {
@@ -161,29 +165,32 @@ func TestLargeBufferWrite(t *testing.T) {
 	MustNil(t, err)
 	rfd := <-trigger
 
-	conn.Writer().Malloc(2 * 1024 * 1024)
-	conn.Writer().Flush()
-
 	var wg sync.WaitGroup
 	wg.Add(1)
+	bufferSize := 2 * 1024 * 1024
+	//start large buffer writing
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 128; i++ {
-			_, err := conn.Writer().Malloc(1024)
+		for i := 0; i < 129; i++ {
+			_, err := conn.Writer().Malloc(bufferSize)
 			MustNil(t, err)
 			err = conn.Writer().Flush()
-			MustNil(t, err)
+			if i < 128 {
+				MustNil(t, err)
+			}
 		}
 	}()
+
+	time.Sleep(time.Millisecond * 50)
 	buf := make([]byte, 1024)
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 128*bufferSize/1024; i++ {
 		_, err := syscall.Read(rfd, buf)
 		MustNil(t, err)
 	}
-	wg.Wait()
 	// close success
 	err = conn.Close()
 	MustNil(t, err)
+	wg.Wait()
 }
 
 // TestConnectionLargeMemory is used to verify the memory usage in the large package scenario.

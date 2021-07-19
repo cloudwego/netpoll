@@ -25,6 +25,7 @@ import (
 func (c *connection) onHup(p Poll) error {
 	if c.closeBy(poller) {
 		c.triggerRead()
+		c.triggerWrite(ErrConnClosed)
 		// It depends on closing by user if OnRequest is nil, otherwise it needs to be released actively.
 		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
 		// and it is safe to close the buffer at this time.
@@ -43,6 +44,7 @@ func (c *connection) onClose() error {
 			c.operator.Control(PollDetach)
 		}
 		c.triggerRead()
+		c.triggerWrite(ErrConnClosed)
 		c.closeCallback(true)
 		return nil
 	}
@@ -130,10 +132,7 @@ func (c *connection) outputAck(n int) (err error) {
 // rw2r removed the monitoring of write events.
 func (c *connection) rw2r() {
 	c.operator.Control(PollRW2R)
-	// double check outputs is empty
-	if !c.outputBuffer.IsEmpty() {
-		go c.flush()
-	}
+	c.triggerWrite(nil)
 }
 
 // flush write data directly.
@@ -141,7 +140,12 @@ func (c *connection) flush() error {
 	if !c.lock(writing) {
 		return nil
 	}
-	defer c.unlock(writing)
+	locked := true
+	defer func() {
+		if locked {
+			c.unlock(writing)
+		}
+	}()
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
@@ -166,5 +170,9 @@ func (c *connection) flush() error {
 	if err != nil {
 		return Exception(err, "when flush")
 	}
-	return nil
+
+	locked = false
+	c.unlock(writing)
+	err = <-c.writeTrigger
+	return err
 }
