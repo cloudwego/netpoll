@@ -34,7 +34,6 @@ const (
 	processing
 	writing
 	inputBuffer
-	outputBuffer
 	// total must be at the bottom.
 	total
 )

@@ -165,9 +165,8 @@ func (c *connection) MallocLen() (length int) {
 // If empty, it will call syscall.Write to send data directly,
 // otherwise the buffer will be sent asynchronously by the epoll trigger.
 func (c *connection) Flush() error {
-	if c.IsActive() && c.lock(outputBuffer) {
+	if c.IsActive() {
 		c.outputBuffer.Flush()
-		c.unlock(outputBuffer)
 		return c.flush()
 	}
 	return Exception(ErrConnClosed, "when flush")

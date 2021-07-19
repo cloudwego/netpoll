@@ -63,10 +63,8 @@ func (c *connection) closeBuffer() {
 		c.inputBuffer.Close()
 		barrierPool.Put(c.inputBarrier)
 	}
-	if c.lock(outputBuffer) {
-		c.outputBuffer.Close()
-		barrierPool.Put(c.outputBarrier)
-	}
+	c.outputBuffer.Close()
+	barrierPool.Put(c.outputBarrier)
 }
 
 // inputs implements FDOperator.
