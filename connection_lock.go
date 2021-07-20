@@ -31,8 +31,8 @@ type key int32
 
 const (
 	closing key = iota
+	outputting
 	processing
-	writing
 	// total must be at the bottom.
 	total
 )
@@ -59,10 +59,14 @@ func (l *locker) unlock(k key) {
 	atomic.StoreInt32(&l.keychain[k], 0)
 }
 
-func (l *locker) stop(k key) {
-	for !atomic.CompareAndSwapInt32(&l.keychain[k], 0, 2) && atomic.LoadInt32(&l.keychain[k]) != 2 {
+func (l *locker) stop(k key) (success bool) {
+	for !atomic.CompareAndSwapInt32(&l.keychain[k], 0, 2) {
+		if atomic.LoadInt32(&l.keychain[k]) == 2 {
+			return false
+		}
 		runtime.Gosched()
 	}
+	return true
 }
 
 func (l *locker) isUnlock(k key) bool {

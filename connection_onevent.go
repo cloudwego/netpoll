@@ -17,7 +17,6 @@ package netpoll
 import (
 	"context"
 	"log"
-	"sync"
 	"sync/atomic"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -44,10 +43,9 @@ type gracefulExit interface {
 // OnPrepare, OnRequest, CloseCallback share the lock processing,
 // which is a CAS lock and can only be cleared by OnRequest.
 type onEvent struct {
-	ctx           context.Context
-	process       atomic.Value // value is OnRequest
-	callbacks     atomic.Value // value is latest *callbackNode
-	callbacksOnce sync.Once
+	ctx       context.Context
+	process   atomic.Value // value is OnRequest
+	callbacks atomic.Value // value is latest *callbackNode
 }
 
 type callbackNode struct {
@@ -113,13 +111,13 @@ func (c *connection) onRequest() (err error) {
 			// Single request processing, blocking allowed.
 			handler(c.ctx, c)
 		}
+		c.unlock(processing)
 		// Handling callback if connection has been closed.
 		if !c.IsActive() {
-			c.closeCallback(false)
+			c.closeCallback()
 			return
 		}
 		// Double check when exiting.
-		c.unlock(processing)
 		if c.Reader().Len() > 0 {
 			if !c.lock(processing) {
 				return
@@ -134,19 +132,24 @@ func (c *connection) onRequest() (err error) {
 // closeCallback .
 // It can be confirmed that closeCallback and onRequest will not be executed concurrently.
 // If onRequest is still running, it will trigger closeCallback on exit.
-func (c *connection) closeCallback(needLock bool) (err error) {
-	if needLock && !c.lock(processing) {
-		return nil
-	}
+func (c *connection) closeCallback() (err error) {
 	var latest = c.callbacks.Load()
 	if latest == nil {
 		return nil
 	}
-	c.callbacksOnce.Do(func() {
-		for callback := latest.(*callbackNode); callback != nil; callback = callback.pre {
-			callback.fn(c)
-		}
-	})
+	// let process handler do the closeCallback when processing
+	if !c.lock(processing) {
+		return nil
+	}
+	defer c.unlock(processing)
+
+	// close callback should only been executed once
+	if !c.stop(outputting) {
+		return
+	}
+	for callback := latest.(*callbackNode); callback != nil; callback = callback.pre {
+		callback.fn(c)
+	}
 	return nil
 }
 
