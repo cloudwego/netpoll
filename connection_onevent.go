@@ -89,6 +89,11 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 	return nil
 }
 
+func (c *connection) onWrite(p Poll) (err error) {
+	c.triggerWrite(nil)
+	return nil
+}
+
 // onRequest is also responsible for executing the callbacks after the connection has been closed.
 func (c *connection) onRequest() (err error) {
 	var process = c.process.Load()

@@ -109,22 +109,7 @@ func (p *defaultPoll) Wait() error {
 					hups = append(hups, operator)
 				}
 			case events[i].Filter == syscall.EVFILT_WRITE && events[i].Flags&syscall.EV_ENABLE != 0:
-				// for non-connection
-				if operator.OnWrite != nil {
-					operator.OnWrite(p)
-					break
-				}
-				// only for connection
-				var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
-				if len(bs) == 0 {
-					break
-				}
-				// TODO: Let the upper layer pass in whether to use ZeroCopy.
-				var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
-				operator.OutputAck(n)
-				if err != nil && err != syscall.EAGAIN {
-					hups = append(hups, operator)
-				}
+				operator.OnWrite(p)
 			}
 			operator.done()
 		}

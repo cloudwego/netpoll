@@ -152,23 +152,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				hups = append(hups, operator)
 			}
 		case events[i].events&syscall.EPOLLOUT != 0:
-			// for non-connection
-			if operator.OnWrite != nil {
-				operator.OnWrite(p)
-				break
-			}
-			// only for connection
-			var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
-			if len(bs) == 0 {
-				break
-			}
-			// TODO: Let the upper layer pass in whether to use ZeroCopy.
-			var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
-			operator.OutputAck(n)
-			if err != nil && err != syscall.EAGAIN {
-				log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
-				hups = append(hups, operator)
-			}
+			operator.OnWrite(p)
 		}
 		operator.done()
 	}
@@ -214,7 +198,7 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = syscall.EPOLL_CTL_MOD, EPOLLET|syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R:
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}

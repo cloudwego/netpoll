@@ -165,11 +165,60 @@ func (c *connection) MallocLen() (length int) {
 // If empty, it will call syscall.Write to send data directly,
 // otherwise the buffer will be sent asynchronously by the epoll trigger.
 func (c *connection) Flush() error {
-	if c.IsActive() && c.lock(outputting) {
-		c.outputBuffer.Flush()
-		return c.flush()
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when flush")
 	}
-	return Exception(ErrConnClosed, "when flush")
+	if !c.lock(outputting) {
+		// outputting has been stopped
+		return Exception(ErrConnClosed, "when flush")
+	}
+	registered := false
+	if err := c.outputBuffer.Flush(); err != nil {
+		return err
+	}
+	defer func() {
+		if registered {
+			c.operator.Control(PollRW2R)
+		}
+		c.unlock(outputting)
+	}()
+	for !c.outputBuffer.IsEmpty() {
+		// TODO: Let the upper layer pass in whether to use ZeroCopy.
+		var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
+		var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
+		if n > 0 {
+			err = c.outputBuffer.Skip(n)
+			c.outputBuffer.Release()
+			if err != nil {
+				return Exception(err, "when flush")
+			}
+		}
+		switch err {
+		case nil:
+			continue
+		case syscall.EAGAIN:
+			if !registered {
+				registered = true
+				// wait for writeable
+				err = c.operator.Control(PollR2RW)
+				if err != nil {
+					return Exception(err, "when flush")
+				}
+			}
+			// sizeof(writeTrigger) is 1 to promise that
+			// once the socket is writeable it must have a valid trigger
+			err = <-c.writeTrigger
+			if err != nil {
+				// if err != nil, let closeCallback deregister
+				registered = false
+				return err
+			}
+			continue
+		default:
+			return Exception(err, "when flush")
+		}
+	}
+	return nil
 }
 
 // MallocAck implements Connection.
@@ -285,9 +334,8 @@ func (c *connection) checkNetFD(conn Conn) {
 func (c *connection) initFDOperator() {
 	op := allocop()
 	op.FD = c.fd
-	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
+	op.OnRead, op.OnWrite, op.OnHup = nil, c.onWrite, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck
-	op.Outputs, op.OutputAck = c.outputs, c.outputAck
 
 	// if connection has been registered, must reuse poll here.
 	if c.pd != nil && c.pd.operator != nil {
@@ -393,45 +441,5 @@ func (c *connection) fill(need int) (err error) {
 	if err == nil {
 		err = Exception(ErrEOF, "")
 	}
-	return err
-}
-
-// flush write data directly.
-func (c *connection) flush() error {
-	async := false
-	defer func() {
-		if !async {
-			c.unlock(outputting)
-		}
-	}()
-	if c.outputBuffer.IsEmpty() {
-		return nil
-	}
-	// TODO: Let the upper layer pass in whether to use ZeroCopy.
-	var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
-	var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
-	if err != nil && err != syscall.EAGAIN {
-		return Exception(err, "when flush")
-	}
-	if n > 0 {
-		err = c.outputBuffer.Skip(n)
-		c.outputBuffer.Release()
-		if err != nil {
-			return Exception(err, "when flush")
-		}
-	}
-	// return if write all buffer.
-	if c.outputBuffer.IsEmpty() {
-		return nil
-	}
-	err = c.operator.Control(PollR2RW)
-	if err != nil {
-		return Exception(err, "when flush")
-	}
-
-	async = true
-	c.unlock(outputting)
-
-	err = <-c.writeTrigger
 	return err
 }

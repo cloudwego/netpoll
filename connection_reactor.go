@@ -87,38 +87,3 @@ func (c *connection) inputAck(n int) (err error) {
 	c.onRequest()
 	return err
 }
-
-// outputs implements FDOperator.
-func (c *connection) outputs(vs [][]byte) (rs [][]byte, supportZeroCopy bool) {
-	if !c.lock(outputting) {
-		return
-	}
-	if c.outputBuffer.IsEmpty() {
-		c.unlock(outputting)
-		c.rw2r()
-		c.triggerWrite(nil)
-		return
-	}
-	rs = c.outputBuffer.GetBytes(vs)
-	return rs, c.supportZeroCopy
-}
-
-// outputAck implements FDOperator.
-func (c *connection) outputAck(n int) (err error) {
-	if n > 0 {
-		c.outputBuffer.Skip(n)
-		c.outputBuffer.Release()
-	}
-	// unlock before trigger write
-	c.unlock(outputting)
-	if c.outputBuffer.IsEmpty() {
-		c.rw2r()
-		c.triggerWrite(nil)
-	}
-	return nil
-}
-
-// rw2r removed the monitoring of write events.
-func (c *connection) rw2r() {
-	c.operator.Control(PollRW2R)
-}
