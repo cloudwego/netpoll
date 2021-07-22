@@ -16,10 +16,10 @@ On the other hand, the open source community currently lacks Go network librarie
 repositories such as: [evio][evio], [gnet][gnet], etc., are all
 focus on scenarios like [Redis][Redis], [Haproxy][Haproxy].
 
-But now, [Netpoll][Netpool] was born and solved the above problems. It draws inspiration
+But now, [Netpoll][Netpoll] was born and solved the above problems. It draws inspiration
 from the design of [evio][evio] and [netty][netty], has
 excellent [Performance](#performance), and is more suitable for microservice architecture.
-Also [Netpoll][Netpool] provides a number of [Features](#features), and it is recommended
+Also [Netpoll][Netpoll] provides a number of [Features](#features), and it is recommended
 to replace [net][net] in some RPC scenarios.
 
 We developed the RPC framework [KiteX][KiteX] and HTTP
@@ -27,7 +27,7 @@ framework [Hertz][Hertz] (to be open sourced) based
 on [Netpoll][Netpoll], both with industry-leading performance.
 
 [Examples][Netpoll-Benchmark] show how to build RPC client and server
-using [Netpoll][Netpool].
+using [Netpoll][Netpoll].
 
 For more information, please refer to [Document](#document).
 
