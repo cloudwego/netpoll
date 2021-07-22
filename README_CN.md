@@ -2,7 +2,7 @@
 
 # 简介
 
-[Netpoll][Netpoll) 是由 [字节跳动][ByteDance] 开发的高性能 NIO(Non-blocking I/O)
+[Netpoll][Netpoll] 是由 [字节跳动][ByteDance] 开发的高性能 NIO(Non-blocking I/O)
 网络库，专注于 RPC 场景。
 
 RPC 通常有较重的处理逻辑，因此无法串行处理 I/O。而 Go 的标准库 [net][net] 设计了 BIO(Blocking I/O) 模式的
