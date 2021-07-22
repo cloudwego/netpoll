@@ -146,7 +146,6 @@ func (c *connection) closeCallback() (err error) {
 	if !c.lock(processing) {
 		return nil
 	}
-	defer c.unlock(processing)
 
 	// close callback should only been executed once
 	if !c.stop(outputting) {

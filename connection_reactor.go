@@ -44,7 +44,8 @@ func (c *connection) onClose() error {
 		}
 		c.triggerRead()
 		c.triggerWrite(ErrConnClosed)
-		return c.closeCallback()
+		c.closeCallback()
+		return nil
 	}
 	if c.isCloseBy(poller) {
 		// Connection with OnRequest of nil

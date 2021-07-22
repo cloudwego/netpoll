@@ -173,15 +173,15 @@ func (c *connection) Flush() error {
 		return Exception(ErrConnClosed, "when flush")
 	}
 	registered := false
-	if err := c.outputBuffer.Flush(); err != nil {
-		return err
-	}
 	defer func() {
 		if registered {
 			c.operator.Control(PollRW2R)
 		}
 		c.unlock(outputting)
 	}()
+	if err := c.outputBuffer.Flush(); err != nil {
+		return err
+	}
 	for !c.outputBuffer.IsEmpty() {
 		// TODO: Let the upper layer pass in whether to use ZeroCopy.
 		var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
