@@ -35,8 +35,8 @@ For more information, please refer to [Document](#document).
 
 * **Already**
     - [LinkBuffer](nocopy_linkbuffer.go) provides nocopy API for streaming reading and writing
-    - [gopool](https://github.com/bytedance/gopkg/tree/develop/util/gopool) provides high-performance goroutine pool
-    - [mcache](https://github.com/bytedance/gopkg/tree/develop/lang/mcache) provides efficient memory reuse
+    - [gopool](gopool) provides high-performance goroutine pool
+    - [mcache](mcache) provides efficient memory reuse
     - [multisyscall](https://github.com/cloudwego/multisyscall) supports batch system calls
     - `IsActive` supports checking whether the connection is alive
     - `Dialer` supports building clients
@@ -100,3 +100,7 @@ Compared with [net](https://github.com/golang/go/tree/master/src/net)
 * [Design](docs/reference/design.md)
 * [Change Log](docs/reference/change_log.md)
 * [Why DATA RACE](docs/reference/explain.md)
+
+
+[gopool]: https://github.com/bytedance/gopkg/tree/develop/util/gopool
+[mcache]: https://github.com/bytedance/gopkg/tree/develop/lang/mcache
