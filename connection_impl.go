@@ -175,7 +175,7 @@ func (c *connection) Flush() error {
 	registered := false
 	defer func() {
 		if registered {
-			c.operator.Control(PollRW2R)
+			c.operator.Control(PollW2R)
 		}
 		c.unlock(outputting)
 	}()
@@ -200,7 +200,7 @@ func (c *connection) Flush() error {
 			if !registered {
 				registered = true
 				// wait for writeable
-				err = c.operator.Control(PollR2RW)
+				err = c.operator.Control(PollR2W)
 				if err != nil {
 					return Exception(err, "when flush")
 				}

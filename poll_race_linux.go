@@ -206,9 +206,9 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollR2RW:
-		op, evt.Events = syscall.EPOLL_CTL_MOD, EPOLLET|syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollRW2R:
+	case PollR2W:
+		op, evt.Events = syscall.EPOLL_CTL_MOD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollW2R:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return syscall.EpollCtl(p.fd, op, operator.FD, &evt)

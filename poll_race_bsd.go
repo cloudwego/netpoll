@@ -164,9 +164,9 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
-	case PollR2RW:
+	case PollR2W:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollRW2R:
+	case PollW2R:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE|syscall.EV_ONESHOT
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)

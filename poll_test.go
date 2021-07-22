@@ -84,7 +84,7 @@ func TestPollMod(t *testing.T) {
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w == 1 && h == 0, r, w, h)
 
-	err = p.Control(rop, PollR2RW) // trigger write
+	err = p.Control(rop, PollR2W) // trigger write
 	MustNil(t, err)
 	time.Sleep(time.Millisecond)
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
@@ -125,6 +125,6 @@ func BenchmarkPollMod(b *testing.B) {
 	b.ReportAllocs()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		p.Control(operator, PollR2RW)
+		p.Control(operator, PollR2W)
 	}
 }

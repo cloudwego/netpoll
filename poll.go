@@ -55,10 +55,10 @@ const (
 	// It is only used when calling the dialer's conn init.
 	PollModReadable PollEvent = 0x4
 
-	// PollR2RW is used to monitor writable for FDOperator,
+	// PollR2W is used to monitor writable for FDOperator,
 	// which is only called when the socket write buffer is full.
-	PollR2RW PollEvent = 0x5
+	PollR2W PollEvent = 0x5
 
-	// PollRW2R is used to remove the writable monitor of FDOperator, generally used with PollR2RW.
-	PollRW2R PollEvent = 0x6
+	// PollW2R is used to remove the writable monitor of FDOperator, generally used with PollR2W.
+	PollW2R PollEvent = 0x6
 )
