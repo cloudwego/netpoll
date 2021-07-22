@@ -24,7 +24,7 @@ to replace [net][net] in some RPC scenarios.
 
 We developed the RPC framework [KiteX][KiteX] and HTTP
 framework [Hertz][Hertz] (to be open sourced) based
-on [Netpoll][Netpool], both with industry-leading performance.
+on [Netpoll][Netpoll], both with industry-leading performance.
 
 [Examples][Netpoll-Benchmark] show how to build RPC client and server
 using [Netpoll][Netpool].
@@ -91,7 +91,7 @@ For more benchmark reference [Netpoll-Benchmark][Netpoll-Benchmark]
 ### Benchmark Conclusion
 
 Compared with [net][net]
-, [Netpoll][Netpool] latency about 34% and qps about 110%
+, [Netpoll][Netpoll] latency about 34% and qps about 110%
 (continue to pressurize, net latency is too high to reference)
 
 # Document
