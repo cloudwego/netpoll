@@ -97,7 +97,7 @@ func TestListenerDialer(t *testing.T) {
 	}
 }
 
-func TestTurnListener(t *testing.T) {
+func TestConvertListener(t *testing.T) {
 	network, address := "unix", "mock.test.sock"
 	ln, err := net.Listen(network, address)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestTurnListener(t *testing.T) {
 	udsln, _ := ln.(*net.UnixListener)
 	// udsln.SetUnlinkOnClose(false)
 
-	nln, err := TurnListener(udsln)
+	nln, err := ConvertListener(udsln)
 	if err != nil {
 		panic(err)
 	}

@@ -42,11 +42,11 @@ func CreateListener(network, addr string) (l Listener, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return TurnListener(ln)
+	return ConvertListener(ln)
 }
 
-// TurnListener converts net.Listener to Listener
-func TurnListener(l net.Listener) (nl Listener, err error) {
+// ConvertListener converts net.Listener to Listener
+func ConvertListener(l net.Listener) (nl Listener, err error) {
 	if tmp, ok := l.(Listener); ok {
 		return tmp, nil
 	}

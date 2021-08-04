@@ -103,7 +103,7 @@ type eventLoop struct {
 
 // Serve implements EventLoop.
 func (evl *eventLoop) Serve(ln net.Listener) error {
-	npln, err := TurnListener(ln)
+	npln, err := ConvertListener(ln)
 	if err != nil {
 		return err
 	}
