@@ -18,6 +18,7 @@ package netpoll
 
 import (
 	"context"
+	"net"
 	"sync"
 )
 
@@ -26,7 +27,7 @@ type EventLoop interface {
 	// Serve registers a listener and runs blockingly to provide services, including listening to ports,
 	// accepting connections and processing trans data. When an exception occurs or Shutdown is invoked,
 	// Serve will return an error which describes the specific reason.
-	Serve(ln Listener) error
+	Serve(ln net.Listener) error
 
 	// Shutdown is used to graceful exit.
 	// It will close all idle connections on the server, but will not change the underlying pollers.
@@ -101,9 +102,13 @@ type eventLoop struct {
 }
 
 // Serve implements EventLoop.
-func (evl *eventLoop) Serve(ln Listener) error {
+func (evl *eventLoop) Serve(ln net.Listener) error {
+	npln, err := TurnListener(ln)
+	if err != nil {
+		return err
+	}
 	evl.Lock()
-	evl.svr = newServer(ln, evl.prepare, evl.quit)
+	evl.svr = newServer(npln, evl.prepare, evl.quit)
 	evl.svr.Run()
 	evl.Unlock()
 	return evl.waitQuit()
