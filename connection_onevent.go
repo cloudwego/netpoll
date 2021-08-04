@@ -22,6 +22,15 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
+var runTask = gopool.CtxGo
+
+func disableGopool() error {
+	runTask = func(ctx context.Context, f func()) {
+		go f()
+	}
+	return nil
+}
+
 // ------------------------------------ implement OnPrepare, OnRequest, CloseCallback ------------------------------------
 
 type gracefulExit interface {
@@ -116,7 +125,7 @@ func (c *connection) onRequest() (err error) {
 			goto START
 		}
 	}
-	gopool.CtxGo(c.ctx, task)
+	runTask(c.ctx, task)
 	return nil
 }
 

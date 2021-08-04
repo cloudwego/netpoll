@@ -35,6 +35,15 @@ func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
 }
 
+// DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
+// which means that OnRequest will be run via `go OnRequest(...)`.
+// Usually, OnRequest will cause stack expansion, which can be solved by reusing goroutine.
+// But if you can confirm that the OnRequest will not cause stack expansion,
+// it is recommended to use DisableGopool to reduce redundancy and improve performance.
+func DisableGopool() error {
+	return disableGopool()
+}
+
 // WithOnPrepare registers the OnPrepare method to EventLoop.
 func WithOnPrepare(onPrepare OnPrepare) Option {
 	return Option{func(op *options) {
