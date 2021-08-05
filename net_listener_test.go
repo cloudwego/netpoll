@@ -96,3 +96,22 @@ func TestListenerDialer(t *testing.T) {
 		Equal(t, atomic.LoadInt32(&closed), int32(1))
 	}
 }
+
+func TestConvertListener(t *testing.T) {
+	network, address := "unix", "mock.test.sock"
+	ln, err := net.Listen(network, address)
+	if err != nil {
+		panic(err)
+	}
+	udsln, _ := ln.(*net.UnixListener)
+	// udsln.SetUnlinkOnClose(false)
+
+	nln, err := ConvertListener(udsln)
+	if err != nil {
+		panic(err)
+	}
+	err = nln.Close()
+	if err != nil {
+		panic(err)
+	}
+}
