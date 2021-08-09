@@ -37,14 +37,14 @@ func init() {
 }
 
 func defaultNumLoops() int {
-	cpus := runtime.GOMAXPROCS(0)
+	procs := runtime.GOMAXPROCS(0)
 	loops := 1
 	// Loops produce events that handlers consume,
 	// so the producer should be faster than consumer otherwise it will have a bottleneck.
 	// But there is no universal option that could be appropriate for any use cases,
 	// plz use `SetNumLoops` if you do know what you want.
-	if cpus > 4 {
-		loops = cpus
+	if procs > 4 {
+		loops = procs
 	}
 	return loops
 }
