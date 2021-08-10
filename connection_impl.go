@@ -283,6 +283,15 @@ func (c *connection) checkNetFD(conn Conn) {
 	}
 }
 
+func (c *connection) SetNoDelay(b bool) (err error) {
+	switch c.network {
+	case "tcp", "tcp4", "tcp6":
+		return syscall.SetsockoptInt(c.fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(b))
+	default:
+		return nil
+	}
+}
+
 func (c *connection) initFDOperator() {
 	op := allocop()
 	op.FD = c.fd

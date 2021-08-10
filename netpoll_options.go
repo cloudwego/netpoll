@@ -65,6 +65,13 @@ func WithIdleTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithNoDelay set the TCP_NODELAY flag on connections.
+func WithNoDelay(noDelay bool) Option {
+	return Option{func(op *options) {
+		op.noDelay = noDelay
+	}}
+}
+
 // Option .
 type Option struct {
 	f func(*options)
@@ -74,6 +81,7 @@ type options struct {
 	onPrepare   OnPrepare
 	readTimeout time.Duration
 	idleTimeout time.Duration
+	noDelay     bool
 }
 
 func (opt *options) prepare(onRequest OnRequest) OnPrepare {
@@ -81,6 +89,11 @@ func (opt *options) prepare(onRequest OnRequest) OnPrepare {
 		connection.SetOnRequest(onRequest)
 		connection.SetReadTimeout(opt.readTimeout)
 		connection.SetIdleTimeout(opt.idleTimeout)
+
+		// it's no need to set at beginning because the default nodelay flag is false
+		if opt.noDelay {
+			connection.SetNoDelay(opt.noDelay)
+		}
 		if opt.onPrepare != nil {
 			return opt.onPrepare(connection)
 		}

@@ -101,3 +101,11 @@ func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 	}
 	return iovLen
 }
+
+// Boolean to int.
+func boolint(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
