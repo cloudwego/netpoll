@@ -37,7 +37,6 @@ For more information, please refer to [Document](#document).
     - [LinkBuffer][LinkBuffer] provides nocopy API for streaming reading and writing
     - [gopool][gopool] provides high-performance goroutine pool
     - [mcache][mcache] provides efficient memory reuse
-    - [multisyscall][multisyscall] supports batch system calls
     - `IsActive` supports checking whether the connection is alive
     - `Dialer` supports building clients
     - `EventLoop` supports building a server
@@ -45,6 +44,7 @@ For more information, please refer to [Document](#document).
     - Linux, Mac OS (operating system)
 
 * **Future**
+    - [multisyscall][multisyscall] supports batch system calls
     - [io_uring][io_uring]
     - Shared Memory IPC
     - Serial scheduling I/O, suitable for pure computing

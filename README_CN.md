@@ -32,7 +32,6 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
     - [LinkBuffer][LinkBuffer] 提供可以流式读写的 nocopy API
     - [gopool][gopool] 提供高性能的 goroutine 池
     - [mcache][mcache] 提供高效的内存复用
-    - [multisyscall][multisyscall] 支持批量系统调用
     - `IsActive` 支持检查连接是否存活
     - `Dialer` 支持构建 client
     - `EventLoop` 支持构建 server
@@ -40,6 +39,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
     - 支持 Linux，Mac OS（操作系统）
 
 * **即将开源**
+    - [multisyscall][multisyscall] 支持批量系统调用
     - [io_uring][io_uring]
     - Shared Memory IPC
     - 串行调度 I/O，适用于纯计算
