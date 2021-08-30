@@ -6,7 +6,7 @@
 focused on RPC scenarios, developed by [ByteDance][ByteDance].
 
 RPC is usually heavy on processing logic and therefore cannot handle I/O serially. But Go's standard
-library [net][net] designed blocking I/O API, so that the RPC framework can
+library [net][net] is designed for blocking I/O APIs, so that the RPC framework can
 only follow the One Conn One Goroutine design. It will waste a lot of cost for context switching, due to a large number
 of goroutines under high concurrency. Besides, [net.Conn][net.Conn] has
 no API to check Alive, so it is difficult to make an efficient connection pool for RPC framework, because there may be a
