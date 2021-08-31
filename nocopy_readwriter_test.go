@@ -15,6 +15,8 @@
 package netpoll
 
 import (
+	"errors"
+	"io"
 	"io/ioutil"
 	"testing"
 )
@@ -74,6 +76,18 @@ func TestZCWriter(t *testing.T) {
 	err = w.Flush()
 	MustNil(t, err)
 	Equal(t, w.buf.Len(), 0)
+}
+
+func TestZCEOF(t *testing.T) {
+	reader := &MockIOReadWriter{
+		read: func(p []byte) (n int, err error) {
+			return 0, io.EOF
+		},
+	}
+	r := newZCReader(reader)
+
+	_, err := r.Next(block8k)
+	MustTrue(t, errors.Is(err, ErrEOF))
 }
 
 type MockIOReadWriter struct {
