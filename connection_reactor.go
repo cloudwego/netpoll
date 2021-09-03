@@ -125,7 +125,7 @@ func (c *connection) outputAck(n int) (err error) {
 
 // rw2r removed the monitoring of write events.
 func (c *connection) rw2r() {
-	c.operator.Control(PollRW2R)
+	c.operator.Control(PollW2R)
 	c.triggerWrite(nil)
 }
 
@@ -160,7 +160,7 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	err = c.operator.Control(PollR2RW)
+	err = c.operator.Control(PollR2W)
 	if err != nil {
 		return Exception(err, "when flush")
 	}
