@@ -17,7 +17,7 @@ package netpoll
 import (
 	"context"
 	"net"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 )
@@ -64,20 +64,21 @@ func TestListenerDialer(t *testing.T) {
 	}()
 
 	// trigger
-	var closed, read int32
+	var wg sync.WaitGroup
 
 	dialer := NewDialer()
 	callback := func(connection Connection) error {
-		atomic.StoreInt32(&closed, 1)
+		defer wg.Done()
 		return nil
 	}
 	onRequest := func(ctx context.Context, connection Connection) error {
-		atomic.StoreInt32(&read, 1)
+		defer wg.Done()
 		err := connection.Close()
 		MustNil(t, err)
 		return err
 	}
 	for i := 0; i < 10; i++ {
+		wg.Add(2)
 		conn, err := dialer.DialConnection(network, addr, time.Second)
 		if err != nil {
 			continue
@@ -89,11 +90,9 @@ func TestListenerDialer(t *testing.T) {
 		n, err := conn.Write([]byte(msg))
 		MustNil(t, err)
 		Equal(t, n, len(msg))
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond) // wait for be written
 		trigger <- 1
-		time.Sleep(10 * time.Millisecond)
-		Equal(t, atomic.LoadInt32(&read), int32(1))
-		Equal(t, atomic.LoadInt32(&closed), int32(1))
+		wg.Wait() // wait for onRequest && callback both finished
 	}
 }
 
