@@ -58,10 +58,6 @@ type Connection interface {
 	// On the client side, if necessary, make sure that OnRequest is set before sending data.
 	SetOnRequest(on OnRequest) error
 
-	// SetNoDelay sets the TCP_NODELAY flag on connection
-	// Default is true
-	SetNoDelay(noDelay bool) error
-
 	// AddCloseCallback can add hangup callback for a connection, which will be called when connection closing.
 	// This is very useful for cleaning up idle connections. For instance, you can use callbacks to clean up
 	// the local resources, which bound to the idle connection, when hangup by the peer. No need another goroutine

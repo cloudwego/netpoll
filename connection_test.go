@@ -47,10 +47,12 @@ func TestNetworkConnect(t *testing.T) {
 
 	conn, err := DialConnection("tcp", ":9999", time.Second)
 	MustNil(t, err)
-	err = conn.SetNoDelay(true)
-	MustNil(t, err)
 	n, _ := syscall.GetsockoptInt(conn.(*TCPConnection).fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n > 0)
+	err = setTCPNoDelay(conn.(*TCPConnection).fd, false)
+	MustNil(t, err)
+	n, _ = syscall.GetsockoptInt(conn.(*TCPConnection).fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	MustTrue(t, n == 0)
 	trigger <- 1 // notice server to close conn
 	<-trigger    // waiting for server closed conn
 	err = conn.Close()

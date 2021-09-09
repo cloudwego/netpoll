@@ -28,6 +28,11 @@ func GetSysFdPairs() (r, w int) {
 	return fds[0], fds[1]
 }
 
+// setTCPNoDelay set the TCP_NODELAY flag on socket
+func setTCPNoDelay(fd int, b bool) (err error) {
+	return syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(b))
+}
+
 // Wrapper around the socket system call that marks the returned file
 // descriptor as nonblocking and close-on-exec.
 func sysSocket(family, sotype, proto int) (int, error) {

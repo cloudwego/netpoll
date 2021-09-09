@@ -139,14 +139,7 @@ type TCPConnection struct {
 // newTCPConnection wraps *TCPConnection.
 func newTCPConnection(conn Conn) (connection *TCPConnection, err error) {
 	connection = &TCPConnection{}
-	err = connection.init(
-		conn,
-		func(connection Connection) context.Context {
-			// default enable TCP_NODELAY
-			connection.SetNoDelay(true)
-			return context.Background()
-		},
-	)
+	err = connection.init(conn, nil)
 	if err != nil {
 		return nil, err
 	}
