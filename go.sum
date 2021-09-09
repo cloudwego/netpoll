@@ -1,5 +1,3 @@
-github.com/bytedance/gopkg v0.0.0-20210507130052-24980f04837a h1:wjM2Z8ZV1OjQMyVSoXIDqjWK5BEuRHT+S6kLH1BVR5c=
-github.com/bytedance/gopkg v0.0.0-20210507130052-24980f04837a/go.mod h1:birsdqRCbwnckJbdAvcSao+AzOyibVEoWB55MjpYpB8=
 github.com/bytedance/gopkg v0.0.0-20210705062217-74c74ebadcae h1:ERLYTdHnm2E8jwpprhHPvBhbPBaxnwl62tb3lR8Nd+k=
 github.com/bytedance/gopkg v0.0.0-20210705062217-74c74ebadcae/go.mod h1:birsdqRCbwnckJbdAvcSao+AzOyibVEoWB55MjpYpB8=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
