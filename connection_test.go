@@ -26,39 +26,6 @@ import (
 	"time"
 )
 
-func TestNetworkConnect(t *testing.T) {
-	ln, err := CreateListener("tcp", ":9999")
-	MustNil(t, err)
-
-	trigger := make(chan int)
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if conn == nil && err == nil {
-				continue
-			}
-			<-trigger
-			err = ln.Close()
-			MustNil(t, err)
-			trigger <- 1
-			return
-		}
-	}()
-
-	conn, err := DialConnection("tcp", ":9999", time.Second)
-	MustNil(t, err)
-	n, _ := syscall.GetsockoptInt(conn.(*TCPConnection).fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
-	MustTrue(t, n > 0)
-	err = setTCPNoDelay(conn.(*TCPConnection).fd, false)
-	MustNil(t, err)
-	n, _ = syscall.GetsockoptInt(conn.(*TCPConnection).fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
-	MustTrue(t, n == 0)
-	trigger <- 1 // notice server to close conn
-	<-trigger    // waiting for server closed conn
-	err = conn.Close()
-	MustNil(t, err)
-}
-
 func TestConnectionWrite(t *testing.T) {
 	var cycle, caps = 10000, 256
 	var msg, buf = make([]byte, caps), make([]byte, caps)
@@ -265,4 +232,18 @@ func TestConnectionLargeMemory(t *testing.T) {
 	if alloc > limit {
 		panic(fmt.Sprintf("alloc[%d] out of memory %d", alloc, limit))
 	}
+}
+
+// TestSetTCPNoDelay is used to verify the connection initialization set the TCP_NODELAY correctly
+func TestSetTCPNoDelay(t *testing.T) {
+	fd, err := sysSocket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	conn := &connection{}
+	conn.init(&netFD{network: "tcp", fd: fd}, nil)
+
+	n, _ := syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	MustTrue(t, n > 0)
+	err = setTCPNoDelay(fd, false)
+	MustNil(t, err)
+	n, _ = syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	MustTrue(t, n == 0)
 }
