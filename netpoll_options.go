@@ -89,8 +89,7 @@ func (opt *options) prepare(onRequest OnRequest) OnPrepare {
 		connection.SetOnRequest(onRequest)
 		connection.SetReadTimeout(opt.readTimeout)
 		connection.SetIdleTimeout(opt.idleTimeout)
-
-		// it's no need to set at beginning because the default nodelay flag is false
+		// it's no need to set at beginning because the default nodelay flag of socket is false
 		if opt.noDelay {
 			connection.SetNoDelay(opt.noDelay)
 		}

@@ -59,7 +59,7 @@ type Connection interface {
 	SetOnRequest(on OnRequest) error
 
 	// SetNoDelay sets the TCP_NODELAY flag on connection
-	// Default is false
+	// Default is true
 	SetNoDelay(noDelay bool) error
 
 	// AddCloseCallback can add hangup callback for a connection, which will be called when connection closing.

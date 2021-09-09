@@ -82,7 +82,7 @@ type OnPrepare func(connection Connection) context.Context
 
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
-	opt := &options{}
+	opt := &options{noDelay: true}
 	for _, do := range ops {
 		do.f(opt)
 	}
