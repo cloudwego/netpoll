@@ -233,3 +233,17 @@ func TestConnectionLargeMemory(t *testing.T) {
 		panic(fmt.Sprintf("alloc[%d] out of memory %d", alloc, limit))
 	}
 }
+
+// TestSetTCPNoDelay is used to verify the connection initialization set the TCP_NODELAY correctly
+func TestSetTCPNoDelay(t *testing.T) {
+	fd, err := sysSocket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	conn := &connection{}
+	conn.init(&netFD{network: "tcp", fd: fd}, nil)
+
+	n, _ := syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	MustTrue(t, n > 0)
+	err = setTCPNoDelay(fd, false)
+	MustNil(t, err)
+	n, _ = syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	MustTrue(t, n == 0)
+}
