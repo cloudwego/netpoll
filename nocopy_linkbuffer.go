@@ -560,6 +560,7 @@ func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
 	for node := b.flush.next; node != nil; node = node.next {
 		node.off, node.malloc, node.refer, node.buf = 0, 0, 1, node.buf[:0]
 	}
+
 	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
 	if isEnd && cap(b.flush.buf) > pagesize {
 		if b.flush.next == nil {
