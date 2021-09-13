@@ -327,10 +327,11 @@ func (c *connection) triggerWrite(err error) {
 
 // waitRead will wait full n bytes.
 func (c *connection) waitRead(n int) (err error) {
-	if c.inputBuffer.Len() >= n {
+	leftover := n - c.inputBuffer.Len()
+	if leftover <= 0 {
 		return nil
 	}
-	atomic.StoreInt32(&c.waitReadSize, int32(n))
+	atomic.StoreInt32(&c.waitReadSize, int32(leftover))
 	defer atomic.StoreInt32(&c.waitReadSize, 0)
 	if c.readTimeout > 0 {
 		return c.waitReadWithTimeout(n)
