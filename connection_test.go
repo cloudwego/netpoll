@@ -112,6 +112,40 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 	wg.Wait()
 }
 
+func TestConnectionWaitReadHalfPacket(t *testing.T) {
+	r, w := GetSysFdPairs()
+	var rconn = &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	var size = pagesize * 2
+	var msg = make([]byte, size)
+
+	// write half packet
+	syscall.Write(w, msg[:size/2])
+	// wait poller reads buffer
+	for rconn.inputBuffer.Len() <= 0 {
+		runtime.Gosched()
+	}
+
+	// wait read full packet
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var buf, err = rconn.Reader().Next(size)
+		Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(0))
+		MustNil(t, err)
+		Equal(t, len(buf), size)
+	}()
+
+	// write left half packet
+	for atomic.LoadInt32(&rconn.waitReadSize) <= 0 {
+		runtime.Gosched()
+	}
+	Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(size/2))
+	syscall.Write(w, msg[size/2:])
+	wg.Wait()
+}
+
 func TestReadTimer(t *testing.T) {
 	read := time.NewTimer(time.Second)
 	MustTrue(t, read.Stop())
