@@ -123,6 +123,7 @@ func TestDialerFdAlloc(t *testing.T) {
 		fd := conn.(*TCPConnection).fd
 		conn.Write([]byte("hello world"))
 		for conn.IsActive() {
+			runtime.Gosched()
 		}
 		time.Sleep(time.Millisecond)
 		syscall.SetNonblock(fd, true)

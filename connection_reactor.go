@@ -58,15 +58,11 @@ func (c *connection) onClose() error {
 
 // closeBuffer recycle input & output LinkBuffer.
 func (c *connection) closeBuffer() {
-	c.stop(writing)
-	if c.lock(inputBuffer) {
-		c.inputBuffer.Close()
-		barrierPool.Put(c.inputBarrier)
-	}
-	if c.lock(outputBuffer) {
-		c.outputBuffer.Close()
-		barrierPool.Put(c.outputBarrier)
-	}
+	c.inputBuffer.Close()
+	barrierPool.Put(c.inputBarrier)
+
+	c.outputBuffer.Close()
+	barrierPool.Put(c.outputBarrier)
 }
 
 // inputs implements FDOperator.
@@ -97,11 +93,7 @@ func (c *connection) inputAck(n int) (err error) {
 
 // outputs implements FDOperator.
 func (c *connection) outputs(vs [][]byte) (rs [][]byte, supportZeroCopy bool) {
-	if !c.lock(writing) {
-		return rs, c.supportZeroCopy
-	}
 	if c.outputBuffer.IsEmpty() {
-		c.unlock(writing)
 		c.rw2r()
 		return rs, c.supportZeroCopy
 	}
@@ -115,8 +107,6 @@ func (c *connection) outputAck(n int) (err error) {
 		c.outputBuffer.Skip(n)
 		c.outputBuffer.Release()
 	}
-	// must unlock before check empty
-	c.unlock(writing)
 	if c.outputBuffer.IsEmpty() {
 		c.rw2r()
 	}
@@ -131,15 +121,6 @@ func (c *connection) rw2r() {
 
 // flush write data directly.
 func (c *connection) flush() error {
-	if !c.lock(writing) {
-		return nil
-	}
-	locked := true
-	defer func() {
-		if locked {
-			c.unlock(writing)
-		}
-	}()
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
@@ -165,8 +146,6 @@ func (c *connection) flush() error {
 		return Exception(err, "when flush")
 	}
 
-	locked = false
-	c.unlock(writing)
 	err = <-c.writeTrigger
 	return err
 }

@@ -116,8 +116,8 @@ func (c *connection) onRequest() (err error) {
 			c.closeCallback(false)
 			return
 		}
-		// Double check when exiting.
 		c.unlock(processing)
+		// Double check when exiting.
 		if c.Reader().Len() > 0 {
 			if !c.lock(processing) {
 				return
