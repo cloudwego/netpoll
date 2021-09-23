@@ -62,6 +62,7 @@ type LinkBuffer struct {
 
 var _ Reader = &LinkBuffer{}
 var _ Writer = &LinkBuffer{}
+var _ CheckReader = &LinkBuffer{}
 
 // Len implements Reader.
 func (b *LinkBuffer) Len() int {
@@ -74,7 +75,7 @@ func (b *LinkBuffer) IsEmpty() (ok bool) {
 	return b.Len() == 0
 }
 
-// ------------------------------------------ implement zero-copy reader ------------------------------------------
+// ------------------------------------------ implement Reader ------------------------------------------
 
 // Next implements Reader.
 func (b *LinkBuffer) Next(n int) (p []byte, err error) {
@@ -307,7 +308,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 	return p, b.release()
 }
 
-// ------------------------------------------ implement zero-copy writer ------------------------------------------
+// ------------------------------------------ implement Writer ------------------------------------------
 
 // Malloc pre-allocates memory, which is not readable, and becomes readable data after submission(e.g. Flush).
 func (b *LinkBuffer) Malloc(n int) (buf []byte, err error) {
@@ -509,6 +510,41 @@ func (b *LinkBuffer) Close() (err error) {
 	return nil
 }
 
+// ------------------------------------------ implement Detector ------------------------------------------
+
+// PreCheck implements Detector.
+func (b *LinkBuffer) Find(subStr string) (firstIndex int) {
+	var equalbyte = func(target byte, node *linkBufferNode, idx int) (*linkBufferNode, int, bool) {
+		for idx >= len(node.buf) {
+			idx = idx - len(node.buf) + node.next.off
+			node = node.next
+		}
+		return node, idx, target == node.buf[idx]
+	}
+
+	var equal = func(node *linkBufferNode, idx int) bool {
+		for k := 1; k < len(subStr); k++ {
+			_, _, ok2 := equalbyte(subStr[k], node, idx+k)
+			if !ok2 {
+				return false
+			}
+		}
+		return true
+	}
+
+	l := b.Len()
+	node, idx, ok := b.read, b.read.off-1, false
+	for i := 0; i < l-len(subStr); i++ {
+		idx++
+		// check idx=0, reset node
+		node, idx, ok = equalbyte(subStr[0], node, idx)
+		if ok && equal(node, idx) {
+			return i
+		}
+	}
+	return -1
+}
+
 // ------------------------------------------ implement connection interface ------------------------------------------
 
 // Bytes returns all the readable bytes of this LinkBuffer.
@@ -573,7 +609,7 @@ func (b *LinkBuffer) Book(min int, p [][]byte) (vs [][]byte) {
 }
 
 // BookAck will ack the first n malloc bytes and discard the rest.
-func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
+func (b *LinkBuffer) BookAck(n int, isEnd bool) (totalLen int, err error) {
 	b.Lock()
 	defer b.Unlock()
 	var l int
@@ -602,8 +638,8 @@ func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
 	b.write = b.flush
 
 	// re-cal length
-	b.recalLen(n)
-	return nil
+	totalLen = int(b.recalLen(n))
+	return totalLen, nil
 }
 
 // Reset resets the buffer to be empty,
@@ -618,9 +654,8 @@ func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
 // }
 
 // recalLen re-calculate the length
-func (b *LinkBuffer) recalLen(delta int) (err error) {
-	atomic.AddInt32(&b.length, int32(delta))
-	return nil
+func (b *LinkBuffer) recalLen(delta int) (length int32) {
+	return atomic.AddInt32(&b.length, int32(delta))
 }
 
 // recalMallocLen re-calculate the malloc length

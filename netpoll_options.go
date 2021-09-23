@@ -50,6 +50,13 @@ func WithOnPrepare(onPrepare OnPrepare) Option {
 	}}
 }
 
+// WithCheckSize TODO:
+func WithCheckSize(checker CheckSize) Option {
+	return Option{func(op *options) {
+		op.checker = checker
+	}}
+}
+
 // WithReadTimeout sets the read timeout of connections.
 func WithReadTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
@@ -70,6 +77,7 @@ type Option struct {
 }
 
 type options struct {
+	checker     CheckSize
 	onRequest   OnRequest
 	onPrepare   OnPrepare
 	readTimeout time.Duration

@@ -271,6 +271,7 @@ func (c *connection) init(nfd *netFD, opt *options) (err error) {
 	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
 		c.supportZeroCopy = true
 	}
+	// OnPrepare must be executed at the end.
 	return c.initOptions(opt)
 }
 
@@ -295,6 +296,7 @@ func (c *connection) initOptions(opt *options) error {
 	c.SetOnRequest(opt.onRequest)
 	c.SetReadTimeout(opt.readTimeout)
 	c.SetIdleTimeout(opt.idleTimeout)
+	c.checker = opt.checker
 	return c.onPrepare(opt.onPrepare)
 }
 

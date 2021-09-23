@@ -297,6 +297,20 @@ func TestWriteDirect(t *testing.T) {
 	}
 }
 
+func TestDetectorFind(t *testing.T) {
+	// clean & new
+	LinkBufferCap = 8
+
+	var buf = NewLinkBuffer()
+	buf.WriteString("hello world\r\n")
+	buf.WriteString("hello world\r\n")
+	buf.WriteString("\r\n")
+	buf.WriteString("hello world\r\n")
+	buf.Flush()
+	idx := buf.Find("\r\n\r\n")
+	Equal(t, idx, len("hello world\r\n")*2-2)
+}
+
 func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {
 	b.StopTimer()
 
@@ -428,4 +442,59 @@ func BenchmarkCopyString(b *testing.B) {
 			copy(v, s)
 		}
 	})
+}
+
+func BenchmarkDetectorFind(b *testing.B) {
+	b.StopTimer()
+	// clean & new
+	LinkBufferCap = 8
+
+	var buf = NewLinkBuffer()
+	buf.WriteString("hello world\r\n")
+	buf.WriteString("hello world\r\n")
+	buf.WriteString("\r\n")
+	buf.WriteString("hello world\r\n")
+
+	// benchmark
+	b.ReportAllocs()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_ = buf.Find("\r\n\r\n")
+	}
+}
+
+func BenchmarkDetectorFind2(b *testing.B) {
+	b.StopTimer()
+
+	// clean & new
+	var msg = "hello world\r\n"
+	var buf0 = []byte(msg + msg + "\r\n" + msg)
+	var buf = make([]byte, len("hello world\r\n")*3+2)
+	copy(buf, buf0)
+
+	// benchmark
+	b.ReportAllocs()
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		_ = find(buf, "\r\n\r\n")
+	}
+}
+
+func find(buf []byte, subStr string) (firstIndex int) {
+	var equal = func(idx int) bool {
+		for k := 0; k < len(subStr); k++ {
+			if subStr[k] != buf[idx+k] {
+				return false
+			}
+		}
+		return true
+	}
+
+	l := len(buf)
+	for i := 0; i < l-len(subStr); i++ {
+		if equal(i) {
+			return i
+		}
+	}
+	return -1
 }

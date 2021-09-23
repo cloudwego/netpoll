@@ -46,6 +46,8 @@ type onEvent struct {
 	ctx       context.Context
 	process   atomic.Value // value is OnRequest
 	callbacks atomic.Value // value is latest *callbackNode
+	checker   CheckSize
+	needSize  int
 }
 
 type callbackNode struct {
@@ -93,15 +95,41 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 }
 
 // onRequest is also responsible for executing the callbacks after the connection has been closed.
-func (c *connection) onRequest() (err error) {
+func (c *connection) onRequest(inputSize int) (err error) {
+	// size check
+	if c.needSize > inputSize {
+		return nil
+	}
+
 	var process = c.process.Load()
-	if process == nil {
-		return nil
-	}
 	// Buffer has been fully processed, or task already exists
-	if !c.lock(processing) {
+	if process == nil || !c.lock(processing) {
+		c.triggerRead()
 		return nil
 	}
+
+	// sync: pre-check
+	// <0 skip;
+	if c.needSize <= 0 && c.checker != nil {
+		c.needSize = c.checker(c.ctx, c.inputBuffer)
+		if c.needSize < 0 || inputSize < c.needSize {
+			// FIXME: If you want to support `Async io.Closer` in all scenarios, the commented code here needs to be reopened.
+			//  The current implementation can only guarantee that no OnRequest is being executed.
+			// if !c.IsActive() {
+			// 	c.closeCallback(false)
+			// 	return nil
+			// }
+			// TODO:
+			// if inl == 0 {
+			// 	c.inputBuffer.Reset()
+			// }
+			c.unlock(processing)
+			return nil
+		}
+	}
+	// reset & go task
+	c.needSize = 0
+
 	// async: add new task
 	var task = func() {
 		var handler = process.(OnRequest)
