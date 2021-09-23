@@ -82,6 +82,9 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 	if prepare != nil {
 		c.ctx = prepare(c)
 	}
+	if c.ctx == nil {
+		c.ctx = context.Background()
+	}
 	// prepare may close the connection.
 	if c.IsActive() {
 		return c.register()
@@ -99,11 +102,8 @@ func (c *connection) onRequest() (err error) {
 	if !c.lock(processing) {
 		return nil
 	}
-	// add new task
+	// async: add new task
 	var task = func() {
-		if c.ctx == nil {
-			c.ctx = context.Background()
-		}
 		var handler = process.(OnRequest)
 	START:
 		// NOTE: loop processing, which is useful for streaming.

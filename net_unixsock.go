@@ -73,9 +73,9 @@ type UnixConnection struct {
 }
 
 // newUnixConnection wraps UnixConnection.
-func newUnixConnection(conn Conn) (connection *UnixConnection, err error) {
+func newUnixConnection(nfd *netFD) (connection *UnixConnection, err error) {
 	connection = &UnixConnection{}
-	err = connection.init(conn, nil)
+	err = connection.init(nfd, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -103,11 +103,11 @@ func DialUnix(network string, laddr, raddr *UnixAddr) (*UnixConnection, error) {
 }
 
 func (sd *sysDialer) dialUnix(ctx context.Context, laddr, raddr *UnixAddr) (*UnixConnection, error) {
-	conn, err := unixSocket(ctx, sd.network, laddr, raddr, "dial")
+	nfd, err := unixSocket(ctx, sd.network, laddr, raddr, "dial")
 	if err != nil {
 		return nil, err
 	}
-	return newUnixConnection(conn)
+	return newUnixConnection(nfd)
 }
 
 func unixSocket(ctx context.Context, network string, laddr, raddr sockaddr, mode string) (conn *netFD, err error) {

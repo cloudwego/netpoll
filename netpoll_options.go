@@ -15,7 +15,6 @@
 package netpoll
 
 import (
-	"context"
 	"time"
 )
 
@@ -71,19 +70,8 @@ type Option struct {
 }
 
 type options struct {
+	onRequest   OnRequest
 	onPrepare   OnPrepare
 	readTimeout time.Duration
 	idleTimeout time.Duration
-}
-
-func (opt *options) prepare(onRequest OnRequest) OnPrepare {
-	return func(connection Connection) context.Context {
-		connection.SetOnRequest(onRequest)
-		connection.SetReadTimeout(opt.readTimeout)
-		connection.SetIdleTimeout(opt.idleTimeout)
-		if opt.onPrepare != nil {
-			return opt.onPrepare(connection)
-		}
-		return context.Background()
-	}
 }

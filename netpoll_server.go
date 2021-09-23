@@ -24,18 +24,18 @@ import (
 )
 
 // newServer wrap listener into server, quit will be invoked when server exit.
-func newServer(ln Listener, prepare OnPrepare, quit func(err error)) *server {
+func newServer(ln Listener, opt *options, quit func(err error)) *server {
 	return &server{
-		ln:      ln,
-		prepare: prepare,
-		quit:    quit,
+		ln:   ln,
+		opt:  opt,
+		quit: quit,
 	}
 }
 
 type server struct {
 	operator    FDOperator
 	ln          Listener
-	prepare     OnPrepare
+	opt         *options
 	quit        func(err error)
 	connections sync.Map // key=fd, value=connection
 }
@@ -103,24 +103,25 @@ func (s *server) OnRead(p Poll) error {
 			s.quit(err)
 			return err
 		}
-		log.Println("accept conn failed:", err.Error())
+		// async log
+		go log.Println("accept conn failed:", err.Error())
 		return err
 	}
 	if conn == nil {
 		return nil
 	}
 	// store & register connection
-	var connection = &connection{}
-	connection.init(conn.(Conn), s.prepare)
-	if !connection.IsActive() {
+	var c = &connection{}
+	c.init(conn.(*netFD), s.opt)
+	if !c.IsActive() {
 		return nil
 	}
-	var fd = conn.(Conn).Fd()
-	connection.AddCloseCallback(func(connection Connection) error {
+	var fd = c.Fd()
+	c.AddCloseCallback(func(connection Connection) error {
 		s.connections.Delete(fd)
 		return nil
 	})
-	s.connections.Store(fd, connection)
+	s.connections.Store(fd, c)
 	return nil
 }
 

@@ -48,8 +48,8 @@ func TestConnectionWrite(t *testing.T) {
 
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, prepare)
-	wconn.init(&netFD{fd: w}, prepare)
+	rconn.init(&netFD{fd: r}, &options{onPrepare: prepare})
+	wconn.init(&netFD{fd: w}, &options{onPrepare: prepare})
 
 	for i := 0; i < cycle; i++ {
 		n, err := wconn.Write(msg)

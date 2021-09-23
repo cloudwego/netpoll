@@ -83,22 +83,21 @@ type OnPrepare func(connection Connection) context.Context
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
 	opt := &options{}
+	opt.onRequest = onRequest
 	for _, do := range ops {
 		do.f(opt)
 	}
 	return &eventLoop{
-		opt:     opt,
-		prepare: opt.prepare(onRequest),
-		stop:    make(chan error, 1),
+		opt:  opt,
+		stop: make(chan error, 1),
 	}, nil
 }
 
 type eventLoop struct {
 	sync.Mutex
-	opt     *options
-	prepare OnPrepare
-	svr     *server
-	stop    chan error
+	opt  *options
+	svr  *server
+	stop chan error
 }
 
 // Serve implements EventLoop.
@@ -108,7 +107,7 @@ func (evl *eventLoop) Serve(ln net.Listener) error {
 		return err
 	}
 	evl.Lock()
-	evl.svr = newServer(npln, evl.prepare, evl.quit)
+	evl.svr = newServer(npln, evl.opt, evl.quit)
 	evl.svr.Run()
 	evl.Unlock()
 	return evl.waitQuit()

@@ -137,9 +137,9 @@ type TCPConnection struct {
 }
 
 // newTCPConnection wraps *TCPConnection.
-func newTCPConnection(conn Conn) (connection *TCPConnection, err error) {
+func newTCPConnection(nfd *netFD) (connection *TCPConnection, err error) {
 	connection = &TCPConnection{}
-	err = connection.init(conn, nil)
+	err = connection.init(nfd, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func DialTCP(ctx context.Context, network string, laddr, raddr *TCPAddr) (*TCPCo
 }
 
 func (sd *sysDialer) dialTCP(ctx context.Context, laddr, raddr *TCPAddr) (*TCPConnection, error) {
-	conn, err := internetSocket(ctx, sd.network, laddr, raddr, syscall.SOCK_STREAM, 0, "dial")
+	nfd, err := internetSocket(ctx, sd.network, laddr, raddr, syscall.SOCK_STREAM, 0, "dial")
 
 	// TCP has a rarely used mechanism called a 'simultaneous connection' in
 	// which Dial("tcp", addr1, addr2) run on the machine at addr1 can
@@ -200,17 +200,17 @@ func (sd *sysDialer) dialTCP(ctx context.Context, laddr, raddr *TCPAddr) (*TCPCo
 	// a different reason.
 	//
 	// The kernel socket code is no doubt enjoying watching us squirm.
-	for i := 0; i < 2 && (laddr == nil || laddr.Port == 0) && (selfConnect(conn, err) || spuriousENOTAVAIL(err)); i++ {
+	for i := 0; i < 2 && (laddr == nil || laddr.Port == 0) && (selfConnect(nfd, err) || spuriousENOTAVAIL(err)); i++ {
 		if err == nil {
-			conn.Close()
+			nfd.Close()
 		}
-		conn, err = internetSocket(ctx, sd.network, laddr, raddr, syscall.SOCK_STREAM, 0, "dial")
+		nfd, err = internetSocket(ctx, sd.network, laddr, raddr, syscall.SOCK_STREAM, 0, "dial")
 	}
 
 	if err != nil {
 		return nil, err
 	}
-	return newTCPConnection(conn)
+	return newTCPConnection(nfd)
 }
 
 func selfConnect(conn *netFD, err error) bool {

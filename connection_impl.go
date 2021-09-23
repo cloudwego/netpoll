@@ -250,10 +250,8 @@ var barrierPool = sync.Pool{
 }
 
 // init arguments: conn is required, prepare is optional.
-func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
-	// conn must be *netFD{}
-	c.checkNetFD(conn)
-
+func (c *connection) init(nfd *netFD, opt *options) (err error) {
+	c.netFD = *nfd
 	c.initFDOperator()
 	syscall.SetNonblock(c.fd, true)
 
@@ -273,19 +271,7 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
 		c.supportZeroCopy = true
 	}
-	return c.onPrepare(prepare)
-}
-
-func (c *connection) checkNetFD(conn Conn) {
-	if nfd, ok := conn.(*netFD); ok {
-		c.netFD = *nfd
-		return
-	}
-	c.netFD = netFD{
-		fd:         conn.Fd(),
-		localAddr:  conn.LocalAddr(),
-		remoteAddr: conn.RemoteAddr(),
-	}
+	return c.initOptions(opt)
 }
 
 func (c *connection) initFDOperator() {
@@ -300,6 +286,16 @@ func (c *connection) initFDOperator() {
 		op.poll = c.pd.operator.poll
 	}
 	c.operator = op
+}
+
+func (c *connection) initOptions(opt *options) error {
+	if opt == nil {
+		return c.onPrepare(nil)
+	}
+	c.SetOnRequest(opt.onRequest)
+	c.SetReadTimeout(opt.readTimeout)
+	c.SetIdleTimeout(opt.idleTimeout)
+	return c.onPrepare(opt.onPrepare)
 }
 
 func (c *connection) setFinalizer() {
