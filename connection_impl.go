@@ -80,6 +80,11 @@ func (c *connection) SetReadTimeout(timeout time.Duration) error {
 
 // ------------------------------------------ implement zero-copy reader ------------------------------------------
 
+// Find .
+func (c *connection) Find(subStr string) (firstIndex int) {
+	return c.inputBuffer.Find(subStr)
+}
+
 // Next implements Connection.
 func (c *connection) Next(n int) (p []byte, err error) {
 	if err = c.waitRead(n); err != nil {
