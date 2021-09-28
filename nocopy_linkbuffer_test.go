@@ -305,9 +305,13 @@ func TestDetectorFind(t *testing.T) {
 	buf.WriteString("hello world\r\n")
 	buf.WriteString("hello world\r\n")
 	buf.WriteString("\r\n")
-	buf.WriteString("hello world\r\n")
 	buf.Flush()
 	idx := buf.Find("\r\n\r\n")
+	Equal(t, idx, len("hello world\r\n")*2-2)
+
+	buf.WriteString("hello world\r\n")
+	buf.Flush()
+	idx = buf.Find("\r\n\r\n")
 	Equal(t, idx, len("hello world\r\n")*2-2)
 }
 

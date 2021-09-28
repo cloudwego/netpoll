@@ -510,7 +510,7 @@ func (b *LinkBuffer) Find(subStr string) (firstIndex int) {
 
 	l := b.Len()
 	node, idx, ok := b.read, b.read.off-1, false
-	for i := 0; i < l-len(subStr); i++ {
+	for i := 0; i < l-len(subStr)+1; i++ {
 		idx++
 		// check idx=0, reset node
 		node, idx, ok = equalbyte(subStr[0], node, idx)
