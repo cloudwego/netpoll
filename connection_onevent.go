@@ -95,7 +95,7 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 }
 
 // onRequest is also responsible for executing the callbacks after the connection has been closed.
-func (c *connection) onRequest(inputSize int) (err error) {
+func (c *connection) onRequest(thisN, inputSize int) (err error) {
 	// size check
 	if c.needSize > inputSize {
 		return nil
@@ -111,6 +111,7 @@ func (c *connection) onRequest(inputSize int) (err error) {
 	// sync: pre-check
 	// <0 skip;
 	if c.needSize <= 0 && c.checker != nil {
+		c.inputBuffer.thisN = thisN
 		c.needSize = c.checker(c.ctx, c.inputBuffer)
 		if c.needSize < 0 || inputSize < c.needSize {
 			// FIXME: If you want to support `Async io.Closer` in all scenarios, the commented code here needs to be reopened.

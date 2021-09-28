@@ -50,6 +50,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 type LinkBuffer struct {
 	length     int32
 	mallocSize int
+	thisN      int
 
 	head  *linkBufferNode // release head
 	read  *linkBufferNode // read head
@@ -509,8 +510,15 @@ func (b *LinkBuffer) Find(subStr string) (firstIndex int) {
 	}
 
 	l := b.Len()
+	i := 0
+	if b.thisN > 0 {
+		tmp := l - b.thisN - len(subStr)
+		if tmp > 0 {
+			i = 0
+		}
+	}
 	node, idx, ok := b.read, b.read.off-1, false
-	for i := 0; i < l-len(subStr)+1; i++ {
+	for ; i < l-len(subStr)+1; i++ {
 		idx++
 		// check idx=0, reset node
 		node, idx, ok = equalbyte(subStr[0], node, idx)
