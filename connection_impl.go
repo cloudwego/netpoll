@@ -165,12 +165,12 @@ func (c *connection) MallocLen() (length int) {
 // If empty, it will call syscall.Write to send data directly,
 // otherwise the buffer will be sent asynchronously by the epoll trigger.
 func (c *connection) Flush() error {
-	if c.IsActive() && c.lock(outputBuffer) {
-		c.outputBuffer.Flush()
-		c.unlock(outputBuffer)
-		return c.flush()
+	if !c.lock(flushing) {
+		return Exception(ErrConnClosed, "when flush")
 	}
-	return Exception(ErrConnClosed, "when flush")
+	defer c.unlock(flushing)
+	c.outputBuffer.Flush()
+	return c.flush()
 }
 
 // MallocAck implements Connection.
@@ -304,6 +304,7 @@ func (c *connection) initFDOperator() {
 
 func (c *connection) setFinalizer() {
 	c.AddCloseCallback(func(connection Connection) error {
+		c.stop(flushing)
 		c.netFD.Close()
 		c.closeBuffer()
 		freeop(c.operator)
