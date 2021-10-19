@@ -15,8 +15,9 @@
 package netpoll
 
 import (
-	"math/rand"
 	"sync/atomic"
+
+	"github.com/bytedance/gopkg/lang/fastrand"
 )
 
 // LoadBalance sets the load balancing method.
@@ -63,7 +64,7 @@ func (b *randomLB) LoadBalance() LoadBalance {
 }
 
 func (b *randomLB) Pick() (poll Poll) {
-	idx := rand.Intn(b.pollSize)
+	idx := fastrand.Intn(b.pollSize)
 	return b.polls[idx]
 }
 
