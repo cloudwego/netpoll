@@ -40,19 +40,14 @@ func (p *mainPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollReadable:
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollModReadable:
+	case PollWritable:
 		p.m.Store(operator.FD, operator)
-		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLONESHOT|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
 		p.m.Delete(operator.FD)
 		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollWritable:
-		p.m.Store(operator.FD, operator)
-		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollR2RW:
-		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollRW2R:
-		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollR2RW, PollRW2R, PollModReadable:
+		// TODO: nothing here
 	}
 	return syscall.EpollCtl(p.fd, op, operator.FD, &evt)
 }
