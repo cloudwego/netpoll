@@ -35,6 +35,8 @@ var pollmanager *manager
 
 func init() {
 	mainpoll = openMainPoll()
+	go mainpoll.Wait()
+
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
 	pollmanager.SetNumLoops(defaultNumLoops())
