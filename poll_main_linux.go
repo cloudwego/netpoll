@@ -12,66 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build race
-
 package netpoll
 
 import (
-	"log"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
 )
 
-func openDefaultPoll() *defaultPoll {
-	var poll = &defaultPoll{}
+func openMainPoll() *mainPoll {
+	var poll = &mainPoll{}
 	poll.InitEpoll(poll)
 	return poll
 }
 
-type defaultPoll struct {
+type mainPoll struct {
 	baseEpoll
-	pollArgs
-}
-
-type pollArgs struct {
-	size     int
-	caps     int
-	events   []syscall.EpollEvent
-	barriers []barrier
-	m        sync.Map
-}
-
-func (a *pollArgs) reset(size, caps int) {
-	a.size, a.caps = size, caps
-	a.events, a.barriers = make([]syscall.EpollEvent, size), make([]barrier, size)
-	for i := range a.barriers {
-		a.barriers[i].bs = make([][]byte, a.caps)
-		a.barriers[i].ivs = make([]syscall.Iovec, a.caps)
-	}
+	m sync.Map
 }
 
 // Control implements Poll.
-func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
+func (p *mainPoll) Control(operator *FDOperator, event PollEvent) error {
 	var op int
 	var evt syscall.EpollEvent
 	evt.Fd = int32(operator.FD)
 	switch event {
 	case PollReadable:
-		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollModReadable:
-		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
-		defer operator.unused()
 		p.m.Delete(operator.FD)
 		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable:
-		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
@@ -83,32 +58,31 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 }
 
 // Wait implements Poll.
-func (p *defaultPoll) Wait() (err error) {
+func (p *mainPoll) Wait() (err error) {
 	// init
-	var caps, msec, n = barriercap, -1, 0
-	p.reset(128, caps)
+	var size, msec, n = 128, -1, 0
+	var events = make([]syscall.EpollEvent, size)
+
 	// wait
 	for {
-		if n == p.size && p.size < 128*1024 {
-			p.reset(p.size<<1, caps)
+		if n == size && size < 128*1024 {
+			size = size << 1
+			events = make([]syscall.EpollEvent, size)
 		}
-		n, err = syscall.EpollWait(p.fd, p.events, msec)
+		n, err = syscall.EpollWait(p.fd, events, msec)
 		if err != nil && err != syscall.EINTR {
 			return err
 		}
 		if n <= 0 {
-			msec = -1
-			runtime.Gosched()
 			continue
 		}
-		msec = 0
-		if p.handler(p.events[:n]) {
+		if p.handler(events[:n]) {
 			return nil
 		}
 	}
 }
 
-func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
+func (p *mainPoll) handler(events []syscall.EpollEvent) (closed bool) {
 	var hups []*FDOperator
 	for i := range events {
 		var operator *FDOperator
@@ -130,10 +104,6 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			}
 			continue
 		}
-		if !operator.do() {
-			continue
-		}
-
 		evt := events[i].Events
 		switch {
 		// check hup first
@@ -145,46 +115,11 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
 				hups = append(hups, operator)
 			}
-		default:
-			if evt&syscall.EPOLLIN != 0 {
-				if operator.OnRead != nil {
-					// for non-connection
-					operator.OnRead(p)
-				} else {
-					// for connection
-					var bs = operator.Inputs(p.barriers[i].bs)
-					if len(bs) > 0 {
-						var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
-						operator.InputAck(n)
-						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
-							hups = append(hups, operator)
-							break
-						}
-					}
-				}
-			}
-			if evt&syscall.EPOLLOUT != 0 {
-				if operator.OnWrite != nil {
-					// for non-connection
-					operator.OnWrite(p)
-				} else {
-					// for connection
-					var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
-					if len(bs) > 0 {
-						// TODO: Let the upper layer pass in whether to use ZeroCopy.
-						var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
-						operator.OutputAck(n)
-						if err != nil && err != syscall.EAGAIN {
-							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
-							hups = append(hups, operator)
-							break
-						}
-					}
-				}
-			}
+		case evt&syscall.EPOLLIN != 0:
+			operator.OnRead(p)
+		case evt&syscall.EPOLLOUT != 0:
+			operator.OnWrite(p)
 		}
-		operator.done()
 	}
 	// hup conns together to avoid blocking the poll.
 	if len(hups) > 0 {

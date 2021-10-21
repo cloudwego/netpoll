@@ -27,10 +27,14 @@ func setLoadBalance(lb LoadBalance) error {
 	return pollmanager.SetLoadBalance(lb)
 }
 
+// mainpoll is used to hold listener and pollDesc, which only has OnRead/OnWrite/OnHup
+var mainpoll Poll
+
 // manage all pollers
 var pollmanager *manager
 
 func init() {
+	mainpoll = openMainPoll()
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
 	pollmanager.SetNumLoops(defaultNumLoops())

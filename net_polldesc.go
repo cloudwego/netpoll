@@ -71,10 +71,18 @@ func (pd *pollDesc) WaitWrite(deadline time.Time) (err error) {
 		return Exception(ErrDialTimeout, dur.String())
 	}
 	// add ET|Write|Hup
-	pd.operator.poll = pollmanager.Pick()
+	pd.operator.poll = mainpoll
 	err = pd.operator.Control(PollWritable)
-	if err != nil {
+	defer func() {
+		// only OnHup no need Detach
+		if err != nil && errors.Is(err, ErrConnClosed) {
+			return
+		}
 		pd.operator.Control(PollDetach)
+		return
+	}()
+
+	if err != nil {
 		return err
 	}
 	// add timeout trigger
@@ -87,10 +95,6 @@ func (pd *pollDesc) WaitWrite(deadline time.Time) (err error) {
 	// wait
 	if err = <-pd.writeTicker; err == nil {
 		pd.writable = true
-	} else {
-		if errors.Is(err, ErrDialTimeout) {
-			pd.operator.Control(PollDetach)
-		}
 	}
 	cancel.Stop()
 	return err

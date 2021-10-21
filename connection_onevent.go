@@ -148,12 +148,9 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
-	if c.operator.poll != nil {
-		err = c.operator.Control(PollModReadable)
-	} else {
-		c.operator.poll = pollmanager.Pick()
-		err = c.operator.Control(PollReadable)
-	}
+	c.operator.poll = pollmanager.Pick()
+
+	err = c.operator.Control(PollReadable)
 	if err != nil {
 		log.Println("connection register failed:", err.Error())
 		c.Close()

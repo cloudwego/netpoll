@@ -13,7 +13,6 @@
 // limitations under the License.
 
 // +build darwin netbsd freebsd openbsd dragonfly
-// +build race
 
 package netpoll
 
@@ -23,52 +22,43 @@ import (
 	"syscall"
 )
 
-func openDefaultPoll() *defaultPoll {
-	l := &defaultPoll{}
-	l.InitKevent()
-	return l
+func openMainPoll() *mainPoll {
+	var poll = &mainPoll{}
+	poll.InitKevent()
+	return poll
 }
 
-type defaultPoll struct {
+type mainPoll struct {
 	baseKevent
 	m sync.Map
 }
 
 // Control implements Poll.
-func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
+func (p *mainPoll) Control(operator *FDOperator, event PollEvent) error {
 	var evs = make([]syscall.Kevent_t, 1)
 	evs[0].Ident = uint64(operator.FD)
 	switch event {
-	case PollReadable, PollModReadable:
-		operator.inuse()
+	case PollReadable:
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollDetach:
-		defer operator.unused()
-		p.m.Delete(operator.FD)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
-		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
-	case PollR2RW:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollRW2R:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE|syscall.EV_ONESHOT
+	case PollDetach:
+		p.m.Delete(operator.FD)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
+	case PollR2RW, PollRW2R, PollModReadable:
+		// TODO: nothing here
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err
 }
 
 // Wait implements Poll.
-func (p *defaultPoll) Wait() error {
+func (p *mainPoll) Wait() error {
 	// init
-	var size, caps = 1024, barriercap
-	var events, barriers = make([]syscall.Kevent_t, size), make([]barrier, size)
-	for i := range barriers {
-		barriers[i].bs = make([][]byte, caps)
-		barriers[i].ivs = make([]syscall.Iovec, caps)
-	}
+	var size = 1024
+	var events = make([]syscall.Kevent_t, size)
 	// wait
 	for {
 		var hups []*FDOperator
@@ -94,47 +84,14 @@ func (p *defaultPoll) Wait() error {
 			} else {
 				continue
 			}
-			if !operator.do() {
-				continue
-			}
 			switch {
 			case events[i].Flags&syscall.EV_EOF != 0:
 				hups = append(hups, operator)
 			case events[i].Filter == syscall.EVFILT_READ && events[i].Flags&syscall.EV_ENABLE != 0:
-				// for non-connection
-				if operator.OnRead != nil {
-					operator.OnRead(p)
-					break
-				}
-				// only for connection
-				var bs = operator.Inputs(barriers[i].bs)
-				if len(bs) == 0 {
-					break
-				}
-				var n, err = readv(operator.FD, bs, barriers[i].ivs)
-				operator.InputAck(n)
-				if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-					hups = append(hups, operator)
-				}
+				operator.OnRead(p)
 			case events[i].Filter == syscall.EVFILT_WRITE && events[i].Flags&syscall.EV_ENABLE != 0:
-				// for non-connection
-				if operator.OnWrite != nil {
-					operator.OnWrite(p)
-					break
-				}
-				// only for connection
-				var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
-				if len(bs) == 0 {
-					break
-				}
-				// TODO: Let the upper layer pass in whether to use ZeroCopy.
-				var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
-				operator.OutputAck(n)
-				if err != nil && err != syscall.EAGAIN {
-					hups = append(hups, operator)
-				}
+				operator.OnWrite(p)
 			}
-			operator.done()
 		}
 		// hup conns together to avoid blocking the poll.
 		if len(hups) > 0 {
