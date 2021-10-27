@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"sync/atomic"
 	"syscall"
-	"time"
 	"unsafe"
 )
 
@@ -83,7 +82,7 @@ func (a *pollArgs) reset(size, caps int) {
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
 	// init
-	var caps, msec, n = barriercap, -1, 0
+	var caps, msec, n = barriercap, 1, 0
 	p.Reset(128, caps)
 	// wait
 	for {
@@ -95,11 +94,9 @@ func (p *defaultPoll) Wait() (err error) {
 			return err
 		}
 		if n <= 0 {
-			msec = -1
 			runtime.Gosched()
 			continue
 		}
-		msec = 0
 		if p.Handler(p.events[:n]) {
 			return nil
 		}
@@ -147,12 +144,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					// for connection
 					var bs = operator.Inputs(p.barriers[i].bs)
 					if len(bs) > 0 {
-						beg := time.Now()
 						var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
-						costMs := time.Now().Sub(beg).Milliseconds()
-						if costMs > 1 {
-							log.Printf("readv(fd=%d) slowlog: %d ms", operator.FD, costMs)
-						}
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
