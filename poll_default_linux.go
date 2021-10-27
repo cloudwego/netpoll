@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !race
 // +build !race
 
 package netpoll
@@ -21,6 +22,7 @@ import (
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -145,7 +147,12 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					// for connection
 					var bs = operator.Inputs(p.barriers[i].bs)
 					if len(bs) > 0 {
+						beg := time.Now()
 						var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
+						costMs := time.Now().Sub(beg).Milliseconds()
+						if costMs > 1 {
+							log.Printf("readv(fd=%d) slowlog: %d ms", operator.FD, costMs)
+						}
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
