@@ -360,24 +360,31 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	} else {
 		c.readTimer.Reset(c.readTimeout)
 	}
+
 	for c.inputBuffer.Len() < n {
-		if c.IsActive() {
-			select {
-			case <-c.readTimer.C:
-				return Exception(ErrReadTimeout, c.readTimeout.String())
-			case <-c.readTrigger:
-				continue
+		if !c.IsActive() {
+			// cannot return directly, stop timer before !
+			// confirm that fd is still valid.
+			if atomic.LoadUint32(&c.netFD.closed) == 0 {
+				err = c.fill(n)
+			} else {
+				err = Exception(ErrConnClosed, "wait read")
 			}
+			break
 		}
-		// cannot return directly, stop timer before !
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			err = c.fill(n)
-		} else {
-			err = Exception(ErrConnClosed, "wait read")
+
+		select {
+		case <-c.readTimer.C:
+			// double check if there is enough data to be read
+			if c.inputBuffer.Len() >= n {
+				return nil
+			}
+			return Exception(ErrReadTimeout, c.remoteAddr.String())
+		case <-c.readTrigger:
+			continue
 		}
-		break
 	}
+
 	// clean timer.C
 	if !c.readTimer.Stop() {
 		<-c.readTimer.C
