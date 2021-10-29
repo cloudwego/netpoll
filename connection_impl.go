@@ -15,7 +15,6 @@
 package netpoll
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -380,8 +379,7 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 			if c.inputBuffer.Len() >= n {
 				return nil
 			}
-			return Exception(ErrReadTimeout, fmt.Sprintf(
-				"time[%s] remote[%s] fd[%d]", c.readTimeout.String(), c.remoteAddr.String(), c.Fd()))
+			return Exception(ErrReadTimeout, c.remoteAddr.String())
 		case <-c.readTrigger:
 			continue
 		}
