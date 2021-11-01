@@ -429,3 +429,40 @@ func BenchmarkCopyString(b *testing.B) {
 		}
 	})
 }
+
+func TestLinkBuffForEachByte(t *testing.T) {
+	LinkBufferCap = 10
+	linkbuff := NewLinkBuffer()
+
+	index := linkbuff.ForEachByte(func(b byte) bool {
+		return b == byte(11)
+	})
+	MustTrue(t, index == -1)
+
+	buff, _ := linkbuff.Malloc(16)
+	linkbuff.Flush()
+	for i := 0; i < len(buff); i++ {
+		buff[i] = byte(i)
+	}
+
+	index = linkbuff.ForEachByte(func(b byte) bool {
+		return b == byte(11)
+	})
+	MustTrue(t, index == 12)
+
+	linkbuff = NewLinkBuffer(10)
+	buff, _ = linkbuff.Malloc(16)
+	linkbuff.Flush()
+	for i := 0; i < len(buff); i++ {
+		buff[i] = byte(i)
+	}
+	index = linkbuff.ForEachByte(func(b byte) bool {
+		return b == byte(11)
+	})
+	MustTrue(t, index == 12)
+
+	index = linkbuff.ForEachByte(func(b byte) bool {
+		return b == byte(8)
+	})
+	MustTrue(t, index == 9)
+}

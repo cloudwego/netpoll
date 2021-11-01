@@ -27,6 +27,8 @@ import (
 	"github.com/bytedance/gopkg/lang/mcache"
 )
 
+type ByteProcessor func(b byte) bool
+
 // BinaryInplaceThreshold marks the minimum value of the nocopy slice length,
 // which is the threshold to use copy to minimize overhead.
 const BinaryInplaceThreshold = block4k
@@ -182,6 +184,29 @@ func (b *LinkBuffer) Release() (err error) {
 	}
 	b.caches = b.caches[:0]
 	return nil
+}
+
+// ForEachByte readable [r.buf.read, r.buf.flush.off]
+func (b *LinkBuffer) ForEachByte(processor ByteProcessor) (next int) {
+	if b.Len() <= 0 {
+		return -1
+	}
+	start := b.read.off
+	reader := b.read
+
+	for next = 1; next < b.Len(); {
+		if start >= cap(reader.buf) {
+			reader = reader.next
+			start = reader.off
+			continue
+		}
+		if processor(reader.buf[start]) {
+			return next
+		}
+		start++
+		next++
+	}
+	return -1
 }
 
 // ReadString implements Reader.

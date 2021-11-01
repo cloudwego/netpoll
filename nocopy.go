@@ -85,6 +85,15 @@ type Reader interface {
 
 	// Len returns the total length of the readable data in the reader.
 	Len() (length int)
+
+	// ForEachByte search the byte from readable buff, return the index(star from 1) of the byte in buff
+	// for example: ['a','b','c','d','f','g'] in buff
+	// reader := connection.Reader()
+	// index := reader.ForEachByte(func(b byte) bool {
+	// 		return b == 'f'
+	// })
+	// // return index = 5
+	ForEachByte(processor ByteProcessor) (index int)
 }
 
 // Writer is a collection of operations for nocopy writes.

@@ -146,6 +146,9 @@ func (c *connection) ReadByte() (b byte, err error) {
 	return c.inputBuffer.ReadByte()
 }
 
+func (c *connection) ForEachByte(processor ByteProcessor) (index int) {
+	return c.inputBuffer.ForEachByte(processor)
+}
 // ------------------------------------------ implement zero-copy writer ------------------------------------------
 
 // Malloc implements Connection.
