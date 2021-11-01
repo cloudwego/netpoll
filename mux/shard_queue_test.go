@@ -23,7 +23,7 @@ import (
 	"github.com/cloudwego/netpoll"
 )
 
-func TestShareQueue(t *testing.T) {
+func TestShardQueue(t *testing.T) {
 	var svrConn net.Conn
 
 	network, address := "tcp", ":1234"
@@ -53,7 +53,7 @@ func TestShareQueue(t *testing.T) {
 	}
 
 	// test
-	queue := NewSharedQueue(4, conn)
+	queue := NewShardQueue(4, conn)
 	count, pkgsize := 16, 11
 	for i := 0; i < int(count); i++ {
 		var getter WriterGetter = func() (buf netpoll.Writer, isNil bool) {
@@ -72,6 +72,6 @@ func TestShareQueue(t *testing.T) {
 }
 
 // TODO: need mock flush
-func BenchmarkShareQueue(b *testing.B) {
+func BenchmarkShardQueue(b *testing.B) {
 	b.Skip()
 }
