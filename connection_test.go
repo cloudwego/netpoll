@@ -122,7 +122,7 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	// write half packet
 	syscall.Write(w, msg[:size/2])
 	// wait poller reads buffer
-	for rconn.inputBuffer.Len() <= 0 {
+	for rconn.inputBuffer.Len() < size/2 {
 		runtime.Gosched()
 	}
 

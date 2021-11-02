@@ -41,6 +41,8 @@ type connection struct {
 	inputBarrier    *barrier
 	outputBarrier   *barrier
 	supportZeroCopy bool
+	maxSize         int // The maximum size of data between two Release().
+	bookSize        int // The size of data that can be read at once.
 }
 
 var _ Connection = &connection{}
@@ -106,6 +108,18 @@ func (c *connection) Skip(n int) (err error) {
 
 // Release implements Connection.
 func (c *connection) Release() (err error) {
+	// Check inputBuffer length first to reduce contention in mux situation.
+	if c.inputBuffer.Len() == 0 && c.lock(reading) {
+		// Double check length to calculate the maxSize
+		if c.inputBuffer.Len() == 0 {
+			maxSize := c.inputBuffer.calcMaxSize()
+			if maxSize > c.maxSize {
+				c.maxSize = maxSize
+			}
+			c.inputBuffer.resetTail(c.maxSize)
+		}
+		c.unlock(reading)
+	}
 	return c.inputBuffer.Release()
 }
 
@@ -260,6 +274,7 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	// init buffer, barrier, finalizer
 	c.readTrigger = make(chan struct{}, 1)
 	c.writeTrigger = make(chan error, 1)
+	c.bookSize, c.maxSize = block1k/2, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
 	c.setFinalizer()

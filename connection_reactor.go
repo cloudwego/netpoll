@@ -67,16 +67,11 @@ func (c *connection) closeBuffer() {
 
 // inputs implements FDOperator.
 func (c *connection) inputs(vs [][]byte) (rs [][]byte) {
-	n := int(atomic.LoadInt32(&c.waitReadSize))
-	if n <= pagesize {
-		return c.inputBuffer.Book(pagesize, vs)
+	if !c.lock(reading) {
+		return rs
 	}
-
-	n -= c.inputBuffer.Len()
-	if n < pagesize {
-		n = pagesize
-	}
-	return c.inputBuffer.Book(n, vs)
+	vs[0] = c.inputBuffer.book(c.bookSize, c.maxSize)
+	return vs[:1]
 }
 
 // inputAck implements FDOperator.
@@ -84,11 +79,24 @@ func (c *connection) inputAck(n int) (err error) {
 	if n < 0 {
 		n = 0
 	}
-	leftover := atomic.AddInt32(&c.waitReadSize, int32(-n))
-	err = c.inputBuffer.BookAck(n, leftover <= 0)
-	//FIXME: always trigger reader since waitReadSize may not correct when waitReading
-	c.triggerRead()
-	c.onRequest()
+	const maxBookSize = 16 * pagesize
+	// Auto size bookSize.
+	if n == c.bookSize && c.bookSize < maxBookSize {
+		c.bookSize <<= 1
+	}
+	length, _ := c.inputBuffer.bookAck(n)
+	if c.maxSize < length {
+		c.maxSize = length
+	}
+	c.unlock(reading)
+
+	var needTrigger = true
+	if length == n {
+		needTrigger = c.onRequest()
+	}
+	if needTrigger && length >= int(atomic.LoadInt32(&c.waitReadSize)) {
+		c.triggerRead()
+	}
 	return err
 }
 
