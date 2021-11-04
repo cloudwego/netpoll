@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build dragonfly || freebsd || linux || netbsd || openbsd || darwin
 // +build dragonfly freebsd linux netbsd openbsd darwin
 
 package netpoll
@@ -20,6 +21,7 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+	_ "unsafe"
 )
 
 // GetSysFdPairs creates and returns the fds of a pair of sockets.
@@ -113,4 +115,20 @@ func boolint(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+//go:linkname _entersyscallblock runtime.entersyscallblock
+func _entersyscallblock()
+
+//go:linkname _exitsyscall runtime.exitsyscall
+func _exitsyscall()
+
+//go:nosplit
+func entersyscallblock() {
+	_entersyscallblock()
+}
+
+//go:nosplit
+func exitsyscall() {
+	_exitsyscall()
 }
