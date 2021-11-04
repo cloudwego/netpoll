@@ -42,7 +42,7 @@ func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
 func epollwait(epfd int32, ev *epollevent, nev, timeout int32) int32
 
 //go:noescape
-func epollwaitblocking(epfd int32, ev *epollevent, nev, timeout int32) int32
+func epollwaitblock(epfd int32, ev *epollevent, nev, timeout int32) int32
 
 //go:nosplit
 func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
@@ -54,8 +54,8 @@ func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
 }
 
 //go:nosplit
-func EpollWaitBlocking(epfd int, events []epollevent, msec int) (n int, err error) {
-	_n := epollwaitblocking(int32(epfd), &events[0], int32(len(events)), int32(msec))
+func EpollWaitBlock(epfd int, events []epollevent, msec int) (n int, err error) {
+	_n := epollwaitblock(int32(epfd), &events[0], int32(len(events)), int32(msec))
 	if _n < 0 {
 		return 0, syscall.Errno(-n)
 	}

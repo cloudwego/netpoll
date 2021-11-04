@@ -25,8 +25,8 @@ TEXT ·epollwait(SB),NOSPLIT,$0-28
 	MOVL	AX, ret+24(FP)
 	RET
 
-// func epollwaitblocking(epfd int32, ev *epollevent, nev, timeout int32) int32
-TEXT ·epollwaitblocking(SB),NOSPLIT,$0-28
+// func epollwaitblock(epfd int32, ev *epollevent, nev, timeout int32) int32
+TEXT ·epollwaitblock(SB),NOSPLIT,$0-28
 	CALL	·entersyscallblock(SB)
 	MOVL	epfd+0(FP), DI
 	MOVQ	ev+8(FP), SI
