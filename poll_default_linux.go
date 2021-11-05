@@ -82,6 +82,7 @@ func (a *pollArgs) reset(size, caps int) {
 func (p *defaultPoll) Wait() (err error) {
 	// init
 	var caps, msec, n = barriercap, -1, 0
+	var lastn = 0
 	p.Reset(128, caps)
 	// wait
 	for {
@@ -92,15 +93,16 @@ func (p *defaultPoll) Wait() (err error) {
 		if err != nil && err != syscall.EINTR {
 			return err
 		}
-		if n <= 0 {
-			msec = -1
-			runtime.Gosched()
-			continue
-		}
-		msec = 0
-		if p.Handler(p.events[:n]) {
+		if n > 0 && p.Handler(p.events[:n]) {
 			return nil
 		}
+		if n <= lastn {
+			msec = -1
+			runtime.Gosched()
+		} else {
+			msec = 0
+		}
+		lastn = n
 	}
 }
 
