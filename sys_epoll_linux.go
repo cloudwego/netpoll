@@ -44,7 +44,6 @@ func epollwait(epfd int32, ev *epollevent, nev, timeout int32) int32
 //go:noescape
 func epollwaitblock(epfd int32, ev *epollevent, nev, timeout int32) int32
 
-//go:nosplit
 func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
 	_n := epollwait(int32(epfd), &events[0], int32(len(events)), int32(msec))
 	if _n < 0 {
@@ -53,7 +52,6 @@ func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
 	return int(_n), nil
 }
 
-//go:nosplit
 func EpollWaitBlock(epfd int, events []epollevent, msec int) (n int, err error) {
 	_n := epollwaitblock(int32(epfd), &events[0], int32(len(events)), int32(msec))
 	if _n < 0 {
