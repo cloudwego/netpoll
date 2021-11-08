@@ -354,13 +354,6 @@ func (c *connection) waitRead(n int) (err error) {
 
 // waitReadWithTimeout will wait full n bytes or until timeout.
 func (c *connection) waitReadWithTimeout(n int) (err error) {
-	// set read timeout
-	if c.readTimer == nil {
-		c.readTimer = time.NewTimer(c.readTimeout)
-	} else {
-		c.readTimer.Reset(c.readTimeout)
-	}
-
 	for c.inputBuffer.Len() < n {
 		if !c.IsActive() {
 			// cannot return directly, stop timer before !
@@ -373,6 +366,12 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 			break
 		}
 
+		// set read timeout
+		if c.readTimer == nil {
+			c.readTimer = time.NewTimer(c.readTimeout)
+		} else {
+			c.readTimer.Reset(c.readTimeout)
+		}
 		select {
 		case <-c.readTimer.C:
 			// double check if there is enough data to be read
