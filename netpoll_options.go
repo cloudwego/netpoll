@@ -51,6 +51,13 @@ func WithOnPrepare(onPrepare OnPrepare) Option {
 	}}
 }
 
+// WithOnConnect registers the OnConnect method to EventLoop.
+func WithOnConnect(onConnect OnConnect) Option {
+	return Option{func(op *options) {
+		op.onConnect = onConnect
+	}}
+}
+
 // WithReadTimeout sets the read timeout of connections.
 func WithReadTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
@@ -72,6 +79,7 @@ type Option struct {
 
 type options struct {
 	onPrepare   OnPrepare
+	onConnect   OnConnect
 	readTimeout time.Duration
 	idleTimeout time.Duration
 }

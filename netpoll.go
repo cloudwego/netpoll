@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
@@ -81,6 +82,9 @@ type OnRequest func(ctx context.Context, connection Connection) error
 // so Reader() or Writer() cannot be used here, but may be supported in the future.
 type OnPrepare func(connection Connection) context.Context
 
+// OnConnect is executed once connection created.
+type OnConnect func(connection Connection) error
+
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
 	opt := &options{}
@@ -109,7 +113,7 @@ func (evl *eventLoop) Serve(ln net.Listener) error {
 		return err
 	}
 	evl.Lock()
-	evl.svr = newServer(npln, evl.prepare, evl.quit)
+	evl.svr = newServer(npln, evl.prepare, evl.opt.onConnect, evl.quit)
 	evl.svr.Run()
 	evl.Unlock()
 

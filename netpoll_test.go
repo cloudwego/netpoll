@@ -63,6 +63,25 @@ func TestEqual(t *testing.T) {
 	Assert(t, err == nil, err)
 }
 
+func TestOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			return nil
+		}, WithOnConnect(func(connection Connection) error {
+			_, err := connection.Write([]byte("hello"))
+			return err
+		}))
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	s, err := conn.Reader().ReadString(5)
+	MustNil(t, err)
+	MustTrue(t, s == "hello")
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func TestGracefulExit(t *testing.T) {
 	var network, address = "tcp", ":8888"
 
