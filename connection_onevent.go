@@ -89,6 +89,19 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 	return nil
 }
 
+func (c *connection) onConnect(onConnect OnConnect) (err error) {
+	if onConnect == nil {
+		return nil
+	}
+
+	ctx := c.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.ctx = onConnect(ctx, c)
+	return nil
+}
+
 // onRequest is also responsible for executing the callbacks after the connection has been closed.
 func (c *connection) onRequest() (needTrigger bool) {
 	var process = c.process.Load()

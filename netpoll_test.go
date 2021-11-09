@@ -68,9 +68,10 @@ func TestOnConnect(t *testing.T) {
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			return nil
-		}, WithOnConnect(func(connection Connection) error {
+		}, WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
 			_, err := connection.Write([]byte("hello"))
-			return err
+			MustNil(t, err)
+			return ctx
 		}))
 	var conn, err = DialConnection(network, address, time.Second)
 	MustNil(t, err)

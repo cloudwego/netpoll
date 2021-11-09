@@ -83,7 +83,7 @@ type OnRequest func(ctx context.Context, connection Connection) error
 type OnPrepare func(connection Connection) context.Context
 
 // OnConnect is executed once connection created.
-type OnConnect func(connection Connection) error
+type OnConnect func(ctx context.Context, connection Connection) context.Context
 
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {

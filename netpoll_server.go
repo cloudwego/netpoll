@@ -125,9 +125,7 @@ func (s *server) OnRead(p Poll) error {
 	s.connections.Store(fd, connection)
 
 	// exec onConnect
-	if s.onConnect != nil {
-		return s.onConnect(connection)
-	}
+	connection.onConnect(s.onConnect)
 	return nil
 }
 
