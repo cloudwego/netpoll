@@ -59,7 +59,7 @@ type Connection interface {
 	SetOnRequest(on OnRequest) error
 
 	// AddCloseCallback can add hangup callback for a connection, which will be called when connection closing.
-	// This is very useful for cleaning up idle connections. For instance, you can use callbacks to clean up
+	// This is very useful for cleaning up idle connections. For instance, you can use closeCallbacks to clean up
 	// the local resources, which bound to the idle connection, when hangup by the peer. No need another goroutine
 	// to polling check connection status.
 	AddCloseCallback(callback CloseCallback) error

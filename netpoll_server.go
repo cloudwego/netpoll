@@ -24,19 +24,21 @@ import (
 )
 
 // newServer wrap listener into server, quit will be invoked when server exit.
-func newServer(ln Listener, prepare OnPrepare, quit func(err error)) *server {
+func newServer(ln Listener, onPrepare OnPrepare, onConnect OnConnect, onQuit func(err error)) *server {
 	return &server{
-		ln:      ln,
-		prepare: prepare,
-		quit:    quit,
+		ln:        ln,
+		onPrepare: onPrepare,
+		onConnect: onConnect,
+		onQuit:    onQuit,
 	}
 }
 
 type server struct {
 	operator    FDOperator
 	ln          Listener
-	prepare     OnPrepare
-	quit        func(err error)
+	onPrepare   OnPrepare
+	onConnect   OnConnect
+	onQuit      func(err error)
 	connections sync.Map // key=fd, value=connection
 }
 
@@ -50,7 +52,7 @@ func (s *server) Run() (err error) {
 	s.operator.poll = pollmanager.Pick()
 	err = s.operator.Control(PollReadable)
 	if err != nil {
-		s.quit(err)
+		s.onQuit(err)
 	}
 	return err
 }
@@ -78,6 +80,8 @@ func (s *server) Close(ctx context.Context) error {
 		for i := count; i >= 0; i-- {
 			if conns[i].isIdle() {
 				conns[i].Close()
+			}
+			if !conns[i].IsActive() {
 				conns[i] = conns[count]
 				count--
 			}
@@ -100,7 +104,7 @@ func (s *server) OnRead(p Poll) error {
 		// shut down
 		if strings.Contains(err.Error(), "closed") {
 			s.operator.Control(PollDetach)
-			s.quit(err)
+			s.onQuit(err)
 			return err
 		}
 		log.Println("accept conn failed:", err.Error())
@@ -111,7 +115,7 @@ func (s *server) OnRead(p Poll) error {
 	}
 	// store & register connection
 	var connection = &connection{}
-	connection.init(conn.(Conn), s.prepare)
+	connection.init(conn.(Conn), s.onPrepare)
 	if !connection.IsActive() {
 		return nil
 	}
@@ -121,11 +125,14 @@ func (s *server) OnRead(p Poll) error {
 		return nil
 	})
 	s.connections.Store(fd, connection)
+
+	// onConnect is asynchronous
+	connection.onConnect(s.onConnect)
 	return nil
 }
 
 // OnHup implements FDOperator.
 func (s *server) OnHup(p Poll) error {
-	s.quit(errors.New("listener close"))
+	s.onQuit(errors.New("listener close"))
 	return nil
 }
