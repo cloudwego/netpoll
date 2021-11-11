@@ -84,11 +84,15 @@ func (c *connection) inputAck(n int) (err error) {
 	if n < 0 {
 		n = 0
 	}
-	leftover := atomic.AddInt32(&c.waitReadSize, int32(-n))
-	err = c.inputBuffer.BookAck(n, leftover <= 0)
-	//FIXME: always trigger reader since waitReadSize may not correct when waitReading
-	c.triggerRead()
-	c.onRequest()
+	waitReadSize := int(atomic.LoadInt32(&c.waitReadSize))
+	length := c.inputBuffer.BookAck(n, waitReadSize)
+	var needTrigger = true
+	if length == n {
+		needTrigger = c.onRequest()
+	}
+	if needTrigger && length >= waitReadSize {
+		c.triggerRead()
+	}
 	return err
 }
 

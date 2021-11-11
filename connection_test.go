@@ -141,7 +141,7 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	for atomic.LoadInt32(&rconn.waitReadSize) <= 0 {
 		runtime.Gosched()
 	}
-	Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(size/2))
+	Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(size))
 	syscall.Write(w, msg[size/2:])
 	wg.Wait()
 }

@@ -543,7 +543,7 @@ func (b *LinkBuffer) Book(min int, p [][]byte) (vs [][]byte) {
 }
 
 // BookAck will ack the first n malloc bytes and discard the rest.
-func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
+func (b *LinkBuffer) BookAck(n int, needSize int) (length int) {
 	var l int
 	for ack := n; ack > 0; ack = ack - l {
 		l = b.flush.malloc - len(b.flush.buf)
@@ -561,18 +561,16 @@ func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
 		node.off, node.malloc, node.refer, node.buf = 0, 0, 1, node.buf[:0]
 	}
 
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if isEnd && cap(b.flush.buf) > pagesize {
+	length = b.recalLen(n)
+	if length >= needSize && cap(b.flush.buf) > pagesize {
+		// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
 		if b.flush.next == nil {
 			b.flush.next = newLinkBufferNode(0)
 		}
 		b.flush = b.flush.next
 	}
 	b.write = b.flush
-
-	// re-cal length
-	b.recalLen(n)
-	return nil
+	return
 }
 
 // Reset resets the buffer to be empty,
@@ -587,9 +585,8 @@ func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
 // }
 
 // recalLen re-calculate the length
-func (b *LinkBuffer) recalLen(delta int) (err error) {
-	atomic.AddInt32(&b.length, int32(delta))
-	return nil
+func (b *LinkBuffer) recalLen(delta int) (length int) {
+	return int(atomic.AddInt32(&b.length, int32(delta)))
 }
 
 // ------------------------------------------ implement link node ------------------------------------------

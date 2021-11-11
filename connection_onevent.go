@@ -90,14 +90,14 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 }
 
 // onRequest is also responsible for executing the callbacks after the connection has been closed.
-func (c *connection) onRequest() (err error) {
+func (c *connection) onRequest() (needTrigger bool) {
 	var process = c.process.Load()
 	if process == nil {
-		return nil
+		return true
 	}
 	// Buffer has been fully processed, or task already exists
 	if !c.lock(processing) {
-		return nil
+		return true
 	}
 	// add new task
 	var task = func() {
@@ -126,7 +126,7 @@ func (c *connection) onRequest() (err error) {
 		}
 	}
 	runTask(c.ctx, task)
-	return nil
+	return false
 }
 
 // closeCallback .
