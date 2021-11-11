@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"testing"
 	"time"
@@ -64,6 +65,48 @@ func TestEqual(t *testing.T) {
 }
 
 func TestOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	req, resp := "ping", "pong"
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			return nil
+		}, WithOnConnect(func(ctx context.Context, conn Connection) context.Context {
+			for {
+				input, err := conn.Reader().Next(len(req))
+				if errors.Is(err, ErrEOF) || errors.Is(err, ErrConnClosed) {
+					return ctx
+				}
+				MustNil(t, err)
+				Equal(t, string(input), req)
+
+				_, err = conn.Writer().WriteString(resp)
+				MustNil(t, err)
+				err = conn.Writer().Flush()
+				MustNil(t, err)
+			}
+		}))
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+
+	for i := 0; i < 1024; i++ {
+		_, err = conn.Writer().WriteString(req)
+		MustNil(t, err)
+		err = conn.Writer().Flush()
+		MustNil(t, err)
+
+		input, err := conn.Reader().Next(len(resp))
+		MustNil(t, err)
+		Equal(t, string(input), resp)
+	}
+
+	err = conn.Close()
+	MustNil(t, err)
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestOnConnectWrite(t *testing.T) {
 	var network, address = "tcp", ":8888"
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
