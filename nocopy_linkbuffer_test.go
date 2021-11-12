@@ -62,9 +62,8 @@ func TestLinkBuffer(t *testing.T) {
 	MustNil(t, err)
 	Equal(t, buf.head, read)
 
-	size := block8k / LinkBufferCap
-	inputs := buf.Book(block8k, make([][]byte, size))
-	Equal(t, len(inputs), 1)
+	inputs := buf.book(block1k, block8k)
+	Equal(t, len(inputs), block1k)
 	Equal(t, buf.Len(), 100)
 
 	buf.MallocAck(block1k)
@@ -137,7 +136,16 @@ func TestLinkBufferIndex(t *testing.T) {
 	Equal(t, buf.flush.off, 0)
 	Equal(t, buf.flush.malloc, 7)
 
-	buf.Book(block8k, make([][]byte, 2))
+	buf.book(block8k, block8k)
+	MustTrue(t, buf.flush == buf.write)
+	Equal(t, buf.flush.off, 0)
+	Equal(t, buf.flush.malloc, 8)
+	Equal(t, buf.flush.Len(), 7)
+	Equal(t, buf.write.off, 0)
+	Equal(t, buf.write.malloc, 8)
+	Equal(t, buf.write.Len(), 7)
+
+	buf.book(block8k, block8k)
 	MustTrue(t, buf.flush != buf.write)
 	Equal(t, buf.flush.off, 0)
 	Equal(t, buf.flush.malloc, 8)
@@ -176,7 +184,7 @@ func TestLinkBufferRefer(t *testing.T) {
 	LinkBufferCap = 8
 
 	wbuf := NewLinkBuffer()
-	wbuf.Book(block8k, make([][]byte, 1))
+	wbuf.book(block8k, block8k)
 	wbuf.Malloc(7)
 	wbuf.Flush()
 	Equal(t, wbuf.Len(), block8k+7)
