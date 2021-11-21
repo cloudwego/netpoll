@@ -112,6 +112,11 @@ func (c *connection) Release() (err error) {
 	// c.operator.do competes with c.inputs/c.inputAck
 	if c.inputBuffer.Len() == 0 && c.operator.do() {
 		maxSize := c.inputBuffer.calcMaxSize()
+		// Set the maximum value of maxsize equal to mallocMax to prevent GC pressure.
+		if maxSize > mallocMax {
+			maxSize = mallocMax
+		}
+
 		if maxSize > c.maxSize {
 			c.maxSize = maxSize
 		}
