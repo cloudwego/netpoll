@@ -193,7 +193,7 @@ func (c *connection) MallocAck(n int) (err error) {
 }
 
 // Append implements Connection.
-func (c *connection) Append(w Writer) (n int, err error) {
+func (c *connection) Append(w Writer) (err error) {
 	return c.outputBuffer.Append(w)
 }
 

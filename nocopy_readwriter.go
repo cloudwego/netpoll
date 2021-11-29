@@ -179,7 +179,7 @@ func (w *zcWriter) MallocAck(n int) (err error) {
 }
 
 // Append implements Writer.
-func (w *zcWriter) Append(w2 Writer) (n int, err error) {
+func (w *zcWriter) Append(w2 Writer) (err error) {
 	return w.buf.Append(w2)
 }
 
