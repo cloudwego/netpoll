@@ -123,7 +123,7 @@ func (q *ShardQueue) deal(gts []WriterGetter) {
 	for _, gt := range gts {
 		buf, isNil := gt()
 		if !isNil {
-			_, err := writer.Append(buf)
+			err := writer.Append(buf)
 			if err != nil {
 				q.conn.Close()
 				return
