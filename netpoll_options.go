@@ -19,6 +19,10 @@ import (
 	"time"
 )
 
+var (
+	tcpNoDelay = true
+)
+
 // SetNumLoops is used to set the number of pollers, generally do not need to actively set.
 // By default, the number of pollers is equal to runtime.GOMAXPROCS(0)/20+1.
 // If the number of cores in your service process is less than 20c, theoretically only one poller is needed.
@@ -42,6 +46,10 @@ func SetLoadBalance(lb LoadBalance) error {
 // it is recommended to use DisableGopool to reduce redundancy and improve performance.
 func DisableGopool() error {
 	return disableGopool()
+}
+
+func SetNoDelay(nodelay bool) {
+	tcpNoDelay = nodelay
 }
 
 // WithOnPrepare registers the OnPrepare method to EventLoop.

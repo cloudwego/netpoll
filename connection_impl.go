@@ -283,7 +283,7 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	// enable TCP_NODELAY by default
 	switch c.network {
 	case "tcp", "tcp4", "tcp6":
-		setTCPNoDelay(c.fd, true)
+		setTCPNoDelay(c.fd, tcpNoDelay)
 	}
 	// check zero-copy
 	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
