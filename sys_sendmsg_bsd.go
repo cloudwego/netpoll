@@ -30,6 +30,15 @@ func sendmsg(fd int, bs [][]byte, ivs []syscall.Iovec, zerocopy bool) (n int, er
 	if iovLen == 0 {
 		return 0, nil
 	}
+	// use write here
+	if iovLen == 1 {
+		r, _, e := syscall.RawSyscall(syscall.SYS_WRITE, uintptr(fd), uintptr(unsafe.Pointer(ivs[0].Base)), uintptr(ivs[0].Len))
+		if e != 0 {
+			return int(r), syscall.Errno(e)
+		}
+		return int(r), nil
+	}
+
 	var msghdr = syscall.Msghdr{
 		Iov:    &ivs[0],
 		Iovlen: int32(iovLen),
