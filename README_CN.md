@@ -21,7 +21,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 基于 [Netpoll][Netpoll] 开发的 RPC 框架 [KiteX][KiteX] 和 HTTP
 框架 [Hertz][Hertz] (即将开源)，性能均业界领先。
 
-[范例][Netpoll-Benchmark] 展示了如何使用 [Netpoll][Netpoll]
+[范例][netpoll-benchmark] 展示了如何使用 [Netpoll][Netpoll]
 构建 RPC Client 和 Server。
 
 更多信息请参阅 [文档](#文档)。
@@ -51,46 +51,17 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 
 # 性能
 
-性能测试并非数字游戏，首先应满足工业级使用要求，在 RPC 场景下，并发请求、等待超时是必要的支持项。
+性能测试应满足工业级使用要求，在 RPC 场景下，并发请求、等待超时是必要的支持项。
 
-因此我们设定，性能测试应满足如下条件:
+我们提供了 [netpoll-benchmark][netpoll-benchmark] 项目用来长期追踪和比较 [Netpoll][Netpoll] 与其他框架在不同情况下的性能数据以供参考。
 
-1. 支持并发请求, 支持超时(1s)
-2. 使用协议: header(4 byte) 表明总长
+更多测试参考 [kitex-benchmark][kitex-benchmark] 和 [hertz-benchmark][hertz-benchmark] (即将开源)
 
-对比项目为 [net][net], [evio][evio]
-, [gnet][gnet] ，我们通过 [测试代码][Benchmarks] 比较了它们的性能。
+# 参考
 
-更多测试参考 [Netpoll-Benchmark][Netpoll-Benchmark]
-, [KiteX-Benchmark][KiteX-Benchmark] 和 [Hertz-Benchmark][Hertz-Benchmark]
-
-### 测试环境
-
-* CPU:    Intel(R) Xeon(R) Gold 5118 CPU @ 2.30GHz, 4 cores
-* Memory: 8GB
-* OS:     Debian 5.4.56.bsk.1-amd64 x86_64 GNU/Linux
-* Go:     1.15.4
-
-### 并发表现 (echo 1KB)
-
-![image](docs/images/c_tp99.png)
-![image](docs/images/c_qps.png)
-
-### 传输表现 (并发 100)
-
-![image](docs/images/s_tp99.png)
-![image](docs/images/s_qps.png)
-
-### 测试结论
-
-相比 [net][net] ，[Netpoll][Netpoll] 延迟约 34%，qps
-约 110%（继续加压 net 延迟过高，数据失真）
-
-# 文档
-
+* [官方网站](https://www.cloudwego.io)
 * [使用文档](docs/guide/guide_cn.md)
 * [设计文档](docs/reference/design_cn.md)
-* [Change Log](docs/reference/change_log.md)
 * [DATA RACE 说明](docs/reference/explain.md)
 
 [Netpoll]: https://github.com/cloudwego/netpoll
@@ -102,10 +73,9 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 [KiteX]: https://github.com/cloudwego/kitex
 [Hertz]: https://github.com/cloudwego/hertz
 
-[Benchmarks]: https://github.com/cloudwego/netpoll-benchmark
-[Netpoll-Benchmark]: https://github.com/cloudwego/netpoll-benchmark
-[KiteX-Benchmark]: https://github.com/cloudwego/kitex
-[Hertz-Benchmark]: https://github.com/cloudwego/hertz 
+[netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
+[kitex-benchmark]: https://github.com/cloudwego/kitex
+[hertz-benchmark]: https://github.com/cloudwego/hertz
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
