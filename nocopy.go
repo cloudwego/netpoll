@@ -166,7 +166,7 @@ type Writer interface {
 
 	// Append the argument writer to the tail of this writer and set the argument writer to nil,
 	// the operation is zero-copy, similar to p = append(p, w.p).
-	Append(w Writer) (n int, err error)
+	Append(w Writer) (err error)
 
 	// Flush will submit all malloc data and must confirm that the allocated bytes have been correctly assigned.
 	// Its behavior is equivalent to the io.Writer hat already has parameters(slice b).

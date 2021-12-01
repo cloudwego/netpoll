@@ -41,6 +41,8 @@ type connection struct {
 	inputBarrier    *barrier
 	outputBarrier   *barrier
 	supportZeroCopy bool
+	maxSize         int // The maximum size of data between two Release().
+	bookSize        int // The size of data that can be read at once.
 }
 
 var _ Connection = &connection{}
@@ -106,6 +108,18 @@ func (c *connection) Skip(n int) (err error) {
 
 // Release implements Connection.
 func (c *connection) Release() (err error) {
+	// Check inputBuffer length first to reduce contention in mux situation.
+	if c.inputBuffer.Len() == 0 && c.lock(reading) {
+		// Double check length to calculate the maxSize
+		if c.inputBuffer.Len() == 0 {
+			maxSize := c.inputBuffer.calcMaxSize()
+			if maxSize > c.maxSize {
+				c.maxSize = maxSize
+			}
+			c.inputBuffer.resetTail(c.maxSize)
+		}
+		c.unlock(reading)
+	}
 	return c.inputBuffer.Release()
 }
 
@@ -165,12 +179,12 @@ func (c *connection) MallocLen() (length int) {
 // If empty, it will call syscall.Write to send data directly,
 // otherwise the buffer will be sent asynchronously by the epoll trigger.
 func (c *connection) Flush() error {
-	if c.IsActive() && c.lock(outputBuffer) {
-		c.outputBuffer.Flush()
-		c.unlock(outputBuffer)
-		return c.flush()
+	if !c.lock(flushing) {
+		return Exception(ErrConnClosed, "when flush")
 	}
-	return Exception(ErrConnClosed, "when flush")
+	defer c.unlock(flushing)
+	c.outputBuffer.Flush()
+	return c.flush()
 }
 
 // MallocAck implements Connection.
@@ -179,7 +193,7 @@ func (c *connection) MallocAck(n int) (err error) {
 }
 
 // Append implements Connection.
-func (c *connection) Append(w Writer) (n int, err error) {
+func (c *connection) Append(w Writer) (err error) {
 	return c.outputBuffer.Append(w)
 }
 
@@ -260,6 +274,7 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	// init buffer, barrier, finalizer
 	c.readTrigger = make(chan struct{}, 1)
 	c.writeTrigger = make(chan error, 1)
+	c.bookSize, c.maxSize = block1k/2, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
 	c.setFinalizer()
@@ -304,6 +319,7 @@ func (c *connection) initFDOperator() {
 
 func (c *connection) setFinalizer() {
 	c.AddCloseCallback(func(connection Connection) error {
+		c.stop(flushing)
 		c.netFD.Close()
 		c.closeBuffer()
 		freeop(c.operator)
@@ -327,11 +343,10 @@ func (c *connection) triggerWrite(err error) {
 
 // waitRead will wait full n bytes.
 func (c *connection) waitRead(n int) (err error) {
-	leftover := n - c.inputBuffer.Len()
-	if leftover <= 0 {
+	if n <= c.inputBuffer.Len() {
 		return nil
 	}
-	atomic.StoreInt32(&c.waitReadSize, int32(leftover))
+	atomic.StoreInt32(&c.waitReadSize, int32(n))
 	defer atomic.StoreInt32(&c.waitReadSize, 0)
 	if c.readTimeout > 0 {
 		return c.waitReadWithTimeout(n)
@@ -359,24 +374,31 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	} else {
 		c.readTimer.Reset(c.readTimeout)
 	}
+
 	for c.inputBuffer.Len() < n {
-		if c.IsActive() {
-			select {
-			case <-c.readTimer.C:
-				return Exception(ErrReadTimeout, c.readTimeout.String())
-			case <-c.readTrigger:
-				continue
+		if !c.IsActive() {
+			// cannot return directly, stop timer before !
+			// confirm that fd is still valid.
+			if atomic.LoadUint32(&c.netFD.closed) == 0 {
+				err = c.fill(n)
+			} else {
+				err = Exception(ErrConnClosed, "wait read")
 			}
+			break
 		}
-		// cannot return directly, stop timer before !
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			err = c.fill(n)
-		} else {
-			err = Exception(ErrConnClosed, "wait read")
+
+		select {
+		case <-c.readTimer.C:
+			// double check if there is enough data to be read
+			if c.inputBuffer.Len() >= n {
+				return nil
+			}
+			return Exception(ErrReadTimeout, c.remoteAddr.String())
+		case <-c.readTrigger:
+			continue
 		}
-		break
 	}
+
 	// clean timer.C
 	if !c.readTimer.Stop() {
 		<-c.readTimer.C

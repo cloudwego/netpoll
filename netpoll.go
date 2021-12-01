@@ -19,6 +19,7 @@ package netpoll
 import (
 	"context"
 	"net"
+	"runtime"
 	"sync"
 )
 
@@ -111,10 +112,14 @@ func (evl *eventLoop) Serve(ln net.Listener) error {
 	evl.svr = newServer(npln, evl.prepare, evl.quit)
 	evl.svr.Run()
 	evl.Unlock()
-	return evl.waitQuit()
+
+	err = evl.waitQuit()
+	// ensure evl will not be finalized until Serve returns
+	runtime.SetFinalizer(evl, nil)
+	return err
 }
 
-// Shutdown signals a shutdown an begins server closing.
+// Shutdown signals a shutdown a begins server closing.
 func (evl *eventLoop) Shutdown(ctx context.Context) error {
 	evl.Lock()
 	var svr = evl.svr

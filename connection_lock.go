@@ -29,12 +29,25 @@ const (
 
 type key int32
 
+/* State Diagram
++--------------+         +--------------+
+|  processing  |-------->|   flushing   |
++-------+------+         +-------+------+
+        |
+        |                +--------------+
+        +--------------->|   closing    |
+                         +--------------+
+
+- "processing" locks onRequest handler, and doesn't exist in dialer.
+- "flushing" locks outputBuffer
+- "closing" should wait for flushing finished and call the closeCallback after that.
+*/
+
 const (
 	closing key = iota
 	processing
-	writing
-	inputBuffer
-	outputBuffer
+	flushing
+	reading
 	// total must be at the bottom.
 	total
 )

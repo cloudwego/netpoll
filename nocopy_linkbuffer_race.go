@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build race
 // +build race
 
 package netpoll
@@ -366,10 +367,10 @@ func (b *LinkBuffer) Flush() (err error) {
 }
 
 // Append implements Writer.
-func (b *LinkBuffer) Append(w Writer) (n int, err error) {
+func (b *LinkBuffer) Append(w Writer) (err error) {
 	var buf, ok = w.(*LinkBuffer)
 	if !ok {
-		return 0, errors.New("unsupported writer which is not LinkBuffer")
+		return errors.New("unsupported writer which is not LinkBuffer")
 	}
 	return b.WriteBuffer(buf)
 }
@@ -377,12 +378,12 @@ func (b *LinkBuffer) Append(w Writer) (n int, err error) {
 // WriteBuffer will not submit(e.g. Flush) data to ensure normal use of MallocLen.
 // you must actively submit before read the data.
 // The argument buf can't be used after calling WriteBuffer. (set it to nil)
-func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (n int, err error) {
+func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 	b.Lock()
 	defer b.Unlock()
 	bufLen, bufMallocLen := buf.Len(), buf.MallocLen()
 	if bufLen+bufMallocLen <= 0 {
-		return 0, nil
+		return nil
 	}
 	b.write.next = buf.read
 	b.write = buf.write
@@ -411,7 +412,7 @@ func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (n int, err error) {
 		b.recalLen(bufLen)
 	}
 	b.recalMallocLen(bufMallocLen)
-	return n, nil
+	return nil
 }
 
 // WriteString implements Writer.
@@ -549,61 +550,84 @@ func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 	return p[:i]
 }
 
-// Book will grow and fill the slice p greater than min.
-func (b *LinkBuffer) Book(min int, p [][]byte) (vs [][]byte) {
+// book will grow and malloc buffer to hold data.
+//
+// bookSize: The size of data that can be read at once.
+// maxSize: The maximum size of data between two Release(). In some cases, this can
+// 	guarantee all data allocated in one node to reduce copy.
+func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	b.Lock()
 	defer b.Unlock()
-	var i, l int
-	for {
-		l = cap(b.write.buf) - b.write.malloc
-		if l > 0 {
-			p[i] = b.write.Malloc(l)
-			i++
-			min -= l
-			if min <= 0 || i == len(p) {
-				break
-			}
-		}
-		if b.write.next == nil {
-			b.write.next = newLinkBufferNode(min)
-		}
+	l := cap(b.write.buf) - b.write.malloc
+	// grow linkBuffer
+	if l == 0 {
+		l = maxSize
+		b.write.next = newLinkBufferNode(maxSize)
 		b.write = b.write.next
+
+		// If there is no data in read node, then point it to next one.
+		if b.Len() == 0 {
+			b.read, b.flush = b.write, b.write
+		}
+
 	}
-	return p[:i]
+	if l > bookSize {
+		l = bookSize
+	}
+	return b.write.Malloc(l)
 }
 
-// BookAck will ack the first n malloc bytes and discard the rest.
-func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
+// bookAck will ack the first n malloc bytes and discard the rest.
+//
+// length: The size of data in inputBuffer. It is used to calculate the maxSize
+func (b *LinkBuffer) bookAck(n int) (length int, err error) {
 	b.Lock()
 	defer b.Unlock()
-	var l int
-	for ack := n; ack > 0; ack = ack - l {
-		l = b.flush.malloc - len(b.flush.buf)
-		if l >= ack {
-			b.flush.malloc = ack + len(b.flush.buf)
-			b.flush.buf = b.flush.buf[:b.flush.malloc]
-			break
-		} else if l > 0 {
-			b.flush.buf = b.flush.buf[:b.flush.malloc]
-		}
-		b.flush = b.flush.next
-	}
-	// discard the rest & write = flush
-	for node := b.flush.next; node != nil; node = node.next {
-		node.off, node.malloc, node.refer, node.buf = 0, 0, 1, node.buf[:0]
-	}
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if isEnd && cap(b.flush.buf) > pagesize {
-		if b.flush.next == nil {
-			b.flush.next = newLinkBufferNode(0)
-		}
-		b.flush = b.flush.next
-	}
-	b.write = b.flush
+	b.write.malloc = n + len(b.write.buf)
+	b.write.buf = b.write.buf[:b.write.malloc]
+	b.flush = b.write
 
 	// re-cal length
-	b.recalLen(n)
-	return nil
+	length = b.recalLen(n)
+	return length, nil
+}
+
+// calcMaxSize will calculate the data size between two Release()
+func (b *LinkBuffer) calcMaxSize() (sum int) {
+	b.Lock()
+	defer b.Unlock()
+	for node := b.head; node != b.read; node = node.next {
+		sum += len(node.buf)
+	}
+	sum += len(b.read.buf)
+	return sum
+}
+
+// resetTail will reset tail node or add an empty tail node to
+// guarantee the tail node is not larger than 8KB
+func (b *LinkBuffer) resetTail(maxSize int) {
+	b.Lock()
+	defer b.Unlock()
+	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
+	if maxSize <= pagesize {
+		b.write.Reset()
+		return
+	}
+
+	// set nil tail
+	b.write.next = newLinkBufferNode(0)
+	b.write = b.write.next
+	b.flush = b.write
+	return
+}
+
+func (node *linkBufferNode) Reset() {
+	if node.origin != nil || atomic.LoadInt32(&node.refer) != 1 {
+		return
+	}
+	node.off, node.malloc = 0, 0
+	node.buf = node.buf[:0]
+	return
 }
 
 // Reset resets the buffer to be empty,
@@ -618,9 +642,8 @@ func (b *LinkBuffer) BookAck(n int, isEnd bool) (err error) {
 // }
 
 // recalLen re-calculate the length
-func (b *LinkBuffer) recalLen(delta int) (err error) {
-	atomic.AddInt32(&b.length, int32(delta))
-	return nil
+func (b *LinkBuffer) recalLen(delta int) (length int) {
+	return int(atomic.AddInt32(&b.length, int32(delta)))
 }
 
 // recalMallocLen re-calculate the malloc length

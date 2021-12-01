@@ -64,6 +64,8 @@ import (
 	"github.com/cloudwego/netpoll"
 )
 
+var eventLoop netpoll.EventLoop
+
 func main() {
 	...
 	eventLoop, _ := netpoll.NewEventLoop(
@@ -83,6 +85,12 @@ func main() {
 ```go
 package main
 
+import (
+	"github.com/cloudwego/netpoll"
+)
+
+var eventLoop netpoll.EventLoop
+
 func main() {
 	...
 	// start listen loop ...
@@ -100,7 +108,10 @@ package main
 import (
 	"context"
 	"time"
+	"github.com/cloudwego/netpoll"
 )
+
+var eventLoop netpoll.EventLoop
 
 func main() {
 	// stop server ...
