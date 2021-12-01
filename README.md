@@ -26,7 +26,7 @@ We developed the RPC framework [KiteX][KiteX] and HTTP
 framework [Hertz][Hertz] (to be open sourced) based
 on [Netpoll][Netpoll], both with industry-leading performance.
 
-[Examples][Netpoll-Benchmark] show how to build RPC client and server
+[Examples][netpoll-benchmark] show how to build RPC client and server
 using [Netpoll][Netpoll].
 
 For more information, please refer to [Document](#document).
@@ -56,49 +56,19 @@ For more information, please refer to [Document](#document).
 
 # Performance
 
-Benchmark is not a digital game, it should meet the requirements of industrial use first. In the RPC scenario,
-concurrent calls and waiting timeout are necessary support items.
+Benchmark should meet the requirements of industrial use. 
+In the RPC scenario, concurrency and timeout are necessary support items.
 
-Therefore, we set that the benchmark should meet the following conditions:
+We provide the [netpoll-benchmark][netpoll-benchmark] project to track and compare 
+the performance of [Netpoll][Netpoll] and other frameworks under different conditions for reference.
 
-1. Support concurrent calls, support timeout(1s)
-2. Use protocol: header(4 bytes) indicates the total length of payload
+More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmark][hertz-benchmark] (open source soon).
 
-Similar repositories such as [net][net]
-, [evio][evio], [gnet][gnet]. We compared their performance
-through [Benchmarks][Benchmarks], as shown below.
+# Reference
 
-For more benchmark reference [Netpoll-Benchmark][Netpoll-Benchmark]
-, [KiteX-Benchmark][KiteX-Benchmark] and [Hertz-Benchmark][Hertz-Benchmark] .
-
-### Environment
-
-* CPU:    Intel(R) Xeon(R) Gold 5118 CPU @ 2.30GHz, 4 cores
-* Memory: 8GB
-* OS:     Debian 5.4.56.bsk.1-amd64 x86_64 GNU/Linux
-* Go:     1.15.4
-
-### Concurrent Performance (Echo 1KB)
-
-![image](docs/images/c_tp99.png)
-![image](docs/images/c_qps.png)
-
-### Transport Performance (concurrent=100)
-
-![image](docs/images/s_tp99.png)
-![image](docs/images/s_qps.png)
-
-### Benchmark Conclusion
-
-Compared with [net][net]
-, [Netpoll][Netpoll] latency about 34% and qps about 110%
-(continue to pressurize, net latency is too high to reference)
-
-# Document
-
+* [Official Website](https://www.cloudwego.io)
 * [Getting Started](docs/guide/guide_en.md)
 * [Design](docs/reference/design_en.md)
-* [Change Log](docs/reference/change_log.md)
 * [Why DATA RACE](docs/reference/explain.md)
 
 [Netpoll]: https://github.com/cloudwego/netpoll
@@ -110,10 +80,9 @@ Compared with [net][net]
 [KiteX]: https://github.com/cloudwego/kitex
 [Hertz]: https://github.com/cloudwego/hertz
 
-[Benchmarks]: https://github.com/cloudwego/netpoll-benchmark
-[Netpoll-Benchmark]: https://github.com/cloudwego/netpoll-benchmark
-[KiteX-Benchmark]: https://github.com/cloudwego/kitex
-[Hertz-Benchmark]: https://github.com/cloudwego/hertz 
+[netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
+[kitex-benchmark]: https://github.com/cloudwego/kitex
+[hertz-benchmark]: https://github.com/cloudwego/hertz
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
