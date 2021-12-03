@@ -67,9 +67,6 @@ func (c *connection) closeBuffer() {
 
 // inputs implements FDOperator.
 func (c *connection) inputs(vs [][]byte) (rs [][]byte) {
-	if !c.lock(reading) {
-		return rs
-	}
 	vs[0] = c.inputBuffer.book(c.bookSize, c.maxSize)
 	return vs[:1]
 }
@@ -88,7 +85,6 @@ func (c *connection) inputAck(n int) (err error) {
 	if c.maxSize < length {
 		c.maxSize = length
 	}
-	c.unlock(reading)
 
 	var needTrigger = true
 	if length == n {
