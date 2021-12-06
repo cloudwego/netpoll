@@ -20,7 +20,7 @@ import (
 )
 
 func TestWritev(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var barrier = barrier{}
 	barrier.bs = [][]byte{
 		[]byte(""),            // len=0
@@ -40,7 +40,7 @@ func TestWritev(t *testing.T) {
 }
 
 func TestReadv(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	vs := [][]byte{
 		[]byte("first line"),  // len=10
 		[]byte("second line"), // len=11
@@ -68,7 +68,7 @@ func TestReadv(t *testing.T) {
 }
 
 func TestSendmsg(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var barrier = barrier{}
 	barrier.bs = [][]byte{
 		[]byte(""),            // len=0
@@ -89,7 +89,7 @@ func TestSendmsg(t *testing.T) {
 
 func BenchmarkWrite(b *testing.B) {
 	b.StopTimer()
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	message := "hello, world!"
 	size := 5
 
@@ -116,7 +116,7 @@ func BenchmarkWrite(b *testing.B) {
 
 func BenchmarkWritev(b *testing.B) {
 	b.StopTimer()
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	message := "hello, world!"
 	size := 5
 	var barrier = barrier{}
@@ -144,7 +144,7 @@ func BenchmarkWritev(b *testing.B) {
 
 func BenchmarkSendmsg(b *testing.B) {
 	b.StopTimer()
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	message := "hello, world!"
 	size := 5
 	var barrier = barrier{}
@@ -172,7 +172,7 @@ func BenchmarkSendmsg(b *testing.B) {
 
 func BenchmarkRead(b *testing.B) {
 	b.StopTimer()
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	message := "hello, world!"
 	size := 5
 	wmsg := make([]byte, size*len(message))
@@ -199,7 +199,7 @@ func BenchmarkRead(b *testing.B) {
 
 func BenchmarkReadv(b *testing.B) {
 	b.StopTimer()
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	message := "hello, world!"
 	size := 5
 	var barrier = barrier{}

@@ -10,6 +10,10 @@ header:
   paths-ignore:
     - 'net_netfd.go'
     - 'net_sock.go'
+    - 'net_sock_bsd.go'
+    - 'net_sock_linux.go'
+    - 'sys_exec_bsd.go'
+    - 'sys_exec_linux.go'
     - 'net_tcpsock.go'
     - 'net_unixsock.go'
     - 'sys_sockopt_bsd.go'

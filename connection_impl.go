@@ -30,19 +30,20 @@ type connection struct {
 	netFD
 	onEvent
 	locker
-	operator        *FDOperator
-	readTimeout     time.Duration
-	readTimer       *time.Timer
-	readTrigger     chan struct{}
-	waitReadSize    int32
-	writeTrigger    chan error
-	inputBuffer     *LinkBuffer
-	outputBuffer    *LinkBuffer
-	inputBarrier    *barrier
-	outputBarrier   *barrier
+	operator      *FDOperator
+	readTimeout   time.Duration
+	readTimer     *time.Timer
+	readTrigger   chan struct{}
+	waitReadSize  int32
+	writeTrigger  chan error
+	inputBuffer   *LinkBuffer
+	outputBuffer  *LinkBuffer
+	inputBarrier  *barrier
+	outputBarrier *barrier
+	maxSize       int // The maximum size of data between two Release().
+	bookSize      int // The size of data that can be read at once.
+	// socket options
 	supportZeroCopy bool
-	maxSize         int // The maximum size of data between two Release().
-	bookSize        int // The size of data that can be read at once.
 }
 
 var _ Connection = &connection{}
@@ -266,21 +267,17 @@ var barrierPool = sync.Pool{
 
 // init arguments: conn is required, prepare is optional.
 func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
-	// conn must be *netFD{}
-	c.checkNetFD(conn)
-
-	c.initFDOperator()
-	syscall.SetNonblock(c.fd, true)
-
-	// init buffer, barrier, finalizer
+	// init all properties
 	c.readTrigger = make(chan struct{}, 1)
 	c.writeTrigger = make(chan error, 1)
 	c.bookSize, c.maxSize = block1k/2, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
+	c.setNetFD(conn) // conn must be *netFD{}
+	c.setFDOperator()
 	c.setFinalizer()
 
-	// enable TCP_NODELAY by default
+	// init socket options
 	switch c.network {
 	case "tcp", "tcp4", "tcp6":
 		setTCPNoDelay(c.fd, true)
@@ -289,10 +286,11 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
 		c.supportZeroCopy = true
 	}
+
 	return c.onPrepare(prepare)
 }
 
-func (c *connection) checkNetFD(conn Conn) {
+func (c *connection) setNetFD(conn Conn) {
 	if nfd, ok := conn.(*netFD); ok {
 		c.netFD = *nfd
 		return
@@ -304,7 +302,7 @@ func (c *connection) checkNetFD(conn Conn) {
 	}
 }
 
-func (c *connection) initFDOperator() {
+func (c *connection) setFDOperator() {
 	op := allocop()
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup

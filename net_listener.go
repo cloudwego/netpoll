@@ -96,13 +96,14 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return ln.UDPAccept()
 	}
 	// tcp
-	var fd, sa, err = syscall.Accept(ln.fd)
+	var fd, sa, err = accept(ln.fd)
 	if err != nil {
 		if err == syscall.EAGAIN {
 			return nil, nil
 		}
 		return nil, err
 	}
+
 	var nfd = &netFD{}
 	nfd.fd = fd
 	nfd.localAddr = ln.addr

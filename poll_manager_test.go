@@ -20,7 +20,7 @@ import (
 )
 
 func TestPollManager(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)

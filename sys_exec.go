@@ -17,40 +17,13 @@
 package netpoll
 
 import (
-	"os"
 	"syscall"
 	"unsafe"
 )
 
-// GetSysFdPairs creates and returns the fds of a pair of sockets.
-func GetSysFdPairs() (r, w int) {
-	fds, _ := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
-	return fds[0], fds[1]
-}
-
 // setTCPNoDelay set the TCP_NODELAY flag on socket
 func setTCPNoDelay(fd int, b bool) (err error) {
 	return syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, boolint(b))
-}
-
-// Wrapper around the socket system call that marks the returned file
-// descriptor as nonblocking and close-on-exec.
-func sysSocket(family, sotype, proto int) (int, error) {
-	// See ../syscall/exec_unix.go for description of ForkLock.
-	syscall.ForkLock.RLock()
-	s, err := syscall.Socket(family, sotype, proto)
-	if err == nil {
-		syscall.CloseOnExec(s)
-	}
-	syscall.ForkLock.RUnlock()
-	if err != nil {
-		return -1, os.NewSyscallError("socket", err)
-	}
-	if err = syscall.SetNonblock(s, true); err != nil {
-		syscall.Close(s)
-		return -1, os.NewSyscallError("setnonblock", err)
-	}
-	return s, nil
 }
 
 const barriercap = 32

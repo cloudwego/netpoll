@@ -46,7 +46,7 @@ func TestConnectionWrite(t *testing.T) {
 		return context.Background()
 	}
 
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, prepare)
 	wconn.init(&netFD{fd: w}, prepare)
@@ -62,7 +62,7 @@ func TestConnectionWrite(t *testing.T) {
 }
 
 func TestConnectionRead(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)
@@ -93,7 +93,7 @@ func TestConnectionRead(t *testing.T) {
 }
 
 func TestConnectionReadAfterClosed(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var rconn = &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	var size = 256
@@ -113,7 +113,7 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 }
 
 func TestConnectionWaitReadHalfPacket(t *testing.T) {
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var rconn = &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	var size = pagesize * 2
@@ -233,7 +233,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&start)
 
-	r, w := GetSysFdPairs()
+	r, w := getSysFdPairs()
 	var rconn = &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 

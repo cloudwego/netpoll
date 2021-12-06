@@ -66,7 +66,7 @@ func TestPollMod(t *testing.T) {
 		stop <- p.Wait()
 	}()
 
-	var rfd, wfd = GetSysFdPairs()
+	var rfd, wfd = getSysFdPairs()
 	var rop = &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup}
 	var wop = &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup}
 	var err error
@@ -117,7 +117,7 @@ func TestPollClose(t *testing.T) {
 func BenchmarkPollMod(b *testing.B) {
 	b.StopTimer()
 	var p = openDefaultPoll()
-	r, _ := GetSysFdPairs()
+	r, _ := getSysFdPairs()
 	var operator = &FDOperator{FD: r}
 	p.Control(operator, PollReadable)
 
