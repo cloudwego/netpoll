@@ -458,6 +458,25 @@ func TestUnsafeStringToSlice(t *testing.T) {
 	Equal(t, string(bs), "hello world")
 }
 
+func TestLinkBufferIndexByte(t *testing.T) {
+	// clean & new
+	LinkBufferCap = 128
+
+	lb := NewLinkBuffer()
+	buf, err := lb.Malloc(1002)
+	buf[500] = '\n'
+	buf[1001] = '\n'
+	MustNil(t, err)
+	lb.Flush()
+
+	n := lb.indexByte('\n', 0)
+	Equal(t, n, 500)
+	n = lb.indexByte('\n', 500)
+	Equal(t, n, 500)
+	n = lb.indexByte('\n', 501)
+	Equal(t, n, 1001)
+}
+
 func BenchmarkStringToSliceByte(b *testing.B) {
 	b.StopTimer()
 	s := "hello world"

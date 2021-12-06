@@ -137,6 +137,23 @@ func (c *connection) Len() (length int) {
 	return c.inputBuffer.Len()
 }
 
+// ReadSlice implements Connection.
+func (c *connection) ReadSlice(delim byte) (line []byte, err error) {
+	var n, l int
+	for {
+		if err = c.waitRead(n + 1); err != nil {
+			return
+		}
+		l = c.Reader().Len()
+		i := c.inputBuffer.indexByte(delim, n)
+		if i < 0 {
+			n = l
+			continue
+		}
+		return c.Next(i + 1)
+	}
+}
+
 // ReadString implements Connection.
 func (c *connection) ReadString(n int) (s string, err error) {
 	if err = c.waitRead(n); err != nil {

@@ -281,3 +281,35 @@ func TestSetTCPNoDelay(t *testing.T) {
 	n, _ = syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n == 0)
 }
+
+func TestConnectionReadSlice(t *testing.T) {
+	r, w := GetSysFdPairs()
+	var rconn, wconn = &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
+
+	var msg = make([]byte, 1002)
+	msg[500] = '\n'
+	msg[1001] = '\n'
+	go func() {
+		for i := 0; i < 100000; i++ {
+			var pos int
+			for pos < len(msg) {
+				n, err := wconn.Write(msg[pos:])
+				MustNil(t, err)
+				pos += n
+			}
+		}
+		rconn.Close()
+	}()
+
+	for i := 0; i < 100000; i++ {
+		buf, err := rconn.Reader().ReadSlice('\n')
+		if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
+			return
+		}
+		MustNil(t, err)
+		Equal(t, len(buf), 501)
+		rconn.Reader().Release()
+	}
+}
