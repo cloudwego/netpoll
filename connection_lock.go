@@ -47,7 +47,6 @@ const (
 	closing key = iota
 	processing
 	flushing
-	reading
 	// total must be at the bottom.
 	total
 )

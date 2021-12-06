@@ -85,7 +85,7 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 	b.recalLen(-n) // re-cal length
 
 	// single node
-	l := b.read.Len()
+	l := b.firstReadLen()
 	if l >= n {
 		return b.read.Next(n), nil
 	}
@@ -118,11 +118,10 @@ func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
 	if b.Len() < n {
 		return p, fmt.Errorf("link buffer peek[%d] not enough", n)
 	}
-	var node = b.read
 	// single node
-	l := node.Len()
+	l := b.firstReadLen()
 	if l >= n {
-		return node.Peek(n), nil
+		return b.read.Peek(n), nil
 	}
 	// multiple nodes
 	var pIdx int
@@ -132,6 +131,7 @@ func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
 	} else {
 		p = make([]byte, n)
 	}
+	var node = b.read
 	for ack := n; ack > 0; ack = ack - l {
 		l = node.Len()
 		if l >= ack {
@@ -209,7 +209,7 @@ func (b *LinkBuffer) readBinary(n int) (p []byte) {
 
 	// single node
 	p = make([]byte, n)
-	l := b.read.Len()
+	l := b.firstReadLen()
 	if l >= n {
 		copy(p, b.read.Next(n))
 		return p
@@ -267,7 +267,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 	}()
 
 	// single node
-	l := b.read.Len()
+	l := b.firstReadLen()
 	if l >= n {
 		node := b.read.Refer(n)
 		p.head, p.read, p.flush = node, node, node
@@ -534,11 +534,6 @@ func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 		l = maxSize
 		b.write.next = newLinkBufferNode(maxSize)
 		b.write = b.write.next
-
-		// If there is no data in read node, then point it to next one.
-		if b.Len() == 0 {
-			b.read, b.flush = b.write, b.write
-		}
 	}
 	if l > bookSize {
 		l = bookSize
@@ -734,6 +729,16 @@ func (b *LinkBuffer) growth(n int) {
 		}
 		b.write = b.write.next
 	}
+}
+
+// firstReadLen returns the length of the first node greater than zero.
+func (b *LinkBuffer) firstReadLen() int {
+	l := b.read.Len()
+	for l == 0 {
+		b.read = b.read.next
+		l = b.read.Len()
+	}
+	return l
 }
 
 // zero-copy slice convert to string
