@@ -102,6 +102,10 @@ func (r *zcReader) ReadByte() (b byte, err error) {
 	return r.buf.ReadByte()
 }
 
+func (r *zcReader) ReadSlice(delim byte) (line []byte, err error) {
+	return r.buf.ReadSlice(delim)
+}
+
 func (r *zcReader) waitRead(n int) (err error) {
 	for r.buf.Len() < n {
 		err = r.fill(n)
