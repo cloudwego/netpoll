@@ -11,14 +11,14 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 框架很难设计出高效的连接池，池中的失效连接无法及时清理。
 
 另一方面，开源社区目前缺少专注于 RPC 方案的 Go 网络库。类似的项目如：[evio][evio]
-, [gnet][gnet] 等，均面向 [Redis][Redis], [Haproxy][Haproxy] 这样的场景。
+, [gnet][gnet] 等，均面向 [Redis][Redis], [HAProxy][HAProxy] 这样的场景。
 
 因此 [Netpoll][Netpoll] 应运而生，它借鉴了 [evio][evio]
 和 [netty][netty] 的优秀设计，具有出色的 [性能](#性能)，更适用于微服务架构。
 同时，[Netpoll][Netpoll] 还提供了一些 [特性](#特性)，推荐在 RPC 设计中替代
 [net][net] 。
 
-基于 [Netpoll][Netpoll] 开发的 RPC 框架 [KiteX][KiteX] 和 HTTP
+基于 [Netpoll][Netpoll] 开发的 RPC 框架 [Kitex][Kitex] 和 HTTP
 框架 [Hertz][Hertz] (即将开源)，性能均业界领先。
 
 [范例][netpoll-benchmark] 展示了如何使用 [Netpoll][Netpoll]
@@ -36,7 +36,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
     - `Dialer` 支持构建 client
     - `EventLoop` 支持构建 server
     - 支持 TCP，Unix Domain Socket
-    - 支持 Linux，Mac OS（操作系统）
+    - 支持 Linux，macOS（操作系统）
 
 * **即将开源**
     - [multisyscall][multisyscall] 支持批量系统调用
@@ -70,7 +70,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 [evio]: https://github.com/tidwall/evio
 [gnet]: https://github.com/panjf2000/gnet
 [netty]: https://github.com/netty/netty
-[KiteX]: https://github.com/cloudwego/kitex
+[Kitex]: https://github.com/cloudwego/kitex
 [Hertz]: https://github.com/cloudwego/hertz
 
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
@@ -79,7 +79,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
-[Haproxy]: http://www.haproxy.org
+[HAProxy]: http://www.haproxy.org
 
 [LinkBuffer]: nocopy_linkbuffer.go
 [gopool]: https://github.com/bytedance/gopkg/tree/develop/util/gopool
