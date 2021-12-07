@@ -41,7 +41,7 @@ For more information, please refer to [Document](#document).
     - `Dialer` supports building clients
     - `EventLoop` supports building a server
     - TCP, Unix Domain Socket
-    - Linux, Mac OS (operating system)
+    - Linux, macOS (operating system)
 
 * **Future**
     - [multisyscall][multisyscall] supports batch system calls
