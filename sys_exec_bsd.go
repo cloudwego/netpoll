@@ -41,3 +41,7 @@ func getSysFdPairs() (r, w int) {
 	syscall.SetNonblock(fds[1], true)
 	return fds[0], fds[1]
 }
+
+func setTCPDeferAccept(fd int, b bool) (err error) {
+	return nil
+}

@@ -83,7 +83,9 @@ type OnPrepare func(connection Connection) context.Context
 
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
-	opt := &options{}
+	opt := &options{
+		deferAccept: true,
+	}
 	for _, do := range ops {
 		do.f(opt)
 	}
@@ -107,6 +109,12 @@ func (evl *eventLoop) Serve(ln net.Listener) error {
 	npln, err := ConvertListener(ln)
 	if err != nil {
 		return err
+	}
+	if evl.opt.deferAccept {
+		switch npln.Addr().Network() {
+		case "tcp", "tcp4", "tcp6":
+			setTCPDeferAccept(npln.Fd(), true)
+		}
 	}
 	evl.Lock()
 	evl.svr = newServer(npln, evl.prepare, evl.quit)

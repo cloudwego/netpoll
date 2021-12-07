@@ -65,6 +65,13 @@ func WithIdleTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithDeferAccept sets the switch of TCP_DEFER_ACCEPT
+func WithDeferAccept(d bool) Option {
+	return Option{func(op *options) {
+		op.deferAccept = d
+	}}
+}
+
 // Option .
 type Option struct {
 	f func(*options)
@@ -74,6 +81,7 @@ type options struct {
 	onPrepare   OnPrepare
 	readTimeout time.Duration
 	idleTimeout time.Duration
+	deferAccept bool
 }
 
 func (opt *options) prepare(onRequest OnRequest) OnPrepare {

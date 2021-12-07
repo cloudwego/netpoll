@@ -51,3 +51,7 @@ func getSysFdPairs() (r, w int) {
 	fds, _ := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM|syscall.SOCK_NONBLOCK, 0)
 	return fds[0], fds[1]
 }
+
+func setTCPDeferAccept(fd int, b bool) (err error) {
+	return syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_DEFER_ACCEPT, boolint(b))
+}
