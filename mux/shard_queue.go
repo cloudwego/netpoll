@@ -16,7 +16,10 @@ package mux
 
 import (
 	"runtime"
+	"sync"
 	"sync/atomic"
+
+	"github.com/bytedance/gopkg/util/gopool"
 
 	"github.com/cloudwego/netpoll"
 )
@@ -30,13 +33,17 @@ import (
  * NewShardQueue: create a queue with netpoll.Connection.
  * ShardSize: the recommended number of shards is 32.
  */
-const ShardSize = 32
+var ShardSize int
+
+func init() {
+	ShardSize = runtime.GOMAXPROCS(0)
+}
 
 // NewShardQueue .
-func NewShardQueue(size int32, conn netpoll.Connection) (queue *ShardQueue) {
+func NewShardQueue(size int, conn netpoll.Connection) (queue *ShardQueue) {
 	queue = &ShardQueue{
 		conn:    conn,
-		size:    size,
+		size:    int32(size),
 		getters: make([][]WriterGetter, size),
 		swap:    make([]WriterGetter, 0, 64),
 		locks:   make([]int32, size),
@@ -44,6 +51,7 @@ func NewShardQueue(size int32, conn netpoll.Connection) (queue *ShardQueue) {
 	for i := range queue.getters {
 		queue.getters[i] = make([]WriterGetter, 0, 64)
 	}
+	queue.list = make([]int32, size)
 	return queue
 }
 
@@ -55,12 +63,21 @@ type WriterGetter func() (buf netpoll.Writer, isNil bool)
 // If there is an error in the data transmission, the connection will be closed.
 // ShardQueue.Add: add the data to be sent.
 type ShardQueue struct {
-	conn            netpoll.Connection
-	idx, size       int32
-	getters         [][]WriterGetter // len(getters) = size
-	swap            []WriterGetter   // use for swap
-	locks           []int32          // len(locks) = size
-	trigger, runNum int32
+	conn      netpoll.Connection
+	idx, size int32
+	getters   [][]WriterGetter // len(getters) = size
+	swap      []WriterGetter   // use for swap
+	locks     []int32          // len(locks) = size
+	queueTrigger
+}
+
+// here for trigger
+type queueTrigger struct {
+	trigger  int32
+	runNum   int32
+	list     []int32    // record the triggered shard
+	w, r     int32      // ptr of list
+	listLock sync.Mutex // list total lock
 }
 
 // Add adds to q.getters[shard]
@@ -77,44 +94,51 @@ func (q *ShardQueue) Add(gts ...WriterGetter) {
 
 // triggering shard.
 func (q *ShardQueue) triggering(shard int32) {
+	q.listLock.Lock()
+	q.w = (q.w + 1) % q.size
+	q.list[q.w] = shard
+	q.listLock.Unlock()
+
 	if atomic.AddInt32(&q.trigger, 1) > 1 {
 		return
 	}
-	q.foreach(shard)
+	q.foreach()
 }
 
 // foreach swap r & w. It's not concurrency safe.
-func (q *ShardQueue) foreach(shard int32) {
+func (q *ShardQueue) foreach() {
 	if atomic.AddInt32(&q.runNum, 1) > 1 {
 		return
 	}
-	go func() {
-		var tmp []WriterGetter
-		for ; atomic.LoadInt32(&q.trigger) > 0; shard = (shard + 1) % q.size {
+	gopool.CtxGo(nil, func() {
+		var negNum int32 // is negative number of triggerNum
+		for triggerNum := atomic.LoadInt32(&q.trigger); triggerNum > 0; {
+			q.r = (q.r + 1) % q.size
+			shared := q.list[q.r]
+
 			// lock & swap
-			q.lock(shard)
-			if len(q.getters[shard]) == 0 {
-				q.unlock(shard)
-				continue
-			}
-			// swap
-			tmp = q.getters[shard]
-			q.getters[shard] = q.swap[:0]
+			q.lock(shared)
+			tmp := q.getters[shared]
+			q.getters[shared] = q.swap[:0]
 			q.swap = tmp
-			q.unlock(shard)
-			atomic.AddInt32(&q.trigger, -1)
+			q.unlock(shared)
 
 			// deal
 			q.deal(q.swap)
+			negNum--
+			if triggerNum+negNum == 0 {
+				triggerNum = atomic.AddInt32(&q.trigger, negNum)
+				negNum = 0
+			}
 		}
 		q.flush()
 
 		// quit & check again
 		atomic.StoreInt32(&q.runNum, 0)
 		if atomic.LoadInt32(&q.trigger) > 0 {
-			q.foreach(shard)
+			q.foreach()
 		}
-	}()
+	})
 }
 
 // deal is used to get deal of netpoll.Writer.
