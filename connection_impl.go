@@ -109,16 +109,17 @@ func (c *connection) Skip(n int) (err error) {
 // Release implements Connection.
 func (c *connection) Release() (err error) {
 	// Check inputBuffer length first to reduce contention in mux situation.
-	if c.inputBuffer.Len() == 0 && c.lock(reading) {
-		// Double check length to calculate the maxSize
+	// c.operator.do competes with c.inputs/c.inputAck
+	if c.inputBuffer.Len() == 0 && c.operator.do() {
+		maxSize := c.inputBuffer.calcMaxSize()
+		if maxSize > c.maxSize {
+			c.maxSize = maxSize
+		}
+		// Double check length to reset tail node
 		if c.inputBuffer.Len() == 0 {
-			maxSize := c.inputBuffer.calcMaxSize()
-			if maxSize > c.maxSize {
-				c.maxSize = maxSize
-			}
 			c.inputBuffer.resetTail(c.maxSize)
 		}
-		c.unlock(reading)
+		c.operator.done()
 	}
 	return c.inputBuffer.Release()
 }

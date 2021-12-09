@@ -14,7 +14,7 @@ large number of failed connections in the pool.
 
 On the other hand, the open source community currently lacks Go network libraries that focus on RPC scenarios. Similar
 repositories such as: [evio][evio], [gnet][gnet], etc., are all
-focus on scenarios like [Redis][Redis], [Haproxy][Haproxy].
+focus on scenarios like [Redis][Redis], [HAProxy][HAProxy].
 
 But now, [Netpoll][Netpoll] was born and solved the above problems. It draws inspiration
 from the design of [evio][evio] and [netty][netty], has
@@ -22,8 +22,8 @@ excellent [Performance](#performance), and is more suitable for microservice arc
 Also [Netpoll][Netpoll] provides a number of [Features](#features), and it is recommended
 to replace [net][net] in some RPC scenarios.
 
-We developed the RPC framework [KiteX][KiteX] and HTTP
-framework [Hertz][Hertz] (to be open sourced) based
+We developed the RPC framework [Kitex][Kitex] and HTTP
+framework [Hertz][Hertz] (coming soon) based
 on [Netpoll][Netpoll], both with industry-leading performance.
 
 [Examples][netpoll-benchmark] show how to build RPC client and server
@@ -41,7 +41,7 @@ For more information, please refer to [Document](#document).
     - `Dialer` supports building clients
     - `EventLoop` supports building a server
     - TCP, Unix Domain Socket
-    - Linux, Mac OS (operating system)
+    - Linux, macOS (operating system)
 
 * **Future**
     - [multisyscall][multisyscall] supports batch system calls
@@ -77,7 +77,7 @@ More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmar
 [evio]: https://github.com/tidwall/evio
 [gnet]: https://github.com/panjf2000/gnet
 [netty]: https://github.com/netty/netty
-[KiteX]: https://github.com/cloudwego/kitex
+[Kitex]: https://github.com/cloudwego/kitex
 [Hertz]: https://github.com/cloudwego/hertz
 
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
@@ -86,7 +86,7 @@ More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmar
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
-[Haproxy]: http://www.haproxy.org
+[HAProxy]: http://www.haproxy.org
 
 [LinkBuffer]: nocopy_linkbuffer.go
 [gopool]: https://github.com/bytedance/gopkg/tree/develop/util/gopool
