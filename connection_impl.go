@@ -242,9 +242,15 @@ func (c *connection) Read(p []byte) (n int, err error) {
 
 // Write will Flush soon.
 func (c *connection) Write(p []byte) (n int, err error) {
+	if !c.lock(flushing) {
+		return 0, Exception(ErrConnClosed, "when write")
+	}
+	defer c.unlock(flushing)
+
 	dst, _ := c.outputBuffer.Malloc(len(p))
 	n = copy(dst, p)
-	err = c.Flush()
+	c.outputBuffer.Flush()
+	err = c.flush()
 	return n, err
 }
 
