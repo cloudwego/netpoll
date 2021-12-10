@@ -78,6 +78,9 @@ func (b *LinkBuffer) IsEmpty() (ok bool) {
 
 // Next implements Reader.
 func (b *LinkBuffer) Next(n int) (p []byte, err error) {
+	if n <= 0 {
+		return
+	}
 	// check whether enough or not.
 	if b.Len() < n {
 		return p, fmt.Errorf("link buffer next[%d] not enough", n)
@@ -85,8 +88,7 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 	b.recalLen(-n) // re-cal length
 
 	// single node
-	l := b.firstReadLen()
-	if l >= n {
+	if b.isSingleNode(n) {
 		return b.read.Next(n), nil
 	}
 	// multiple nodes
@@ -97,6 +99,7 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 	} else {
 		p = make([]byte, n)
 	}
+	var l int
 	for ack := n; ack > 0; ack = ack - l {
 		l = b.read.Len()
 		if l >= ack {
@@ -114,13 +117,15 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 // Peek does not have an independent lifecycle, and there is no signal to
 // indicate that Peek content can be released, so Peek will not introduce mcache for now.
 func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
+	if n <= 0 {
+		return
+	}
 	// check whether enough or not.
 	if b.Len() < n {
 		return p, fmt.Errorf("link buffer peek[%d] not enough", n)
 	}
 	// single node
-	l := b.firstReadLen()
-	if l >= n {
+	if b.isSingleNode(n) {
 		return b.read.Peek(n), nil
 	}
 	// multiple nodes
@@ -132,6 +137,7 @@ func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
 		p = make([]byte, n)
 	}
 	var node = b.read
+	var l int
 	for ack := n; ack > 0; ack = ack - l {
 		l = node.Len()
 		if l >= ack {
@@ -148,6 +154,9 @@ func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
 
 // Skip implements Reader.
 func (b *LinkBuffer) Skip(n int) (err error) {
+	if n <= 0 {
+		return
+	}
 	// check whether enough or not.
 	if b.Len() < n {
 		return fmt.Errorf("link buffer skip[%d] not enough", n)
@@ -187,6 +196,9 @@ func (b *LinkBuffer) Release() (err error) {
 
 // ReadString implements Reader.
 func (b *LinkBuffer) ReadString(n int) (s string, err error) {
+	if n <= 0 {
+		return
+	}
 	// check whether enough or not.
 	if b.Len() < n {
 		return s, fmt.Errorf("link buffer read string[%d] not enough", n)
@@ -196,6 +208,9 @@ func (b *LinkBuffer) ReadString(n int) (s string, err error) {
 
 // ReadBinary implements Reader.
 func (b *LinkBuffer) ReadBinary(n int) (p []byte, err error) {
+	if n <= 0 {
+		return
+	}
 	// check whether enough or not.
 	if b.Len() < n {
 		return p, fmt.Errorf("link buffer read binary[%d] not enough", n)
@@ -209,13 +224,13 @@ func (b *LinkBuffer) readBinary(n int) (p []byte) {
 
 	// single node
 	p = make([]byte, n)
-	l := b.firstReadLen()
-	if l >= n {
+	if b.isSingleNode(n) {
 		copy(p, b.read.Next(n))
 		return p
 	}
 	// multiple nodes
 	var pIdx int
+	var l int
 	for ack := n; ack > 0; ack = ack - l {
 		l = b.read.Len()
 		if l >= ack {
@@ -250,6 +265,9 @@ func (b *LinkBuffer) ReadByte() (p byte, err error) {
 //
 // Slice will automatically execute a Release.
 func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
+	if n <= 0 {
+		return NewLinkBuffer(0), nil
+	}
 	// check whether enough or not.
 	if b.Len() < n {
 		return r, fmt.Errorf("link buffer readv[%d] not enough", n)
@@ -267,13 +285,13 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 	}()
 
 	// single node
-	l := b.firstReadLen()
-	if l >= n {
+	if b.isSingleNode(n) {
 		node := b.read.Refer(n)
 		p.head, p.read, p.flush = node, node, node
 		return p, nil
 	}
 	// multiple nodes
+	var l = b.read.Len()
 	node := b.read.Refer(l)
 	b.read = b.read.next
 
@@ -297,6 +315,9 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 
 // Malloc pre-allocates memory, which is not readable, and becomes readable data after submission(e.g. Flush).
 func (b *LinkBuffer) Malloc(n int) (buf []byte, err error) {
+	if n <= 0 {
+		return
+	}
 	b.mallocSize += n
 	b.growth(n)
 	return b.write.Malloc(n), nil
@@ -309,6 +330,9 @@ func (b *LinkBuffer) MallocLen() (length int) {
 
 // MallocAck will keep the first n malloc bytes and discard the rest.
 func (b *LinkBuffer) MallocAck(n int) (err error) {
+	if n < 0 {
+		return fmt.Errorf("link buffer malloc ack[%d] invalid", n)
+	}
 	b.mallocSize = n
 	b.write = b.flush
 
@@ -363,6 +387,9 @@ func (b *LinkBuffer) Append(w Writer) (err error) {
 // you must actively submit before read the data.
 // The argument buf can't be used after calling WriteBuffer. (set it to nil)
 func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
+	if buf == nil {
+		return
+	}
 	bufLen, bufMallocLen := buf.Len(), buf.MallocLen()
 	if bufLen+bufMallocLen <= 0 {
 		return nil
@@ -399,6 +426,9 @@ func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 
 // WriteString implements Writer.
 func (b *LinkBuffer) WriteString(s string) (n int, err error) {
+	if len(s) == 0 {
+		return
+	}
 	buf := unsafeStringToSlice(s)
 	return b.WriteBinary(buf)
 }
@@ -406,6 +436,9 @@ func (b *LinkBuffer) WriteString(s string) (n int, err error) {
 // WriteBinary implements Writer.
 func (b *LinkBuffer) WriteBinary(p []byte) (n int, err error) {
 	n = len(p)
+	if n == 0 {
+		return
+	}
 	b.mallocSize += n
 
 	// TODO: Verify that all nocopy is possible under mcache.
@@ -426,6 +459,9 @@ func (b *LinkBuffer) WriteBinary(p []byte) (n int, err error) {
 // WriteDirect cannot be mixed with WriteString or WriteBinary functions.
 func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	n := len(p)
+	if n == 0 || remainLen < 0 {
+		return nil
+	}
 	// find origin
 	origin := b.flush
 	malloc := b.mallocSize - remainLen // calculate the remaining malloc length
@@ -731,14 +767,18 @@ func (b *LinkBuffer) growth(n int) {
 	}
 }
 
-// firstReadLen returns the length of the first node greater than zero.
-func (b *LinkBuffer) firstReadLen() int {
+// isSingleNode determines whether reading needs to cross nodes.
+// Must require b.Len() > 0
+func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
+	if readN <= 0 {
+		return true
+	}
 	l := b.read.Len()
 	for l == 0 {
 		b.read = b.read.next
 		l = b.read.Len()
 	}
-	return l
+	return l >= readN
 }
 
 // zero-copy slice convert to string
