@@ -81,6 +81,91 @@ func TestLinkBuffer(t *testing.T) {
 	Equal(t, buf.Len(), 100)
 }
 
+// TestLinkBufferWithZero test more case with n is invalid.
+func TestLinkBufferWithInvalid(t *testing.T) {
+	// clean & new
+	LinkBufferCap = 128
+
+	buf := NewLinkBuffer()
+	Equal(t, buf.Len(), 0)
+	MustTrue(t, buf.IsEmpty())
+
+	for n := 0; n > -5; n-- {
+		// test writer
+		p, err := buf.Malloc(n)
+		Equal(t, len(p), 0)
+		Equal(t, buf.MallocLen(), 0)
+		Equal(t, buf.Len(), 0)
+		MustNil(t, err)
+
+		var wn int
+		wn, err = buf.WriteString("")
+		Equal(t, wn, 0)
+		Equal(t, buf.MallocLen(), 0)
+		Equal(t, buf.Len(), 0)
+		MustNil(t, err)
+
+		wn, err = buf.WriteBinary(nil)
+		Equal(t, wn, 0)
+		Equal(t, buf.MallocLen(), 0)
+		Equal(t, buf.Len(), 0)
+		MustNil(t, err)
+
+		err = buf.WriteDirect(nil, n)
+		Equal(t, buf.MallocLen(), 0)
+		Equal(t, buf.Len(), 0)
+		MustNil(t, err)
+
+		var w *LinkBuffer
+		err = buf.Append(w)
+		Equal(t, buf.MallocLen(), 0)
+		Equal(t, buf.Len(), 0)
+		MustNil(t, err)
+
+		err = buf.MallocAck(n)
+		Equal(t, buf.MallocLen(), 0)
+		Equal(t, buf.Len(), 0)
+		if n == 0 {
+			MustNil(t, err)
+		} else {
+			MustTrue(t, err != nil)
+		}
+
+		err = buf.Flush()
+		MustNil(t, err)
+
+		// test reader
+		p, err = buf.Next(n)
+		Equal(t, len(p), 0)
+		MustNil(t, err)
+
+		p, err = buf.Peek(n)
+		Equal(t, len(p), 0)
+		MustNil(t, err)
+
+		err = buf.Skip(n)
+		Equal(t, len(p), 0)
+		MustNil(t, err)
+
+		var s string
+		s, err = buf.ReadString(n)
+		Equal(t, len(s), 0)
+		MustNil(t, err)
+
+		p, err = buf.ReadBinary(n)
+		Equal(t, len(p), 0)
+		MustNil(t, err)
+
+		var r Reader
+		r, err = buf.Slice(n)
+		Equal(t, r.Len(), 0)
+		MustNil(t, err)
+
+		err = buf.Release()
+		MustNil(t, err)
+	}
+}
+
 // cross-block operation test
 func TestLinkBufferIndex(t *testing.T) {
 	// clean & new
