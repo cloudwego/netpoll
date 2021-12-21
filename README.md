@@ -81,8 +81,8 @@ More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmar
 [Hertz]: https://github.com/cloudwego/hertz
 
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
-[kitex-benchmark]: https://github.com/cloudwego/kitex
-[hertz-benchmark]: https://github.com/cloudwego/hertz
+[kitex-benchmark]: https://github.com/cloudwego/kitex-benchmark
+[hertz-benchmark]: https://github.com/cloudwego/hertz-benchmark
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
