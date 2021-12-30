@@ -1,6 +1,17 @@
+# CloudWeGo-Netpoll
+
 [English](README.md)
 
-# 简介
+[![Release](https://img.shields.io/github/v/release/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/releases)
+[![WebSite](https://img.shields.io/website?up_message=cloudwego&url=https%3A%2F%2Fwww.cloudwego.io%2F)](https://www.cloudwego.io/)
+[![License](https://img.shields.io/github/license/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/blob/main/LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cloudwego/netpoll)](https://goreportcard.com/report/github.com/cloudwego/netpoll)
+[![OpenIssue](https://img.shields.io/github/issues/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/issues)
+[![ClosedIssue](https://img.shields.io/github/issues-closed/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/issues?q=is%3Aissue+is%3Aclosed)
+![Stars](https://img.shields.io/github/stars/cloudwego/netpoll)
+![Forks](https://img.shields.io/github/forks/cloudwego/netpoll)
+
+## 简介
 
 [Netpoll][Netpoll] 是由 [字节跳动][ByteDance] 开发的高性能 NIO(Non-blocking I/O)
 网络库，专注于 RPC 场景。
@@ -26,7 +37,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 
 更多信息请参阅 [文档](#文档)。
 
-# 特性
+## 特性
 
 * **已经支持**
     - [LinkBuffer][LinkBuffer] 提供可以流式读写的 nocopy API
@@ -49,7 +60,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 * **不被支持**
     - Windows（操作系统）
 
-# 性能
+## 性能
 
 性能测试应满足工业级使用要求，在 RPC 场景下，并发请求、等待超时是必要的支持项。
 
@@ -57,7 +68,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 
 更多测试参考 [kitex-benchmark][kitex-benchmark] 和 [hertz-benchmark][hertz-benchmark] (即将开源)
 
-# 参考
+## 参考
 
 * [官方网站](https://www.cloudwego.io)
 * [使用文档](docs/guide/guide_cn.md)
