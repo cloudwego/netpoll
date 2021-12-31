@@ -85,8 +85,8 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 [Hertz]: https://github.com/cloudwego/hertz
 
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
-[kitex-benchmark]: https://github.com/cloudwego/kitex
-[hertz-benchmark]: https://github.com/cloudwego/hertz
+[kitex-benchmark]: https://github.com/cloudwego/kitex-benchmark
+[hertz-benchmark]: https://github.com/cloudwego/hertz-benchmark
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
