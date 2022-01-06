@@ -282,7 +282,7 @@ func TestSetTCPNoDelay(t *testing.T) {
 	MustTrue(t, n == 0)
 }
 
-func TestConnectionReadSlice(t *testing.T) {
+func TestConnectionUntil(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
@@ -304,7 +304,7 @@ func TestConnectionReadSlice(t *testing.T) {
 	}()
 
 	for i := 0; i < 100000; i++ {
-		buf, err := rconn.Reader().ReadSlice('\n')
+		buf, err := rconn.Reader().Until('\n')
 		if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
 			return
 		}

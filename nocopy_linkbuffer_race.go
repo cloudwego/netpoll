@@ -280,11 +280,11 @@ func (b *LinkBuffer) ReadByte() (p byte, err error) {
 	}
 }
 
-// ReadSlice returns a slice ends with the delim in the buffer.
-func (b *LinkBuffer) ReadSlice(delim byte) (line []byte, err error) {
+// Until returns a slice ends with the delim in the buffer.
+func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
 	n := b.indexByte(delim, 0)
 	if n < 0 {
-		return nil, fmt.Errorf("link buffer read slice cannot find: '%b'", delim)
+		return nil, fmt.Errorf("link buffer cannot find delim: '%b'", delim)
 	}
 	return b.readBinary(n + 1), nil
 }

@@ -137,8 +137,8 @@ func (c *connection) Len() (length int) {
 	return c.inputBuffer.Len()
 }
 
-// ReadSlice implements Connection.
-func (c *connection) ReadSlice(delim byte) (line []byte, err error) {
+// Until implements Connection.
+func (c *connection) Until(delim byte) (line []byte, err error) {
 	var n, l int
 	for {
 		if err = c.waitRead(n + 1); err != nil {
