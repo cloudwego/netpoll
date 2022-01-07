@@ -83,7 +83,7 @@ func (op *FDOperator) isUnused() bool {
 
 func (op *FDOperator) reset() {
 	op.FD = 0
-	op.OnRead, op.OnRead, op.OnHup = nil, nil, nil
+	op.OnRead, op.OnWrite, op.OnHup = nil, nil, nil
 	op.Inputs, op.InputAck = nil, nil
 	op.Outputs, op.OutputAck = nil, nil
 	op.poll = nil
