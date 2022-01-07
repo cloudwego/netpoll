@@ -144,10 +144,10 @@ func (c *connection) Until(delim byte) (line []byte, err error) {
 		if err = c.waitRead(n + 1); err != nil {
 			return
 		}
-		l = c.Reader().Len()
+		l = c.inputBuffer.Len()
 		i := c.inputBuffer.indexByte(delim, n)
 		if i < 0 {
-			n = l
+			n = l //skip all exists bytes
 			continue
 		}
 		return c.Next(i + 1)

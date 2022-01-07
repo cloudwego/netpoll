@@ -286,7 +286,7 @@ func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
 	if n < 0 {
 		return nil, fmt.Errorf("link buffer cannot find delim: '%b'", delim)
 	}
-	return b.readBinary(n + 1), nil
+	return b.Next(n + 1), nil
 }
 
 // Slice returns a new LinkBuffer, which is a zero-copy slice of this LinkBuffer,
@@ -655,30 +655,35 @@ func (b *LinkBuffer) calcMaxSize() (sum int) {
 	return sum
 }
 
-// indexByte returns the index of the first instance of c in b, or -1 if c is not present in b.
 func (b *LinkBuffer) indexByte(c byte, skip int) int {
 	b.Lock()
 	defer b.Unlock()
-	var n, l, pos int
-	for node := b.read; node != nil; node = node.next {
+	size := b.Len()
+	if skip >= size {
+		return -1
+	}
+	var unread, n, l int
+	node := b.read
+	for unread = size; unread > 0; unread -= n {
 		l = node.Len()
-		pos = node.off
-		if l <= skip {
-			skip -= l
-			n += l
-			continue
-		} else if skip > 0 {
-			pos += skip
-			skip = 0
+		if l >= unread { // last node
+			n = unread
+		} else { // read full node
+			n = l
 		}
 
-		i := bytes.IndexByte(node.buf[pos:], c)
-		if i < 0 {
-			n += l
+		// skip current node
+		if skip >= n {
+			skip -= n
+			node = node.next
 			continue
 		}
-		n += pos - node.off + i
-		return n
+		i := bytes.IndexByte(node.Peek(n)[skip:], c)
+		if i >= 0 {
+			return (size - unread) + skip + i // past_read + skip_read + index
+		}
+		skip = 0 // no skip bytes
+		node = node.next
 	}
 	return -1
 }

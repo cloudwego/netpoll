@@ -284,32 +284,29 @@ func TestSetTCPNoDelay(t *testing.T) {
 
 func TestConnectionUntil(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)
+	loopSize := 100000
 
-	var msg = make([]byte, 1002)
-	msg[500] = '\n'
-	msg[1001] = '\n'
+	msg := make([]byte, 1002)
+	msg[500], msg[1001] = '\n', '\n'
 	go func() {
-		for i := 0; i < 100000; i++ {
-			var pos int
-			for pos < len(msg) {
-				n, err := wconn.Write(msg[pos:])
-				MustNil(t, err)
-				pos += n
-			}
+		for i := 0; i < loopSize; i++ {
+			n, err := wconn.Write(msg)
+			MustNil(t, err)
+			MustTrue(t, n == len(msg))
 		}
-		rconn.Close()
+		wconn.Close()
 	}()
 
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < loopSize*2; i++ {
 		buf, err := rconn.Reader().Until('\n')
-		if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
-			return
-		}
 		MustNil(t, err)
 		Equal(t, len(buf), 501)
 		rconn.Reader().Release()
 	}
+
+	_, err := rconn.Reader().Until('\n')
+	MustTrue(t, errors.Is(err, ErrEOF))
 }
