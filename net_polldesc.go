@@ -15,83 +15,70 @@
 package netpoll
 
 import (
-	"errors"
-	"time"
+	"context"
+	"sync"
 )
 
 // TODO: recycle *pollDesc
 func newPollDesc(fd int) *pollDesc {
 	pd, op := &pollDesc{}, &FDOperator{}
-	pd.writeTicker = make(chan error, 1)
-
 	op.FD = fd
-	op.OnWrite = func(p Poll) error {
-		select {
-		case pd.writeTicker <- nil:
-		default:
-		}
-		return nil
-	}
-	op.OnHup = func(p Poll) error {
-		select {
-		case pd.writeTicker <- Exception(ErrConnClosed, "by peer"):
-		default:
-		}
-		return nil
-	}
 	pd.operator = op
 	return pd
 }
 
 type pollDesc struct {
+	once     sync.Once
 	operator *FDOperator
+
 	// The write event is OneShot, then mark the writable to skip duplicate calling.
-	writable    bool
-	writeTicker chan error
+	writeTrigger chan struct{}
+	closeTrigger chan struct{}
 }
 
-// WaitWrite
+// WaitWrite .
 // TODO: implement - poll support timeout hung up.
-func (pd *pollDesc) WaitWrite(deadline time.Time) (err error) {
-	// if writable, check hup by select
-	if pd.writable {
+func (pd *pollDesc) WaitWrite(ctx context.Context) error {
+	var err error
+	pd.once.Do(func() {
+		pd.writeTrigger = make(chan struct{})
+		pd.closeTrigger = make(chan struct{})
+		pd.operator.OnWrite = func(p Poll) error {
+			select {
+			case <-pd.writeTrigger:
+			default:
+				close(pd.writeTrigger)
+			}
+			return nil
+		}
+		pd.operator.OnHup = func(p Poll) error {
+			close(pd.closeTrigger)
+			return nil
+		}
+		// add ET|Write|Hup
+		pd.operator.poll = pollmanager.Pick()
+		err = pd.operator.Control(PollWritable)
+		if err != nil {
+			pd.operator.Control(PollDetach)
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	select {
+	case <-ctx.Done():
+		pd.operator.Control(PollDetach)
+		return mapErr(ctx.Err())
+	case <-pd.closeTrigger:
+		return Exception(ErrConnClosed, "by peer")
+	case <-pd.writeTrigger:
+		// if writable, check hup by select
 		select {
-		case err = <-pd.writeTicker:
-			return err
+		case <-pd.closeTrigger:
+			return Exception(ErrConnClosed, "by peer")
 		default:
 			return nil
 		}
 	}
-	// calling first time
-	if deadline.IsZero() {
-		return Exception(ErrDialNoDeadline, "")
-	}
-	dur := time.Until(deadline)
-	if dur <= 0 {
-		return Exception(ErrDialTimeout, dur.String())
-	}
-	// add ET|Write|Hup
-	pd.operator.poll = pollmanager.Pick()
-	err = pd.operator.Control(PollWritable)
-	if err != nil {
-		pd.operator.Control(PollDetach)
-		return err
-	}
-	// add timeout trigger
-	cancel := time.AfterFunc(dur, func() {
-		select {
-		case pd.writeTicker <- Exception(ErrDialTimeout, dur.String()):
-		default:
-		}
-	})
-	// wait
-	if err = <-pd.writeTicker; err == nil {
-		pd.writable = true
-	} else {
-		if errors.Is(err, ErrDialTimeout) {
-			pd.operator.Control(PollDetach)
-		}
-	}
-	cancel.Stop()
-	return err
 }
