@@ -297,6 +297,7 @@ func TestConnectionUntil(t *testing.T) {
 			MustNil(t, err)
 			MustTrue(t, n == len(msg))
 		}
+		wconn.Write(msg[:100])
 		wconn.Close()
 	}()
 
@@ -307,6 +308,7 @@ func TestConnectionUntil(t *testing.T) {
 		rconn.Reader().Release()
 	}
 
-	_, err := rconn.Reader().Until('\n')
+	buf, err := rconn.Reader().Until('\n')
+	Equal(t, len(buf), 100)
 	MustTrue(t, errors.Is(err, ErrEOF))
 }

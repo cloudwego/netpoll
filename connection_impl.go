@@ -142,8 +142,11 @@ func (c *connection) Until(delim byte) (line []byte, err error) {
 	var n, l int
 	for {
 		if err = c.waitRead(n + 1); err != nil {
+			// return all the data in the buffer
+			line, _ = c.inputBuffer.Next(c.inputBuffer.Len())
 			return
 		}
+
 		l = c.inputBuffer.Len()
 		i := c.inputBuffer.indexByte(delim, n)
 		if i < 0 {

@@ -183,6 +183,17 @@ func (b *LinkBuffer) Skip(n int) (err error) {
 	return nil
 }
 
+// Until returns a slice ends with the delim in the buffer.
+func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
+	b.Lock()
+	defer b.Unlock()
+	n := b.indexByte(delim, 0)
+	if n < 0 {
+		return nil, fmt.Errorf("link buffer cannot find delim: '%b'", delim)
+	}
+	return b.Next(n + 1)
+}
+
 // Release the node that has been read.
 // b.flush == nil indicates that this LinkBuffer is created by LinkBuffer.Slice
 func (b *LinkBuffer) Release() (err error) {
@@ -278,15 +289,6 @@ func (b *LinkBuffer) ReadByte() (p byte, err error) {
 		}
 		b.read = b.read.next
 	}
-}
-
-// Until returns a slice ends with the delim in the buffer.
-func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
-	n := b.indexByte(delim, 0)
-	if n < 0 {
-		return nil, fmt.Errorf("link buffer cannot find delim: '%b'", delim)
-	}
-	return b.Next(n + 1), nil
 }
 
 // Slice returns a new LinkBuffer, which is a zero-copy slice of this LinkBuffer,
