@@ -76,14 +76,17 @@ func (c *connection) inputAck(n int) (err error) {
 	if n < 0 {
 		n = 0
 	}
-	const maxBookSize = 16 * pagesize
 	// Auto size bookSize.
-	if n == c.bookSize && c.bookSize < maxBookSize {
+	if n == c.bookSize && c.bookSize < mallocMax {
 		c.bookSize <<= 1
 	}
+
 	length, _ := c.inputBuffer.bookAck(n)
 	if c.maxSize < length {
 		c.maxSize = length
+	}
+	if c.maxSize > mallocMax {
+		c.maxSize = mallocMax
 	}
 
 	var needTrigger = true
