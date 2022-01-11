@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -68,28 +69,26 @@ func TestConnectionRead(t *testing.T) {
 	wconn.init(&netFD{fd: w}, nil)
 
 	var size = 256
+	var cycleTime = 100000
 	var msg = make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for {
+		for i := 0; i < cycleTime; i++ {
 			buf, err := rconn.Reader().Next(size)
-			if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
-				return
-			}
-			rconn.Reader().Release()
 			MustNil(t, err)
+			rconn.Reader().Release()
 			Equal(t, len(buf), size)
 		}
 	}()
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < cycleTime; i++ {
 		n, err := wconn.Write(msg)
 		MustNil(t, err)
 		Equal(t, n, len(msg))
 	}
-	rconn.Close()
 	wg.Wait()
+	rconn.Close()
 }
 
 func TestConnectionReadAfterClosed(t *testing.T) {
@@ -311,4 +310,39 @@ func TestConnectionUntil(t *testing.T) {
 	buf, err := rconn.Reader().Until('\n')
 	Equal(t, len(buf), 100)
 	MustTrue(t, errors.Is(err, ErrEOF))
+}
+
+func TestBookSizeLargerThanMaxSize(t *testing.T) {
+	r, w := GetSysFdPairs()
+	var rconn, wconn = &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
+
+	var length = 25
+	dataCollection := make([][]byte, length)
+	for i := 0; i < length; i++ {
+		dataCollection[i] = make([]byte, 2<<i)
+		for j := 0; j < 2<<i; j++ {
+			dataCollection[i][j] = byte(rand.Intn(256))
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < length; i++ {
+			buf, err := rconn.Reader().Next(2 << i)
+			MustNil(t, err)
+			rconn.Reader().Release()
+			Equal(t, string(buf), string(dataCollection[i]))
+		}
+	}()
+	for i := 0; i < length; i++ {
+		n, err := wconn.Write(dataCollection[i])
+		MustNil(t, err)
+		Equal(t, n, 2<<i)
+	}
+	wg.Wait()
+	rconn.Close()
 }
