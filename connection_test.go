@@ -77,8 +77,8 @@ func TestConnectionRead(t *testing.T) {
 		for i := 0; i < cycleTime; i++ {
 			buf, err := rconn.Reader().Next(size)
 			MustNil(t, err)
-			rconn.Reader().Release()
 			Equal(t, len(buf), size)
+			rconn.Reader().Release()
 		}
 	}()
 	for i := 0; i < cycleTime; i++ {
@@ -302,8 +302,8 @@ func TestBookSizeLargerThanMaxSize(t *testing.T) {
 		for i := 0; i < length; i++ {
 			buf, err := rconn.Reader().Next(2 << i)
 			MustNil(t, err)
-			rconn.Reader().Release()
 			Equal(t, string(buf), string(dataCollection[i]))
+			rconn.Reader().Release()
 		}
 	}()
 	for i := 0; i < length; i++ {
