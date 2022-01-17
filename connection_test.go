@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"runtime"
@@ -278,6 +279,37 @@ func TestSetTCPNoDelay(t *testing.T) {
 	MustNil(t, err)
 	n, _ = syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n == 0)
+}
+
+func TestConnectionUntil(t *testing.T) {
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
+	loopSize := 100000
+
+	msg := make([]byte, 1002)
+	msg[500], msg[1001] = '\n', '\n'
+	go func() {
+		for i := 0; i < loopSize; i++ {
+			n, err := wconn.Write(msg)
+			MustNil(t, err)
+			MustTrue(t, n == len(msg))
+		}
+		wconn.Write(msg[:100])
+		wconn.Close()
+	}()
+
+	for i := 0; i < loopSize*2; i++ {
+		buf, err := rconn.Reader().Until('\n')
+		MustNil(t, err)
+		Equal(t, len(buf), 501)
+		rconn.Reader().Release()
+	}
+
+	buf, err := rconn.Reader().Until('\n')
+	Equal(t, len(buf), 100)
+	MustTrue(t, errors.Is(err, ErrEOF))
 }
 
 func TestBookSizeLargerThanMaxSize(t *testing.T) {

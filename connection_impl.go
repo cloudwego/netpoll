@@ -142,6 +142,26 @@ func (c *connection) Len() (length int) {
 	return c.inputBuffer.Len()
 }
 
+// Until implements Connection.
+func (c *connection) Until(delim byte) (line []byte, err error) {
+	var n, l int
+	for {
+		if err = c.waitRead(n + 1); err != nil {
+			// return all the data in the buffer
+			line, _ = c.inputBuffer.Next(c.inputBuffer.Len())
+			return
+		}
+
+		l = c.inputBuffer.Len()
+		i := c.inputBuffer.indexByte(delim, n)
+		if i < 0 {
+			n = l //skip all exists bytes
+			continue
+		}
+		return c.Next(i + 1)
+	}
+}
+
 // ReadString implements Connection.
 func (c *connection) ReadString(n int) (s string, err error) {
 	if err = c.waitRead(n); err != nil {

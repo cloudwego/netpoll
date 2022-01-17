@@ -458,6 +458,36 @@ func TestUnsafeStringToSlice(t *testing.T) {
 	Equal(t, string(bs), "hello world")
 }
 
+func TestLinkBufferIndexByte(t *testing.T) {
+	// clean & new
+	LinkBufferCap = 128
+	loopSize := 1000
+	trigger := make(chan struct{}, 16)
+
+	lb := NewLinkBuffer()
+	go func() {
+		for i := 0; i < loopSize; i++ {
+			buf, err := lb.Malloc(1002)
+			buf[500] = '\n'
+			buf[1001] = '\n'
+			MustNil(t, err)
+			lb.Flush()
+			trigger <- struct{}{}
+		}
+	}()
+
+	for i := 0; i < loopSize; i++ {
+		<-trigger
+		last := i * 1002
+		n := lb.indexByte('\n', 0+last)
+		Equal(t, n, 500+last)
+		n = lb.indexByte('\n', 500+last)
+		Equal(t, n, 500+last)
+		n = lb.indexByte('\n', 501+last)
+		Equal(t, n, 1001+last)
+	}
+}
+
 func BenchmarkStringToSliceByte(b *testing.B) {
 	b.StopTimer()
 	s := "hello world"
