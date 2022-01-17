@@ -68,9 +68,7 @@ func TestOnConnect(t *testing.T) {
 	var network, address = "tcp", ":8888"
 	req, resp := "ping", "pong"
 	var loop = newTestEventLoop(network, address,
-		func(ctx context.Context, connection Connection) error {
-			return nil
-		}, WithOnConnect(func(ctx context.Context, conn Connection) context.Context {
+		WithOnConnect(func(ctx context.Context, conn Connection) context.Context {
 			for {
 				input, err := conn.Reader().Next(len(req))
 				if errors.Is(err, ErrEOF) || errors.Is(err, ErrConnClosed) {
@@ -84,7 +82,11 @@ func TestOnConnect(t *testing.T) {
 				err = conn.Writer().Flush()
 				MustNil(t, err)
 			}
-		}))
+		}),
+		WithOnRequest(func(ctx context.Context, connection Connection) error {
+			return nil
+		}),
+	)
 	var conn, err = DialConnection(network, address, time.Second)
 	MustNil(t, err)
 
@@ -109,13 +111,15 @@ func TestOnConnect(t *testing.T) {
 func TestOnConnectWrite(t *testing.T) {
 	var network, address = "tcp", ":8888"
 	var loop = newTestEventLoop(network, address,
-		func(ctx context.Context, connection Connection) error {
-			return nil
-		}, WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
 			_, err := connection.Write([]byte("hello"))
 			MustNil(t, err)
 			return ctx
-		}))
+		}),
+		WithOnRequest(func(ctx context.Context, connection Connection) error {
+			return nil
+		}),
+	)
 	var conn, err = DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	s, err := conn.Reader().ReadString(5)
@@ -131,9 +135,9 @@ func TestGracefulExit(t *testing.T) {
 
 	// exit without processing connections
 	var eventLoop1 = newTestEventLoop(network, address,
-		func(ctx context.Context, connection Connection) error {
+		WithOnRequest(func(ctx context.Context, connection Connection) error {
 			return nil
-		})
+		}))
 	var _, err = DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	err = eventLoop1.Shutdown(context.Background())
@@ -141,10 +145,10 @@ func TestGracefulExit(t *testing.T) {
 
 	// exit with processing connections
 	var eventLoop2 = newTestEventLoop(network, address,
-		func(ctx context.Context, connection Connection) error {
+		WithOnRequest(func(ctx context.Context, connection Connection) error {
 			time.Sleep(10 * time.Second)
 			return nil
-		})
+		}))
 	for i := 0; i < 10; i++ {
 		if i%2 == 0 {
 			var conn, err = DialConnection(network, address, time.Second)
@@ -161,14 +165,14 @@ func TestGracefulExit(t *testing.T) {
 
 	// exit with some processing connections
 	var eventLoop3 = newTestEventLoop(network, address,
-		func(ctx context.Context, connection Connection) error {
+		WithOnRequest(func(ctx context.Context, connection Connection) error {
 			time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
 			if l := connection.Reader().Len(); l > 0 {
 				var _, err = connection.Reader().Next(l)
 				MustNil(t, err)
 			}
 			return nil
-		})
+		}))
 	for i := 0; i < 10; i++ {
 		var conn, err = DialConnection(network, address, time.Second)
 		MustNil(t, err)
@@ -183,9 +187,9 @@ func TestGracefulExit(t *testing.T) {
 	MustNil(t, err)
 }
 
-func newTestEventLoop(network, address string, handler OnRequest, opts ...Option) EventLoop {
+func newTestEventLoop(network, address string, opts ...Option) EventLoop {
 	var listener, _ = CreateListener(network, address)
-	var eventLoop, _ = NewEventLoop(handler, opts...)
+	var eventLoop, _ = NewEventLoop(opts...)
 	go eventLoop.Serve(listener)
 	return eventLoop
 }

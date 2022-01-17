@@ -24,20 +24,18 @@ import (
 )
 
 // newServer wrap listener into server, quit will be invoked when server exit.
-func newServer(ln Listener, onPrepare OnPrepare, onConnect OnConnect, onQuit func(err error)) *server {
+func newServer(ln Listener, opts *options, onQuit func(err error)) *server {
 	return &server{
-		ln:        ln,
-		onPrepare: onPrepare,
-		onConnect: onConnect,
-		onQuit:    onQuit,
+		ln:     ln,
+		opts:   opts,
+		onQuit: onQuit,
 	}
 }
 
 type server struct {
 	operator    FDOperator
 	ln          Listener
-	onPrepare   OnPrepare
-	onConnect   OnConnect
+	opts        *options
 	onQuit      func(err error)
 	connections sync.Map // key=fd, value=connection
 }
@@ -62,30 +60,25 @@ func (s *server) Close(ctx context.Context) error {
 	s.operator.Control(PollDetach)
 	s.ln.Close()
 
-	var conns []gracefulExit
-	s.connections.Range(func(key, value interface{}) bool {
-		var conn, ok = value.(gracefulExit)
-		if ok && !conn.isIdle() {
-			conns = append(conns, conn)
-		} else {
-			value.(Connection).Close()
-		}
-		return true
-	})
-
 	var ticker = time.NewTicker(time.Second)
 	defer ticker.Stop()
-	var count = len(conns) - 1
-	for count >= 0 {
-		for i := count; i >= 0; i-- {
-			if conns[i].isIdle() {
-				conns[i].Close()
+	var hasConn bool
+	for {
+		hasConn = false
+		s.connections.Range(func(key, value interface{}) bool {
+			var conn, ok = value.(gracefulExit)
+			if !ok || conn.isIdle() {
+				value.(Connection).Close()
 			}
-			if !conns[i].IsActive() {
-				conns[i] = conns[count]
-				count--
+			if !hasConn {
+				hasConn = true
 			}
+			return true
+		})
+		if !hasConn { // all connections have been closed
+			return nil
 		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -93,7 +86,6 @@ func (s *server) Close(ctx context.Context) error {
 			continue
 		}
 	}
-	return nil
 }
 
 // OnRead implements FDOperator.
@@ -115,7 +107,7 @@ func (s *server) OnRead(p Poll) error {
 	}
 	// store & register connection
 	var connection = &connection{}
-	connection.init(conn.(Conn), s.onPrepare)
+	connection.init(conn.(Conn), s.opts)
 	if !connection.IsActive() {
 		return nil
 	}
@@ -127,7 +119,7 @@ func (s *server) OnRead(p Poll) error {
 	s.connections.Store(fd, connection)
 
 	// onConnect is asynchronous
-	connection.onConnect(s.onConnect)
+	connection.onConnect(s.opts.onConnect)
 	return nil
 }
 

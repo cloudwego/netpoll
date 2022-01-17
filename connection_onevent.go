@@ -35,7 +35,6 @@ func disableGopool() error {
 
 type gracefulExit interface {
 	isIdle() (yes bool)
-	IsActive() bool
 	Close() (err error)
 }
 
@@ -43,9 +42,9 @@ type gracefulExit interface {
 // OnPrepare, OnRequest, CloseCallback share the lock processing,
 // which is a CAS lock and can only be cleared by OnRequest.
 type onEvent struct {
-	ctx            context.Context
-	onRequestFunc  atomic.Value
-	closeCallbacks atomic.Value // value is latest *callbackNode
+	ctx               context.Context
+	onRequestCallback atomic.Value
+	closeCallbacks    atomic.Value // value is latest *callbackNode
 }
 
 type callbackNode struct {
@@ -56,7 +55,7 @@ type callbackNode struct {
 // SetOnRequest initialize ctx when setting OnRequest.
 func (on *onEvent) SetOnRequest(onRequest OnRequest) error {
 	if onRequest != nil {
-		on.onRequestFunc.Store(onRequest)
+		on.onRequestCallback.Store(onRequest)
 	}
 	return nil
 }
@@ -77,15 +76,18 @@ func (on *onEvent) AddCloseCallback(callback CloseCallback) error {
 
 // OnPrepare supports close connection, but not read/write data.
 // connection will be registered by this call after preparing.
-func (c *connection) onPrepare(prepare OnPrepare) (err error) {
+func (c *connection) onPrepare(opts *options) (err error) {
+	c.SetOnRequest(opts.onRequest)
+	c.SetReadTimeout(opts.readTimeout)
+	c.SetIdleTimeout(opts.idleTimeout)
+
 	// calling prepare first and then register.
-	if prepare != nil {
-		c.ctx = prepare(c)
+	if opts.onPrepare != nil {
+		c.ctx = opts.onPrepare(c)
 	}
 	if c.ctx == nil {
 		c.ctx = context.Background()
 	}
-
 	// prepare may close the connection.
 	if c.IsActive() {
 		return c.register()
@@ -93,15 +95,12 @@ func (c *connection) onPrepare(prepare OnPrepare) (err error) {
 	return nil
 }
 
+// onConnect is responsible for executing onRequest if there is new data coming after onConnect callback finished.
 func (c *connection) onConnect(onConnect OnConnect) {
 	if onConnect == nil {
 		return
 	}
-	var onRequestFunc = c.onRequestFunc.Load()
-	var onRequest OnRequest = nil
-	if onRequestFunc != nil {
-		onRequest = onRequestFunc.(OnRequest)
-	}
+	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
 	var connected int32
 	c.onProcess(
 		// only process when conn active and have unread data
@@ -127,11 +126,10 @@ func (c *connection) onConnect(onConnect OnConnect) {
 
 // onRequest is responsible for executing the closeCallbacks after the connection has been closed.
 func (c *connection) onRequest() (needTrigger bool) {
-	var onRequestFunc = c.onRequestFunc.Load()
-	if onRequestFunc == nil {
+	var onRequest, ok = c.onRequestCallback.Load().(OnRequest)
+	if !ok {
 		return true
 	}
-	var onRequest = onRequestFunc.(OnRequest)
 	processed := c.onProcess(
 		// only process when conn active and have unread data
 		func(c *connection) bool {
@@ -147,7 +145,7 @@ func (c *connection) onRequest() (needTrigger bool) {
 
 // onProcess is responsible for executing the process function serially,
 // and make sure the connection has been closed correctly if user call c.Close() in process function.
-func (c *connection) onProcess(shouldProcess func(c *connection) bool, process func(c *connection)) (processed bool) {
+func (c *connection) onProcess(isProcessable func(c *connection) bool, process func(c *connection)) (processed bool) {
 	if process == nil {
 		return false
 	}
@@ -159,7 +157,7 @@ func (c *connection) onProcess(shouldProcess func(c *connection) bool, process f
 	var task = func() {
 	START:
 		// Single request processing, blocking allowed.
-		for shouldProcess(c) {
+		for isProcessable(c) {
 			process(c)
 		}
 		// Handling callback if connection has been closed.
@@ -169,7 +167,7 @@ func (c *connection) onProcess(shouldProcess func(c *connection) bool, process f
 		}
 		c.unlock(processing)
 		// Double check when exiting.
-		if shouldProcess(c) && c.lock(processing) {
+		if isProcessable(c) && c.lock(processing) {
 			goto START
 		}
 		// task exits

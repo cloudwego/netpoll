@@ -15,7 +15,6 @@
 package netpoll
 
 import (
-	"context"
 	"time"
 )
 
@@ -58,6 +57,13 @@ func WithOnConnect(onConnect OnConnect) Option {
 	}}
 }
 
+// WithOnRequest registers the OnRequest method to EventLoop.
+func WithOnRequest(onRequest OnRequest) Option {
+	return Option{func(op *options) {
+		op.onRequest = onRequest
+	}}
+}
+
 // WithReadTimeout sets the read timeout of connections.
 func WithReadTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
@@ -80,18 +86,7 @@ type Option struct {
 type options struct {
 	onPrepare   OnPrepare
 	onConnect   OnConnect
+	onRequest   OnRequest
 	readTimeout time.Duration
 	idleTimeout time.Duration
-}
-
-func (opt *options) prepare(onRequest OnRequest) OnPrepare {
-	return func(connection Connection) context.Context {
-		connection.SetOnRequest(onRequest)
-		connection.SetReadTimeout(opt.readTimeout)
-		connection.SetIdleTimeout(opt.idleTimeout)
-		if opt.onPrepare != nil {
-			return opt.onPrepare(connection)
-		}
-		return context.Background()
-	}
 }

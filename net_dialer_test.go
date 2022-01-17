@@ -106,10 +106,10 @@ func TestDialerFdAlloc(t *testing.T) {
 	ln, err := CreateListener("tcp", ":1234")
 	MustNil(t, err)
 	defer ln.Close()
-	el1, _ := NewEventLoop(func(ctx context.Context, connection Connection) error {
+	el1, _ := NewEventLoop(WithOnRequest(func(ctx context.Context, connection Connection) error {
 		connection.Close()
 		return nil
-	})
+	}))
 	go func() {
 		el1.Serve(ln)
 	}()
@@ -134,10 +134,10 @@ func TestFDClose(t *testing.T) {
 	ln, err := CreateListener("tcp", ":1234")
 	MustNil(t, err)
 	defer ln.Close()
-	el1, _ := NewEventLoop(func(ctx context.Context, connection Connection) error {
+	el1, _ := NewEventLoop(WithOnRequest(func(ctx context.Context, connection Connection) error {
 		connection.Close()
 		return nil
-	})
+	}))
 	go func() {
 		el1.Serve(ln)
 	}()
@@ -207,7 +207,7 @@ func TestDialerThenClose(t *testing.T) {
 }
 
 func mockDialerEventLoop(idx int) EventLoop {
-	el, _ := NewEventLoop(func(ctx context.Context, conn Connection) (err error) {
+	el, _ := NewEventLoop(WithOnRequest(func(ctx context.Context, conn Connection) (err error) {
 		defer func() {
 			if err != nil {
 				fmt.Printf("Error: server%d conn closed: %s", idx, err.Error())
@@ -237,7 +237,7 @@ func mockDialerEventLoop(idx int) EventLoop {
 			return err
 		}
 		return nil
-	})
+	}))
 	return el
 }
 

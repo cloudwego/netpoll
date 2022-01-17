@@ -139,7 +139,7 @@ type TCPConnection struct {
 // newTCPConnection wraps *TCPConnection.
 func newTCPConnection(conn Conn) (connection *TCPConnection, err error) {
 	connection = &TCPConnection{}
-	err = connection.init(conn, nil)
+	err = connection.init(conn, &options{})
 	if err != nil {
 		return nil, err
 	}

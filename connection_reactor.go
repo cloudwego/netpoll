@@ -29,7 +29,7 @@ func (c *connection) onHup(p Poll) error {
 		// It depends on closing by user if OnRequest is nil, otherwise it needs to be released actively.
 		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
 		// and it is safe to close the buffer at this time.
-		if onRequest, _ := c.onRequestFunc.Load().(OnRequest); onRequest != nil {
+		if onRequest, _ := c.onRequestCallback.Load().(OnRequest); onRequest != nil {
 			c.closeCallback(true)
 		}
 	}

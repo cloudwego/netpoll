@@ -75,7 +75,7 @@ type UnixConnection struct {
 // newUnixConnection wraps UnixConnection.
 func newUnixConnection(conn Conn) (connection *UnixConnection, err error) {
 	connection = &UnixConnection{}
-	err = connection.init(conn, nil)
+	err = connection.init(conn, &options{})
 	if err != nil {
 		return nil, err
 	}

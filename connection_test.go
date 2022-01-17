@@ -33,7 +33,8 @@ func TestConnectionWrite(t *testing.T) {
 	wg.Add(1)
 	var count int32
 	var expect = int32(cycle * caps)
-	onRequest := func(ctx context.Context, connection Connection) error {
+	var opts = &options{}
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
 		n, err := connection.Read(buf)
 		MustNil(t, err)
 		if atomic.AddInt32(&count, int32(n)) >= expect {
@@ -41,15 +42,11 @@ func TestConnectionWrite(t *testing.T) {
 		}
 		return nil
 	}
-	var prepare = func(connection Connection) context.Context {
-		connection.SetOnRequest(onRequest)
-		return context.Background()
-	}
 
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, prepare)
-	wconn.init(&netFD{fd: w}, prepare)
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
 
 	for i := 0; i < cycle; i++ {
 		n, err := wconn.Write(msg)
@@ -64,8 +61,8 @@ func TestConnectionWrite(t *testing.T) {
 func TestConnectionRead(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, nil)
-	wconn.init(&netFD{fd: w}, nil)
+	rconn.init(&netFD{fd: r}, &options{})
+	wconn.init(&netFD{fd: w}, &options{})
 
 	var size = 256
 	var cycleTime = 100000
@@ -93,7 +90,7 @@ func TestConnectionRead(t *testing.T) {
 func TestConnectionReadAfterClosed(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn = &connection{}
-	rconn.init(&netFD{fd: r}, nil)
+	rconn.init(&netFD{fd: r}, &options{})
 	var size = 256
 	var msg = make([]byte, size)
 	var wg sync.WaitGroup
@@ -113,7 +110,7 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn = &connection{}
-	rconn.init(&netFD{fd: r}, nil)
+	rconn.init(&netFD{fd: r}, &options{})
 	var size = pagesize * 2
 	var msg = make([]byte, size)
 
@@ -233,7 +230,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 
 	r, w := GetSysFdPairs()
 	var rconn = &connection{}
-	rconn.init(&netFD{fd: r}, nil)
+	rconn.init(&netFD{fd: r}, &options{})
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -270,7 +267,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 func TestSetTCPNoDelay(t *testing.T) {
 	fd, err := sysSocket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
 	conn := &connection{}
-	conn.init(&netFD{network: "tcp", fd: fd}, nil)
+	conn.init(&netFD{network: "tcp", fd: fd}, &options{})
 
 	n, _ := syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n > 0)
@@ -283,8 +280,8 @@ func TestSetTCPNoDelay(t *testing.T) {
 func TestBookSizeLargerThanMaxSize(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, nil)
-	wconn.init(&netFD{fd: w}, nil)
+	rconn.init(&netFD{fd: r}, &options{})
+	wconn.init(&netFD{fd: w}, &options{})
 
 	var length = 25
 	dataCollection := make([][]byte, length)
