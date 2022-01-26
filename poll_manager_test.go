@@ -22,8 +22,8 @@ import (
 func TestPollManager(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, &options{})
-	wconn.init(&netFD{fd: w}, &options{})
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
 
 	var msg = []byte("hello world")
 	n, err := wconn.Write(msg)

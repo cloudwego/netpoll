@@ -77,14 +77,17 @@ func (on *onEvent) AddCloseCallback(callback CloseCallback) error {
 // OnPrepare supports close connection, but not read/write data.
 // connection will be registered by this call after preparing.
 func (c *connection) onPrepare(opts *options) (err error) {
-	c.SetOnRequest(opts.onRequest)
-	c.SetReadTimeout(opts.readTimeout)
-	c.SetIdleTimeout(opts.idleTimeout)
+	if opts != nil {
+		c.SetOnRequest(opts.onRequest)
+		c.SetReadTimeout(opts.readTimeout)
+		c.SetIdleTimeout(opts.idleTimeout)
 
-	// calling prepare first and then register.
-	if opts.onPrepare != nil {
-		c.ctx = opts.onPrepare(c)
+		// calling prepare first and then register.
+		if opts.onPrepare != nil {
+			c.ctx = opts.onPrepare(c)
+		}
 	}
+
 	if c.ctx == nil {
 		c.ctx = context.Background()
 	}

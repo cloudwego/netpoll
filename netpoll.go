@@ -99,8 +99,10 @@ type OnConnect func(ctx context.Context, connection Connection) context.Context
 type OnRequest func(ctx context.Context, connection Connection) error
 
 // NewEventLoop .
-func NewEventLoop(ops ...Option) (EventLoop, error) {
-	opts := &options{}
+func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
+	opts := &options{
+		onRequest: onRequest,
+	}
 	for _, do := range ops {
 		do.f(opts)
 	}

@@ -57,13 +57,6 @@ func WithOnConnect(onConnect OnConnect) Option {
 	}}
 }
 
-// WithOnRequest registers the OnRequest method to EventLoop.
-func WithOnRequest(onRequest OnRequest) Option {
-	return Option{func(op *options) {
-		op.onRequest = onRequest
-	}}
-}
-
 // WithReadTimeout sets the read timeout of connections.
 func WithReadTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
