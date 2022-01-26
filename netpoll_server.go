@@ -70,9 +70,7 @@ func (s *server) Close(ctx context.Context) error {
 			if !ok || conn.isIdle() {
 				value.(Connection).Close()
 			}
-			if !hasConn {
-				hasConn = true
-			}
+			hasConn = true
 			return true
 		})
 		if !hasConn { // all connections have been closed
