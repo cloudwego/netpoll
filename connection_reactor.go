@@ -29,7 +29,7 @@ func (c *connection) onHup(p Poll) error {
 		// It depends on closing by user if OnRequest is nil, otherwise it needs to be released actively.
 		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
 		// and it is safe to close the buffer at this time.
-		if process, _ := c.process.Load().(OnRequest); process != nil {
+		if onRequest, _ := c.onRequestCallback.Load().(OnRequest); onRequest != nil {
 			c.closeCallback(true)
 		}
 	}
@@ -90,13 +90,13 @@ func (c *connection) inputAck(n int) (err error) {
 	}
 
 	var needTrigger = true
-	if length == n {
+	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
 	}
 	if needTrigger && length >= int(atomic.LoadInt32(&c.waitReadSize)) {
 		c.triggerRead()
 	}
-	return err
+	return nil
 }
 
 // outputs implements FDOperator.

@@ -34,7 +34,8 @@ func TestConnectionWrite(t *testing.T) {
 	wg.Add(1)
 	var count int32
 	var expect = int32(cycle * caps)
-	onRequest := func(ctx context.Context, connection Connection) error {
+	var opts = &options{}
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
 		n, err := connection.Read(buf)
 		MustNil(t, err)
 		if atomic.AddInt32(&count, int32(n)) >= expect {
@@ -42,15 +43,11 @@ func TestConnectionWrite(t *testing.T) {
 		}
 		return nil
 	}
-	var prepare = func(connection Connection) context.Context {
-		connection.SetOnRequest(onRequest)
-		return context.Background()
-	}
 
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, prepare)
-	wconn.init(&netFD{fd: w}, prepare)
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
 
 	for i := 0; i < cycle; i++ {
 		n, err := wconn.Write(msg)
