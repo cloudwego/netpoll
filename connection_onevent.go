@@ -80,6 +80,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 	if opts != nil {
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
+		c.SetReadTimeout(opts.writeTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
 
 		// calling prepare first and then register.

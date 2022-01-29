@@ -33,6 +33,8 @@ const (
 	ErrUnsupported = syscall.Errno(0x105)
 	// Same as io.EOF
 	ErrEOF = syscall.Errno(0x106)
+	// write I/O buffer timeout, calling by Connection.Writer
+	ErrWriteTimeout = syscall.Errno(0x107)
 )
 
 const ErrnoMask = 0xFF
