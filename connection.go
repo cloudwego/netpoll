@@ -45,6 +45,10 @@ type Connection interface {
 	// A zero value for timeout means Reader will not timeout.
 	SetReadTimeout(timeout time.Duration) error
 
+	// SetWriteTimeout sets the timeout for future Write calls wait.
+	// A zero value for timeout means Writer will not timeout.
+	SetWriteTimeout(timeout time.Duration) error
+
 	// SetIdleTimeout sets the idle timeout of connections.
 	// Idle connections that exceed the set timeout are no longer guaranteed to be active,
 	// but can be checked by calling IsActive.

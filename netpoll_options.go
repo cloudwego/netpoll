@@ -72,6 +72,13 @@ func WithReadTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithWriteTimeout sets the write timeout of connections.
+func WithWriteTimeout(timeout time.Duration) Option {
+	return Option{func(op *options) {
+		op.writeTimeout = timeout
+	}}
+}
+
 // WithIdleTimeout sets the idle timeout of connections.
 func WithIdleTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
@@ -85,9 +92,10 @@ type Option struct {
 }
 
 type options struct {
-	onPrepare   OnPrepare
-	onConnect   OnConnect
-	onRequest   OnRequest
-	readTimeout time.Duration
-	idleTimeout time.Duration
+	onPrepare    OnPrepare
+	onConnect    OnConnect
+	onRequest    OnRequest
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
 }

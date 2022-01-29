@@ -98,6 +98,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 		c.SetOnConnect(opts.onConnect)
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
+		c.SetWriteTimeout(opts.writeTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
 
 		// calling prepare first and then register.
