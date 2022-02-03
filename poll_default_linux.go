@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -85,6 +86,7 @@ func (p *defaultPoll) Wait() (err error) {
 	var caps, msec, n = barriercap, -1, 0
 	p.Reset(128, caps)
 	// wait
+	pollCt := 0
 	for {
 		if n == p.size && p.size < 128*1024 {
 			p.Reset(p.size<<1, caps)
@@ -94,11 +96,19 @@ func (p *defaultPoll) Wait() (err error) {
 			return err
 		}
 		if n <= 0 {
-			msec = -1
-			runtime.Gosched()
+			if pollCt <= 0 {
+				msec = 0
+				time.Sleep(1 * time.Microsecond)
+				pollCt++
+			} else {
+				pollCt = 0
+				msec = -1
+				runtime.Gosched()
+			}
 			continue
 		}
 		msec = 0
+		pollCt = 0
 		if p.Handler(p.events[:n]) {
 			return nil
 		}
