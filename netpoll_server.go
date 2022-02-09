@@ -116,8 +116,8 @@ func (s *server) OnRead(p Poll) error {
 	})
 	s.connections.Store(fd, connection)
 
-	// onConnect is asynchronous
-	connection.onConnect(s.opts.onConnect)
+	// trigger onConnect asynchronously
+	connection.onConnect()
 	return nil
 }
 

@@ -187,6 +187,64 @@ func TestGracefulExit(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestCloseCallbackWhenOnRequest(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	var requested, closed = make(chan struct{}), make(chan struct{})
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			_, err := connection.Reader().Next(connection.Reader().Len())
+			MustNil(t, err)
+			err = connection.AddCloseCallback(func(connection Connection) error {
+				closed <- struct{}{}
+				return nil
+			})
+			MustNil(t, err)
+			requested <- struct{}{}
+			return nil
+		},
+	)
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	_, err = conn.Writer().WriteString("hello")
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+	<-requested
+	err = conn.Close()
+	MustNil(t, err)
+	<-closed
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestCloseCallbackWhenOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	var connected, closed = make(chan struct{}), make(chan struct{})
+	var loop = newTestEventLoop(network, address,
+		nil,
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			err := connection.AddCloseCallback(func(connection Connection) error {
+				closed <- struct{}{}
+				return nil
+			})
+			MustNil(t, err)
+			connected <- struct{}{}
+			return ctx
+		}),
+	)
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	err = conn.Close()
+	MustNil(t, err)
+
+	<-connected
+	<-closed
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
 	var listener, _ = CreateListener(network, address)
 	var eventLoop, _ = NewEventLoop(onRequest, opts...)
