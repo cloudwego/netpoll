@@ -26,10 +26,12 @@ func (c *connection) onHup(p Poll) error {
 	if c.closeBy(poller) {
 		c.triggerRead()
 		c.triggerWrite(ErrConnClosed)
-		// It depends on closing by user if OnRequest is nil, otherwise it needs to be released actively.
+		// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
 		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
 		// and it is safe to close the buffer at this time.
-		if onRequest, _ := c.onRequestCallback.Load().(OnRequest); onRequest != nil {
+		var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+		var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+		if onConnect != nil || onRequest != nil {
 			c.closeCallback(true)
 		}
 	}

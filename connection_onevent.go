@@ -43,6 +43,7 @@ type gracefulExit interface {
 // which is a CAS lock and can only be cleared by OnRequest.
 type onEvent struct {
 	ctx               context.Context
+	onConnectCallback atomic.Value
 	onRequestCallback atomic.Value
 	closeCallbacks    atomic.Value // value is latest *callbackNode
 }
@@ -50,6 +51,14 @@ type onEvent struct {
 type callbackNode struct {
 	fn  CloseCallback
 	pre *callbackNode
+}
+
+// SetOnConnect set the OnConnect callback.
+func (on *onEvent) SetOnConnect(onConnect OnConnect) error {
+	if onConnect != nil {
+		on.onConnectCallback.Store(onConnect)
+	}
+	return nil
 }
 
 // SetOnRequest initialize ctx when setting OnRequest.
@@ -78,6 +87,7 @@ func (on *onEvent) AddCloseCallback(callback CloseCallback) error {
 // connection will be registered by this call after preparing.
 func (c *connection) onPrepare(opts *options) (err error) {
 	if opts != nil {
+		c.SetOnConnect(opts.onConnect)
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
@@ -99,7 +109,8 @@ func (c *connection) onPrepare(opts *options) (err error) {
 }
 
 // onConnect is responsible for executing onRequest if there is new data coming after onConnect callback finished.
-func (c *connection) onConnect(onConnect OnConnect) {
+func (c *connection) onConnect() {
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
 		return
 	}
