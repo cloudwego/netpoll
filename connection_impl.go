@@ -327,10 +327,6 @@ func (c *connection) waitRead(n int) (err error) {
 			<-c.readTrigger
 			continue
 		}
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			return c.fill(n)
-		}
 		return Exception(ErrConnClosed, "wait read")
 	}
 	return nil
@@ -354,12 +350,7 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 			}
 		}
 		// cannot return directly, stop timer before !
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			err = c.fill(n)
-		} else {
-			err = Exception(ErrConnClosed, "wait read")
-		}
+		err = Exception(ErrConnClosed, "wait read")
 		break
 	}
 	// clean timer.C
