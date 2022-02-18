@@ -5,6 +5,7 @@
 // This file may have been modified by CloudWeGo authors. (“CloudWeGo Modifications”).
 // All CloudWeGo Modifications are Copyright 2021 CloudWeGo authors.
 
+//go:build aix || darwin || dragonfly || freebsd || linux || nacl || netbsd || openbsd || solaris
 // +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris
 
 package netpoll
@@ -173,7 +174,6 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 	}
 
 	c.pd = newPollDesc(c.fd)
-	var deadline, _ = ctx.Deadline()
 	for {
 		// Performing multiple connect system calls on a
 		// non-blocking socket under Unix variants does not
@@ -183,12 +183,7 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 		// SO_ERROR socket option to see if the connection
 		// succeeded or failed. See issue 7474 for further
 		// details.
-		if err := c.pd.WaitWrite(deadline); err != nil {
-			select {
-			case <-ctx.Done():
-				return nil, mapErr(ctx.Err())
-			default:
-			}
+		if err := c.pd.WaitWrite(ctx); err != nil {
 			return nil, err
 		}
 		nerr, err := syscall.GetsockoptInt(c.fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
