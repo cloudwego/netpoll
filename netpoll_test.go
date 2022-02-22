@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"testing"
 	"time"
@@ -61,6 +62,72 @@ func TestEqual(t *testing.T) {
 	MustTrue(t, err == nil)
 	Equal(t, err, nil)
 	Assert(t, err == nil, err)
+}
+
+func TestOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	req, resp := "ping", "pong"
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			return nil
+		},
+		WithOnConnect(func(ctx context.Context, conn Connection) context.Context {
+			for {
+				input, err := conn.Reader().Next(len(req))
+				if errors.Is(err, ErrEOF) || errors.Is(err, ErrConnClosed) {
+					return ctx
+				}
+				MustNil(t, err)
+				Equal(t, string(input), req)
+
+				_, err = conn.Writer().WriteString(resp)
+				MustNil(t, err)
+				err = conn.Writer().Flush()
+				MustNil(t, err)
+			}
+		}),
+	)
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+
+	for i := 0; i < 1024; i++ {
+		_, err = conn.Writer().WriteString(req)
+		MustNil(t, err)
+		err = conn.Writer().Flush()
+		MustNil(t, err)
+
+		input, err := conn.Reader().Next(len(resp))
+		MustNil(t, err)
+		Equal(t, string(input), resp)
+	}
+
+	err = conn.Close()
+	MustNil(t, err)
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestOnConnectWrite(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			return nil
+		},
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			_, err := connection.Write([]byte("hello"))
+			MustNil(t, err)
+			return ctx
+		}),
+	)
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	s, err := conn.Reader().ReadString(5)
+	MustNil(t, err)
+	MustTrue(t, s == "hello")
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
 }
 
 func TestGracefulExit(t *testing.T) {
@@ -120,9 +187,67 @@ func TestGracefulExit(t *testing.T) {
 	MustNil(t, err)
 }
 
-func newTestEventLoop(network, address string, handler OnRequest, opts ...Option) EventLoop {
+func TestCloseCallbackWhenOnRequest(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	var requested, closed = make(chan struct{}), make(chan struct{})
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			_, err := connection.Reader().Next(connection.Reader().Len())
+			MustNil(t, err)
+			err = connection.AddCloseCallback(func(connection Connection) error {
+				closed <- struct{}{}
+				return nil
+			})
+			MustNil(t, err)
+			requested <- struct{}{}
+			return nil
+		},
+	)
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	_, err = conn.Writer().WriteString("hello")
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+	<-requested
+	err = conn.Close()
+	MustNil(t, err)
+	<-closed
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestCloseCallbackWhenOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	var connected, closed = make(chan struct{}), make(chan struct{})
+	var loop = newTestEventLoop(network, address,
+		nil,
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			err := connection.AddCloseCallback(func(connection Connection) error {
+				closed <- struct{}{}
+				return nil
+			})
+			MustNil(t, err)
+			connected <- struct{}{}
+			return ctx
+		}),
+	)
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	err = conn.Close()
+	MustNil(t, err)
+
+	<-connected
+	<-closed
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
 	var listener, _ = CreateListener(network, address)
-	var eventLoop, _ = NewEventLoop(handler, opts...)
+	var eventLoop, _ = NewEventLoop(onRequest, opts...)
 	go eventLoop.Serve(listener)
 	return eventLoop
 }

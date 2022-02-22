@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -258,6 +259,15 @@ func (b *LinkBuffer) ReadByte() (p byte, err error) {
 		}
 		b.read = b.read.next
 	}
+}
+
+// Until returns a slice ends with the delim in the buffer.
+func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
+	n := b.indexByte(delim, 0)
+	if n < 0 {
+		return nil, fmt.Errorf("link buffer read slice cannot find: '%b'", delim)
+	}
+	return b.Next(n + 1)
 }
 
 // Slice returns a new LinkBuffer, which is a zero-copy slice of this LinkBuffer,
@@ -597,6 +607,38 @@ func (b *LinkBuffer) calcMaxSize() (sum int) {
 	}
 	sum += len(b.read.buf)
 	return sum
+}
+
+// indexByte returns the index of the first instance of c in buffer, or -1 if c is not present in buffer.
+func (b *LinkBuffer) indexByte(c byte, skip int) int {
+	size := b.Len()
+	if skip >= size {
+		return -1
+	}
+	var unread, n, l int
+	node := b.read
+	for unread = size; unread > 0; unread -= n {
+		l = node.Len()
+		if l >= unread { // last node
+			n = unread
+		} else { // read full node
+			n = l
+		}
+
+		// skip current node
+		if skip >= n {
+			skip -= n
+			node = node.next
+			continue
+		}
+		i := bytes.IndexByte(node.Peek(n)[skip:], c)
+		if i >= 0 {
+			return (size - unread) + skip + i // past_read + skip_read + index
+		}
+		skip = 0 // no skip bytes
+		node = node.next
+	}
+	return -1
 }
 
 // resetTail will reset tail node or add an empty tail node to

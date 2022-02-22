@@ -112,6 +112,11 @@ func (c *connection) Release() (err error) {
 	// c.operator.do competes with c.inputs/c.inputAck
 	if c.inputBuffer.Len() == 0 && c.operator.do() {
 		maxSize := c.inputBuffer.calcMaxSize()
+		// Set the maximum value of maxsize equal to mallocMax to prevent GC pressure.
+		if maxSize > mallocMax {
+			maxSize = mallocMax
+		}
+
 		if maxSize > c.maxSize {
 			c.maxSize = maxSize
 		}
@@ -135,6 +140,26 @@ func (c *connection) Slice(n int) (r Reader, err error) {
 // Len implements Connection.
 func (c *connection) Len() (length int) {
 	return c.inputBuffer.Len()
+}
+
+// Until implements Connection.
+func (c *connection) Until(delim byte) (line []byte, err error) {
+	var n, l int
+	for {
+		if err = c.waitRead(n + 1); err != nil {
+			// return all the data in the buffer
+			line, _ = c.inputBuffer.Next(c.inputBuffer.Len())
+			return
+		}
+
+		l = c.inputBuffer.Len()
+		i := c.inputBuffer.indexByte(delim, n)
+		if i < 0 {
+			n = l //skip all exists bytes
+			continue
+		}
+		return c.Next(i + 1)
+	}
 }
 
 // ReadString implements Connection.
@@ -242,9 +267,15 @@ func (c *connection) Read(p []byte) (n int, err error) {
 
 // Write will Flush soon.
 func (c *connection) Write(p []byte) (n int, err error) {
+	if !c.lock(flushing) {
+		return 0, Exception(ErrConnClosed, "when write")
+	}
+	defer c.unlock(flushing)
+
 	dst, _ := c.outputBuffer.Malloc(len(p))
 	n = copy(dst, p)
-	err = c.Flush()
+	c.outputBuffer.Flush()
+	err = c.flush()
 	return n, err
 }
 
@@ -264,22 +295,20 @@ var barrierPool = sync.Pool{
 	},
 }
 
-// init arguments: conn is required, prepare is optional.
-func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
-	// conn must be *netFD{}
-	c.checkNetFD(conn)
-
-	c.initFDOperator()
-	syscall.SetNonblock(c.fd, true)
-
+// init initialize the connection with options
+func (c *connection) init(conn Conn, opts *options) (err error) {
 	// init buffer, barrier, finalizer
 	c.readTrigger = make(chan struct{}, 1)
 	c.writeTrigger = make(chan error, 1)
 	c.bookSize, c.maxSize = block1k/2, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
-	c.setFinalizer()
 
+	c.initNetFD(conn) // conn must be *netFD{}
+	c.initFDOperator()
+	c.initFinalizer()
+
+	syscall.SetNonblock(c.fd, true)
 	// enable TCP_NODELAY by default
 	switch c.network {
 	case "tcp", "tcp4", "tcp6":
@@ -289,10 +318,12 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
 		c.supportZeroCopy = true
 	}
-	return c.onPrepare(prepare)
+
+	// connection initialized and prepare options
+	return c.onPrepare(opts)
 }
 
-func (c *connection) checkNetFD(conn Conn) {
+func (c *connection) initNetFD(conn Conn) {
 	if nfd, ok := conn.(*netFD); ok {
 		c.netFD = *nfd
 		return
@@ -318,7 +349,7 @@ func (c *connection) initFDOperator() {
 	c.operator = op
 }
 
-func (c *connection) setFinalizer() {
+func (c *connection) initFinalizer() {
 	c.AddCloseCallback(func(connection Connection) error {
 		c.stop(flushing)
 		c.netFD.Close()

@@ -1,6 +1,17 @@
+# CloudWeGo-Netpoll
+
 [中文](README_CN.md)
 
-# Introduction
+[![Release](https://img.shields.io/github/v/release/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/releases)
+[![WebSite](https://img.shields.io/website?up_message=cloudwego&url=https%3A%2F%2Fwww.cloudwego.io%2F)](https://www.cloudwego.io/)
+[![License](https://img.shields.io/github/license/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/blob/main/LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cloudwego/netpoll)](https://goreportcard.com/report/github.com/cloudwego/netpoll)
+[![OpenIssue](https://img.shields.io/github/issues/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/issues)
+[![ClosedIssue](https://img.shields.io/github/issues-closed/cloudwego/netpoll)](https://github.com/cloudwego/netpoll/issues?q=is%3Aissue+is%3Aclosed)
+![Stars](https://img.shields.io/github/stars/cloudwego/netpoll)
+![Forks](https://img.shields.io/github/forks/cloudwego/netpoll)
+
+## Introduction
 
 [Netpoll][Netpoll] is a high-performance non-blocking I/O networking framework, which
 focused on RPC scenarios, developed by [ByteDance][ByteDance].
@@ -31,7 +42,7 @@ using [Netpoll][Netpoll].
 
 For more information, please refer to [Document](#document).
 
-# Features
+## Features
 
 * **Already**
     - [LinkBuffer][LinkBuffer] provides nocopy API for streaming reading and writing
@@ -54,7 +65,7 @@ For more information, please refer to [Document](#document).
 * **Unsupported**
     - Windows (operating system)
 
-# Performance
+## Performance
 
 Benchmark should meet the requirements of industrial use. 
 In the RPC scenario, concurrency and timeout are necessary support items.
@@ -64,7 +75,7 @@ the performance of [Netpoll][Netpoll] and other frameworks under different condi
 
 More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmark][hertz-benchmark] (open source soon).
 
-# Reference
+## Reference
 
 * [Official Website](https://www.cloudwego.io)
 * [Getting Started](docs/guide/guide_en.md)
@@ -81,8 +92,8 @@ More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmar
 [Hertz]: https://github.com/cloudwego/hertz
 
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
-[kitex-benchmark]: https://github.com/cloudwego/kitex
-[hertz-benchmark]: https://github.com/cloudwego/hertz
+[kitex-benchmark]: https://github.com/cloudwego/kitex-benchmark
+[hertz-benchmark]: https://github.com/cloudwego/hertz-benchmark
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io

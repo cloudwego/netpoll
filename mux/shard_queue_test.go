@@ -26,8 +26,8 @@ import (
 func TestShardQueue(t *testing.T) {
 	var svrConn net.Conn
 
-	network, address := "tcp", ":1234"
-	ln, err := net.Listen("tcp", ":1234")
+	network, address := "tcp", ":18888"
+	ln, err := net.Listen("tcp", ":18888")
 	MustNil(t, err)
 	stop := make(chan int, 1)
 	defer close(stop)

@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -33,7 +34,8 @@ func TestConnectionWrite(t *testing.T) {
 	wg.Add(1)
 	var count int32
 	var expect = int32(cycle * caps)
-	onRequest := func(ctx context.Context, connection Connection) error {
+	var opts = &options{}
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
 		n, err := connection.Read(buf)
 		MustNil(t, err)
 		if atomic.AddInt32(&count, int32(n)) >= expect {
@@ -41,15 +43,11 @@ func TestConnectionWrite(t *testing.T) {
 		}
 		return nil
 	}
-	var prepare = func(connection Connection) context.Context {
-		connection.SetOnRequest(onRequest)
-		return context.Background()
-	}
 
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, prepare)
-	wconn.init(&netFD{fd: w}, prepare)
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
 
 	for i := 0; i < cycle; i++ {
 		n, err := wconn.Write(msg)
@@ -68,28 +66,26 @@ func TestConnectionRead(t *testing.T) {
 	wconn.init(&netFD{fd: w}, nil)
 
 	var size = 256
+	var cycleTime = 100000
 	var msg = make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for {
+		for i := 0; i < cycleTime; i++ {
 			buf, err := rconn.Reader().Next(size)
-			if err != nil && errors.Is(err, ErrConnClosed) || !rconn.IsActive() {
-				return
-			}
-			rconn.Reader().Release()
 			MustNil(t, err)
 			Equal(t, len(buf), size)
+			rconn.Reader().Release()
 		}
 	}()
-	for i := 0; i < 100000; i++ {
+	for i := 0; i < cycleTime; i++ {
 		n, err := wconn.Write(msg)
 		MustNil(t, err)
 		Equal(t, n, len(msg))
 	}
-	rconn.Close()
 	wg.Wait()
+	rconn.Close()
 }
 
 func TestConnectionReadAfterClosed(t *testing.T) {
@@ -280,4 +276,70 @@ func TestSetTCPNoDelay(t *testing.T) {
 	MustNil(t, err)
 	n, _ = syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n == 0)
+}
+
+func TestConnectionUntil(t *testing.T) {
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
+	loopSize := 100000
+
+	msg := make([]byte, 1002)
+	msg[500], msg[1001] = '\n', '\n'
+	go func() {
+		for i := 0; i < loopSize; i++ {
+			n, err := wconn.Write(msg)
+			MustNil(t, err)
+			MustTrue(t, n == len(msg))
+		}
+		wconn.Write(msg[:100])
+		wconn.Close()
+	}()
+
+	for i := 0; i < loopSize*2; i++ {
+		buf, err := rconn.Reader().Until('\n')
+		MustNil(t, err)
+		Equal(t, len(buf), 501)
+		rconn.Reader().Release()
+	}
+
+	buf, err := rconn.Reader().Until('\n')
+	Equal(t, len(buf), 100)
+	MustTrue(t, errors.Is(err, ErrEOF))
+}
+
+func TestBookSizeLargerThanMaxSize(t *testing.T) {
+	r, w := GetSysFdPairs()
+	var rconn, wconn = &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
+
+	var length = 25
+	dataCollection := make([][]byte, length)
+	for i := 0; i < length; i++ {
+		dataCollection[i] = make([]byte, 2<<i)
+		for j := 0; j < 2<<i; j++ {
+			dataCollection[i][j] = byte(rand.Intn(256))
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < length; i++ {
+			buf, err := rconn.Reader().Next(2 << i)
+			MustNil(t, err)
+			Equal(t, string(buf), string(dataCollection[i]))
+			rconn.Reader().Release()
+		}
+	}()
+	for i := 0; i < length; i++ {
+		n, err := wconn.Write(dataCollection[i])
+		MustNil(t, err)
+		Equal(t, n, 2<<i)
+	}
+	wg.Wait()
+	rconn.Close()
 }

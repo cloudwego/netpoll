@@ -26,10 +26,12 @@ func (c *connection) onHup(p Poll) error {
 	if c.closeBy(poller) {
 		c.triggerRead()
 		c.triggerWrite(ErrConnClosed)
-		// It depends on closing by user if OnRequest is nil, otherwise it needs to be released actively.
+		// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
 		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
 		// and it is safe to close the buffer at this time.
-		if process, _ := c.process.Load().(OnRequest); process != nil {
+		var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+		var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+		if onConnect != nil || onRequest != nil {
 			c.closeCallback(true)
 		}
 	}
@@ -76,24 +78,27 @@ func (c *connection) inputAck(n int) (err error) {
 	if n < 0 {
 		n = 0
 	}
-	const maxBookSize = 16 * pagesize
 	// Auto size bookSize.
-	if n == c.bookSize && c.bookSize < maxBookSize {
+	if n == c.bookSize && c.bookSize < mallocMax {
 		c.bookSize <<= 1
 	}
+
 	length, _ := c.inputBuffer.bookAck(n)
 	if c.maxSize < length {
 		c.maxSize = length
 	}
+	if c.maxSize > mallocMax {
+		c.maxSize = mallocMax
+	}
 
 	var needTrigger = true
-	if length == n {
+	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
 	}
 	if needTrigger && length >= int(atomic.LoadInt32(&c.waitReadSize)) {
 		c.triggerRead()
 	}
-	return err
+	return nil
 }
 
 // outputs implements FDOperator.

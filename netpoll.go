@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
@@ -37,6 +38,35 @@ type EventLoop interface {
 	// but will not force the closing of connections in progress.
 	Shutdown(ctx context.Context) error
 }
+
+// OnPrepare is used to inject custom preparation at connection initialization,
+// which is optional but important in some scenarios. For example, a qps limiter
+// can be set by closing overloaded connections directly in OnPrepare.
+//
+// Return:
+// context will become the argument of OnRequest.
+// Usually, custom resources can be initialized in OnPrepare and used in OnRequest.
+//
+// PLEASE NOTE:
+// OnPrepare is executed without any data in the connection,
+// so Reader() or Writer() cannot be used here, but may be supported in the future.
+type OnPrepare func(connection Connection) context.Context
+
+// OnConnect is called once connection created.
+// It supports read/write/close connection, and could return a ctx which will be passed to OnRequest.
+// OnConnect will not block the poller since it's executed asynchronously.
+// Only after OnConnect finished the OnRequest could be executed.
+//
+// An example usage in TCP Proxy scenario:
+//
+//  func onConnect(ctx context.Context, upstream netpoll.Connection) context.Context {
+//	  downstream, _ := netpoll.DialConnection("tcp", downstreamAddr, time.Second)
+//	  return context.WithValue(ctx, downstreamKey, downstream)
+//  }
+//  func onRequest(ctx context.Context, upstream netpoll.Connection) error {
+//    downstream := ctx.Value(downstreamKey).(netpoll.Connection)
+//  }
+type OnConnect func(ctx context.Context, connection Connection) context.Context
 
 // OnRequest defines the function for handling connection. When data is sent from the connection peer,
 // netpoll actively reads the data in LT mode and places it in the connection's input buffer.
@@ -68,38 +98,25 @@ type EventLoop interface {
 // Return: error is unused which will be ignored directly.
 type OnRequest func(ctx context.Context, connection Connection) error
 
-// OnPrepare is used to inject custom preparation at connection initialization,
-// which is optional but important in some scenarios. For example, a qps limiter
-// can be set by closing overloaded connections directly in OnPrepare.
-//
-// Return:
-// context will become the argument of OnRequest.
-// Usually, custom resources can be initialized in OnPrepare and used in OnRequest.
-//
-// PLEASE NOTE:
-// OnPrepare is executed without any data in the connection,
-// so Reader() or Writer() cannot be used here, but may be supported in the future.
-type OnPrepare func(connection Connection) context.Context
-
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
-	opt := &options{}
+	opts := &options{
+		onRequest: onRequest,
+	}
 	for _, do := range ops {
-		do.f(opt)
+		do.f(opts)
 	}
 	return &eventLoop{
-		opt:     opt,
-		prepare: opt.prepare(onRequest),
-		stop:    make(chan error, 1),
+		opts: opts,
+		stop: make(chan error, 1),
 	}, nil
 }
 
 type eventLoop struct {
 	sync.Mutex
-	opt     *options
-	prepare OnPrepare
-	svr     *server
-	stop    chan error
+	opts *options
+	svr  *server
+	stop chan error
 }
 
 // Serve implements EventLoop.
@@ -109,7 +126,7 @@ func (evl *eventLoop) Serve(ln net.Listener) error {
 		return err
 	}
 	evl.Lock()
-	evl.svr = newServer(npln, evl.prepare, evl.quit)
+	evl.svr = newServer(npln, evl.opts, evl.quit)
 	evl.svr.Run()
 	evl.Unlock()
 
