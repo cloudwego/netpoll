@@ -444,15 +444,23 @@ func (c *connection) fill(need int) (err error) {
 	for {
 		n, err = readv(c.fd, c.inputs(c.inputBarrier.bs), c.inputBarrier.ivs)
 		c.inputAck(n)
-		if n < pagesize || err != nil {
+		err = c.eofError(n, err)
+		if err != nil {
 			break
 		}
 	}
 	if c.inputBuffer.Len() >= need {
 		return nil
 	}
-	if err == nil {
-		err = Exception(ErrEOF, "")
+	return err
+}
+
+func (c *connection) eofError(n int, err error) error {
+	if err == syscall.EINTR {
+		return nil
+	}
+	if n == 0 && err == nil {
+		return Exception(ErrEOF, "")
 	}
 	return err
 }
