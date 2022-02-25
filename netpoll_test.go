@@ -16,8 +16,11 @@ package netpoll
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -242,6 +245,77 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 	<-closed
 
 	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestCloseAndSend(t *testing.T) {
+	var network, address = "tcp", ":18888"
+	var concurrency, round = 1024, 100
+	var timeout = time.Millisecond * 10
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			buf, err := connection.Reader().Next(4)
+			MustNil(t, err)
+
+			// let it timeout
+			time.Sleep(timeout)
+
+			_, err = connection.Writer().WriteBinary(buf)
+			MustNil(t, err)
+			err = connection.Writer().Flush()
+			MustNil(t, err)
+			return nil
+		},
+	)
+
+	var seqIdCount uint32
+	var wg sync.WaitGroup
+	for c := 0; c < concurrency; c++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < round; i++ {
+				var connWg sync.WaitGroup
+				connWg.Add(1)
+				seqId := atomic.AddUint32(&seqIdCount, 1)
+				var conn, err = DialConnection(network, address, time.Second)
+				MustNil(t, err)
+
+				buf := make([]byte, 4)
+				binary.BigEndian.PutUint32(buf, seqId)
+				_, err = conn.Writer().WriteBinary(buf)
+				MustNil(t, err)
+				err = conn.Writer().Flush()
+				MustNil(t, err)
+
+				// read and close
+				go func() {
+					defer connWg.Done()
+
+					// trigger timeout and close
+					time.Sleep(timeout)
+					err = conn.Close()
+					MustNil(t, err)
+				}()
+				buf, err = conn.Reader().Next(4)
+				if err != nil {
+					t.Logf("read get err: %v", err)
+					continue
+				}
+				rSeqId := binary.BigEndian.Uint32(buf)
+				Assert(t, rSeqId == seqId, seqId, rSeqId)
+
+				connWg.Wait()
+				if conn.IsActive() {
+					err = conn.Close()
+					MustNil(t, err)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	err := loop.Shutdown(context.Background())
 	MustNil(t, err)
 }
 
