@@ -245,6 +245,37 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestCloseAndWrite(t *testing.T) {
+	var network, address = "tcp", ":18888"
+	var sendMsg = []byte("hello")
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			_, err := connection.Reader().Next(len(sendMsg))
+			MustNil(t, err)
+
+			err = connection.Close()
+			MustNil(t, err)
+			return nil
+		},
+	)
+
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	_, err = conn.Writer().WriteBinary(sendMsg)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+
+	time.Sleep(time.Millisecond * 100) // wait for poller close connection
+	_, err = conn.Writer().WriteBinary(sendMsg)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustTrue(t, errors.Is(err, ErrConnClosed))
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
 	var listener, _ = CreateListener(network, address)
 	var eventLoop, _ = NewEventLoop(onRequest, opts...)
