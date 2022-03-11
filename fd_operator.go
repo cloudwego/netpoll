@@ -44,22 +44,22 @@ type FDOperator struct {
 
 	// private, used by operatorCache
 	next  *FDOperator
-	state int32 // CAS: 0(unused) 1(inuse) 2(do-done)
+	state int32 // CAS: 0(Unused) 1(Inuse) 2(Do-Done)
 }
 
 func (op *FDOperator) Control(event PollEvent) error {
 	return op.poll.Control(op, event)
 }
 
-func (op *FDOperator) do() (can bool) {
+func (op *FDOperator) Do() (can bool) {
 	return atomic.CompareAndSwapInt32(&op.state, 1, 2)
 }
 
-func (op *FDOperator) done() {
+func (op *FDOperator) Done() {
 	atomic.StoreInt32(&op.state, 1)
 }
 
-func (op *FDOperator) inuse() {
+func (op *FDOperator) Inuse() {
 	for !atomic.CompareAndSwapInt32(&op.state, 0, 1) {
 		if atomic.LoadInt32(&op.state) == 1 {
 			return
@@ -68,7 +68,7 @@ func (op *FDOperator) inuse() {
 	}
 }
 
-func (op *FDOperator) unused() {
+func (op *FDOperator) Unused() {
 	for !atomic.CompareAndSwapInt32(&op.state, 1, 0) {
 		if atomic.LoadInt32(&op.state) == 0 {
 			return

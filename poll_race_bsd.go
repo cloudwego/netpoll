@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build (darwin || netbsd || freebsd || openbsd || dragonfly) && race
 // +build darwin netbsd freebsd openbsd dragonfly
 // +build race
 
@@ -86,7 +87,7 @@ func (p *defaultPoll) Wait() error {
 			} else {
 				continue
 			}
-			if !operator.do() {
+			if !operator.Do() {
 				continue
 			}
 			switch {
@@ -126,7 +127,7 @@ func (p *defaultPoll) Wait() error {
 					hups = append(hups, operator)
 				}
 			}
-			operator.done()
+			operator.Done()
 		}
 		// hup conns together to avoid blocking the poll.
 		if len(hups) > 0 {
@@ -168,15 +169,15 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	evs[0].Ident = uint64(operator.FD)
 	switch event {
 	case PollReadable, PollModReadable:
-		operator.inuse()
+		operator.Inuse()
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollDetach:
-		defer operator.unused()
+		defer operator.Unused()
 		p.m.Delete(operator.FD)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
-		operator.inuse()
+		operator.Inuse()
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
 	case PollR2RW:

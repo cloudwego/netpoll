@@ -122,7 +122,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			}
 			continue
 		}
-		if !operator.do() {
+		if !operator.Do() {
 			continue
 		}
 
@@ -176,7 +176,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				}
 			}
 		}
-		operator.done()
+		operator.Done()
 	}
 	// hup conns together to avoid blocking the poll.
 	if len(hups) > 0 {
@@ -208,16 +208,16 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	*(**FDOperator)(unsafe.Pointer(&evt.data)) = operator
 	switch event {
 	case PollReadable:
-		operator.inuse()
+		operator.Inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollModReadable:
-		operator.inuse()
+		operator.Inuse()
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
-		defer operator.unused()
+		defer operator.Unused()
 		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable:
-		operator.inuse()
+		operator.Inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build race
 // +build race
 
 package netpoll
@@ -120,7 +121,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			}
 			continue
 		}
-		if !operator.do() {
+		if !operator.Do() {
 			continue
 		}
 
@@ -174,7 +175,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 				}
 			}
 		}
-		operator.done()
+		operator.Done()
 	}
 	// hup conns together to avoid blocking the poll.
 	if len(hups) > 0 {
@@ -214,19 +215,19 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	evt.Fd = int32(operator.FD)
 	switch event {
 	case PollReadable:
-		operator.inuse()
+		operator.Inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollModReadable:
-		operator.inuse()
+		operator.Inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
-		defer operator.unused()
+		defer operator.Unused()
 		p.m.Delete(operator.FD)
 		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable:
-		operator.inuse()
+		operator.Inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
