@@ -27,6 +27,13 @@ func setLoadBalance(lb LoadBalance) error {
 	return pollmanager.SetLoadBalance(lb)
 }
 
+func setPollNewer(newer func() Poll) error {
+	openpoll = newer
+	return nil
+}
+
+var openpoll = openPoll
+
 // manage all pollers
 var pollmanager *manager
 
@@ -95,7 +102,7 @@ func (m *manager) Close() error {
 func (m *manager) Run() error {
 	// new poll to fill delta.
 	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll = openPoll()
+		var poll = openpoll()
 		m.polls = append(m.polls, poll)
 		go poll.Wait()
 	}

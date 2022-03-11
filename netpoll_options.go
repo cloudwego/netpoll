@@ -43,6 +43,11 @@ func DisableGopool() error {
 	return disableGopool()
 }
 
+// SetPollNewer TODO: explain
+func SetPollNewer(newer func() Poll) error {
+	return setPollNewer(newer)
+}
+
 // WithOnPrepare registers the OnPrepare method to EventLoop.
 func WithOnPrepare(onPrepare OnPrepare) Option {
 	return Option{func(op *options) {
