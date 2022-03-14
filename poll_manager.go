@@ -29,6 +29,7 @@ func setLoadBalance(lb LoadBalance) error {
 
 func setPollNewer(newer func() Poll) error {
 	openpoll = newer
+	pollmanager.Reset()
 	return nil
 }
 
