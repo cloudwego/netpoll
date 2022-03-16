@@ -129,14 +129,17 @@ func (r *zcReader) fill(n int) (err error) {
 			return err
 		}
 		num, err = r.r.Read(buf)
-		if err != nil {
-			return err
-		}
 		if num < 0 {
-			return fmt.Errorf("zcReader fill negative count[%d]", num)
+			if err == nil {
+				err = fmt.Errorf("zcReader fill negative count[%d]", num)
+			}
+			num = 0
 		}
 		r.buf.MallocAck(num)
 		r.buf.Flush()
+		if err != nil {
+			return err
+		}
 	}
 	return err
 }
