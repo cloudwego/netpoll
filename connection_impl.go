@@ -264,11 +264,6 @@ func (c *connection) init(conn Conn, prepare OnPrepare) (err error) {
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
 	c.setFinalizer()
 
-	// enable TCP_NODELAY by default
-	switch c.network {
-	case "tcp", "tcp4", "tcp6":
-		setTCPNoDelay(c.fd, true)
-	}
 	// check zero-copy
 	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
 		c.supportZeroCopy = true
