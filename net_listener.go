@@ -22,20 +22,31 @@ import (
 	"net"
 	"os"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // CreateListener return a new Listener.
-func CreateListener(network, addr string) (l Listener, err error) {
-	if network == "udp" {
+func CreateListener(network, addr string) (Listener, error) {
+	var l net.Listener
+	var err error
+	switch network {
+	case "udp":
 		// TODO: udp listener.
-		return udpListener(network, addr)
+		l, err = udpListener(network, addr)
+	case "unix": // uds
+		l, err = netListener(network, addr)
+	default: // tcp, tcp4, tcp6
+		if smcEnable {
+			l, err = smcListener(network, addr)
+		} else {
+			l, err = netListener(network, addr)
+		}
 	}
-	// tcp, tcp4, tcp6, unix
-	ln, err := net.Listen(network, addr)
 	if err != nil {
 		return nil, err
 	}
-	return ConvertListener(ln)
+	return ConvertListener(l)
 }
 
 // ConvertListener converts net.Listener to Listener
@@ -51,6 +62,51 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 		return nil, err
 	}
 	return ln, syscall.SetNonblock(ln.fd, true)
+}
+
+func netListener(network, addr string) (net.Listener, error) {
+	return net.Listen(network, addr)
+}
+
+func smcListener(network, addr string) (net.Listener, error) {
+	var (
+		protoOpt int
+		sockaddr unix.Sockaddr
+	)
+	tcpaddr, err := net.ResolveTCPAddr(network, addr)
+	ipv4, ipv6 := tcpaddr.IP.To4(), tcpaddr.IP.To16()
+	if ipv4 != nil || ipv4 == nil && ipv6 == nil {
+		protoOpt = SMCProtoIPv4
+		sockaddr4 := &unix.SockaddrInet4{}
+		sockaddr4.Port = tcpaddr.Port
+		copy(sockaddr4.Addr[:], ipv4[:net.IPv4len])
+		sockaddr = sockaddr4
+	} else {
+		protoOpt = SMCProtoIPv6
+		sockaddr6 := &unix.SockaddrInet6{}
+		sockaddr6.Port = tcpaddr.Port
+		copy(sockaddr6.Addr[:], ipv6[:net.IPv6len])
+		sockaddr = sockaddr6
+	}
+
+	fd, err := unix.Socket(unix.AF_SMC, unix.SOCK_STREAM, protoOpt)
+	if err != nil {
+		return nil, err
+	}
+	defer unix.Close(fd)
+
+	err = unix.Bind(fd, sockaddr)
+	if err != nil {
+		return nil, err
+	}
+
+	err = unix.Listen(fd, unix.SOMAXCONN)
+	if err != nil {
+		return nil, err
+	}
+
+	f := os.NewFile(uintptr(fd), "")
+	return net.FileListener(f)
 }
 
 // TODO: udpListener does not work now.

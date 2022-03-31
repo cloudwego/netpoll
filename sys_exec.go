@@ -22,6 +22,8 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // GetSysFdPairs creates and returns the fds of a pair of sockets.
@@ -38,6 +40,16 @@ func setTCPNoDelay(fd int, b bool) (err error) {
 // Wrapper around the socket system call that marks the returned file
 // descriptor as nonblocking and close-on-exec.
 func sysSocket(family, sotype, proto int) (int, error) {
+	// reject to use smc
+	if smcEnable {
+		switch family {
+		case syscall.AF_INET:
+			proto = SMCProtoIPv4
+		case syscall.AF_INET6:
+			proto = SMCProtoIPv6
+		}
+		family = unix.AF_SMC
+	}
 	// See ../syscall/exec_unix.go for description of ForkLock.
 	syscall.ForkLock.RLock()
 	s, err := syscall.Socket(family, sotype, proto)

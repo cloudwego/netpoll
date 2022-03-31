@@ -12,10 +12,26 @@ package netpoll
 
 import (
 	"context"
+	"log"
 	"net"
+	"os"
 	"runtime"
 	"syscall"
 )
+
+// SMC definitions
+var (
+	smcEnable    = false
+	SMCProtoIPv4 = 0
+	SMCProtoIPv6 = 1
+)
+
+func init() {
+	if _, ok := os.LookupEnv("SMC"); ok {
+		smcEnable = true
+		log.Println("netpoll: SMC-R enabled")
+	}
+}
 
 // A sockaddr represents a TCP, UDP, IP or Unix network endpoint
 // address that can be converted into a syscall.Sockaddr.
