@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build (darwin || netbsd || freebsd || openbsd || dragonfly) && !race
 // +build darwin netbsd freebsd openbsd dragonfly
 // +build !race
 
@@ -82,9 +83,10 @@ func (p *defaultPoll) Wait() error {
 			if !operator.do() {
 				continue
 			}
-			switch {
-			case events[i].Flags&syscall.EV_EOF != 0:
+			if events[i].Flags&syscall.EV_EOF != 0 {
 				hups = append(hups, operator)
+			}
+			switch {
 			case events[i].Filter == syscall.EVFILT_READ && events[i].Flags&syscall.EV_ENABLE != 0:
 				// for non-connection
 				if operator.OnRead != nil {
