@@ -31,22 +31,10 @@ func setLoadBalance(lb LoadBalance) error {
 var pollmanager *manager
 
 func init() {
+	var loops = runtime.GOMAXPROCS(0)/20 + 1
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
-	pollmanager.SetNumLoops(defaultNumLoops())
-}
-
-func defaultNumLoops() int {
-	procs := runtime.GOMAXPROCS(0)
-	loops := 1
-	// Loops produce events that handlers consume,
-	// so the producer should be faster than consumer otherwise it will have a bottleneck.
-	// But there is no universal option that could be appropriate for any use cases,
-	// plz use `SetNumLoops` if you do know what you want.
-	if procs > 4 {
-		loops = procs
-	}
-	return loops
+	pollmanager.SetNumLoops(loops)
 }
 
 // LoadBalance is used to do load balancing among multiple pollers.
