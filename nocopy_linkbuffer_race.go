@@ -386,8 +386,10 @@ func (b *LinkBuffer) MallocAck(n int) (err error) {
 		b.write = b.write.next
 	}
 	// discard the rest
-	for node := b.write.next; node != nil; node = node.next {
-		node.off, node.malloc, node.refer, node.buf = 0, 0, 1, node.buf[:0]
+	for b.write.next != nil {
+		node := b.write.next
+		b.write.next = node.next
+		node.Release()
 	}
 	return nil
 }
