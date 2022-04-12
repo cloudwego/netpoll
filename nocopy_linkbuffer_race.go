@@ -562,13 +562,13 @@ func (b *LinkBuffer) Close() (err error) {
 	atomic.StoreInt32(&b.length, 0)
 	b.mallocSize = 0
 	// just release all
+	b.release()
 	for node := b.head; node != nil; {
 		nd := node
 		node = node.next
 		nd.Release()
 	}
-	// releaseLink(b.head, nil)
-	// b.head, b.read, b.flush, b.write = emptyNode, emptyNode, emptyNode, emptyNode
+	b.head, b.read, b.flush, b.write = nil, nil, nil, nil
 	return nil
 }
 
@@ -706,29 +706,9 @@ func (b *LinkBuffer) resetTail(maxSize int) {
 	return
 }
 
-// Reset resets the buffer to be empty,
-// but it retains the underlying storage for use by future writes.
-// Reset is the same as Truncate(0).
-// func (b *LinkBuffer) Reset() {
-// 	atomic.StoreInt32(&b.length, 0)
-//  b.mallocSize = 0
-// 	releaseLink(b.head, nil)
-// 	node := linkedPool.Get().(*linkBufferNode)
-// 	b.head, b.read, b.flush, b.write = node, node, node, node
-// }
-
 // recalLen re-calculate the length
 func (b *LinkBuffer) recalLen(delta int) (length int) {
 	return int(atomic.AddInt32(&b.length, int32(delta)))
-}
-
-func (node *linkBufferNode) Reset() {
-	if node.origin != nil || atomic.LoadInt32(&node.refer) != 1 {
-		return
-	}
-	node.off, node.malloc = 0, 0
-	node.buf = node.buf[:0]
-	return
 }
 
 // ------------------------------------------ implement link node ------------------------------------------
@@ -774,18 +754,14 @@ func (node *linkBufferNode) IsEmpty() (ok bool) {
 	return node.off == len(node.buf)
 }
 
-//
-// func (node *linkBufferNode) Reset() (err error) {
-// 	node.off, node.malloc, node.refer, node.next, node.origin = 0, 0, 1, nil, nil
-// 	node.buf = node.buf[:0]
-// 	return nil
-// }
-//
-// func (node *linkBufferNode) Close() (err error) {
-// 	node.off, node.malloc, node.refer = 0, 0, 0
-// 	node.next, node.origin, node.buf = nil, nil, zeroSlice
-// 	return nil
-// }
+func (node *linkBufferNode) Reset() {
+	if node.origin != nil || atomic.LoadInt32(&node.refer) != 1 {
+		return
+	}
+	node.off, node.malloc = 0, 0
+	node.buf = node.buf[:0]
+	return
+}
 
 func (node *linkBufferNode) Next(n int) (p []byte) {
 	off := node.off
