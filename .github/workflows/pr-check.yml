@@ -1,6 +1,6 @@
-name: Pull Request Check
+name: Push and Pull Request Check
 
-on: pull_request
+on: [ push, pull_request ]
 
 jobs:
   build:
@@ -19,6 +19,19 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+
+      - name: Check License Header
+        uses: apache/skywalking-eyes@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint
+        run: |
+          test -z "$(gofmt -s -l .)"
+          go vet -stdmethods=false $(go list ./...)
+
+      - name: Unit Test
+        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Benchmark
         run: go test -bench=. -benchmem -run=none ./...
