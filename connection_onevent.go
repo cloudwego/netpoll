@@ -170,14 +170,18 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 	// add new task
 	var task = func() {
 	START:
-		// Single request processing, blocking allowed.
-		for isProcessable(c) {
+		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
+		// Then the loop processing must ensure that the connection `IsActive`.
+		if isProcessable(c) {
 			process(c)
-			// Handling callback if connection has been closed.
-			if !c.IsActive() {
-				c.closeCallback(false)
-				return
-			}
+		}
+		for c.IsActive() && isProcessable(c) {
+			process(c)
+		}
+		// Handling callback if connection has been closed.
+		if !c.IsActive() {
+			c.closeCallback(false)
+			return
 		}
 		c.unlock(processing)
 		// Double check when exiting.
