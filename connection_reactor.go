@@ -75,9 +75,11 @@ func (c *connection) inputs(vs [][]byte) (rs [][]byte) {
 
 // inputAck implements FDOperator.
 func (c *connection) inputAck(n int) (err error) {
-	if n < 0 {
-		n = 0
+	if n <= 0 {
+		c.inputBuffer.bookAck(0)
+		return nil
 	}
+
 	// Auto size bookSize.
 	if n == c.bookSize && c.bookSize < mallocMax {
 		c.bookSize <<= 1

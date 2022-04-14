@@ -127,51 +127,58 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 		}
 
 		evt := events[i].events
-		switch {
-		// check hup first
-		case evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0:
+		// check poll in
+		if evt&syscall.EPOLLIN != 0 {
+			if operator.OnRead != nil {
+				// for non-connection
+				operator.OnRead(p)
+			} else {
+				// for connection
+				var bs = operator.Inputs(p.barriers[i].bs)
+				if len(bs) > 0 {
+					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
+					operator.InputAck(n)
+					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
+						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+						hups = append(hups, operator)
+						operator.done()
+						continue
+					}
+				}
+			}
+		}
+
+		// check hup
+		if evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0 {
 			hups = append(hups, operator)
-		case evt&syscall.EPOLLERR != 0:
+			operator.done()
+			continue
+		}
+		if evt&syscall.EPOLLERR != 0 {
 			// Under block-zerocopy, the kernel may give an error callback, which is not a real error, just an EAGAIN.
 			// So here we need to check this error, if it is EAGAIN then do nothing, otherwise still mark as hup.
 			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
 				hups = append(hups, operator)
+				operator.done()
+				continue
 			}
-		default:
-			if evt&syscall.EPOLLIN != 0 {
-				if operator.OnRead != nil {
-					// for non-connection
-					operator.OnRead(p)
-				} else {
-					// for connection
-					var bs = operator.Inputs(p.barriers[i].bs)
-					if len(bs) > 0 {
-						var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
-						operator.InputAck(n)
-						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
-							hups = append(hups, operator)
-							break
-						}
-					}
-				}
-			}
-			if evt&syscall.EPOLLOUT != 0 {
-				if operator.OnWrite != nil {
-					// for non-connection
-					operator.OnWrite(p)
-				} else {
-					// for connection
-					var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
-					if len(bs) > 0 {
-						// TODO: Let the upper layer pass in whether to use ZeroCopy.
-						var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
-						operator.OutputAck(n)
-						if err != nil && err != syscall.EAGAIN {
-							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
-							hups = append(hups, operator)
-							break
-						}
+		}
+
+		// check poll out
+		if evt&syscall.EPOLLOUT != 0 {
+			if operator.OnWrite != nil {
+				// for non-connection
+				operator.OnWrite(p)
+			} else {
+				// for connection
+				var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
+				if len(bs) > 0 {
+					// TODO: Let the upper layer pass in whether to use ZeroCopy.
+					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
+					operator.OutputAck(n)
+					if err != nil && err != syscall.EAGAIN {
+						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+						hups = append(hups, operator)
 					}
 				}
 			}

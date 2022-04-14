@@ -95,7 +95,7 @@ func TestPollMod(t *testing.T) {
 	MustNil(t, err)
 	time.Sleep(time.Millisecond)
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
-	Assert(t, r == 0 && w >= 2 && h >= 1, r, w, h)
+	Assert(t, r == 1 && w >= 2 && h >= 1, r, w, h)
 
 	p.Close()
 	err = <-stop
