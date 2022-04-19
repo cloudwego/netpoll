@@ -17,6 +17,7 @@ package netpoll
 import (
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 // ------------------------------------------ implement FDOperator ------------------------------------------
@@ -60,11 +61,13 @@ func (c *connection) onClose() error {
 
 // closeBuffer recycle input & output LinkBuffer.
 func (c *connection) closeBuffer() {
-	c.inputBuffer.Close()
-	barrierPool.Put(c.inputBarrier)
-
 	c.outputBuffer.Close()
 	barrierPool.Put(c.outputBarrier)
+	if !c.inputBuffer.IsEmpty() {
+		time.Sleep(time.Second)
+	}
+	c.inputBuffer.Close()
+	barrierPool.Put(c.inputBarrier)
 }
 
 // inputs implements FDOperator.
