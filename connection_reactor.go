@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"log"
 	"sync/atomic"
 	"syscall"
 )
@@ -95,6 +96,10 @@ func (c *connection) inputAck(n int) (err error) {
 	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
 	}
+	log.Printf(
+		"netpoll: inputAck(%d) newlength(%d) waitReadSize(%d) needTrigger(%v) \n",
+		n, length, atomic.LoadInt32(&c.waitReadSize), needTrigger,
+	)
 	if needTrigger && length >= int(atomic.LoadInt32(&c.waitReadSize)) {
 		c.triggerRead()
 	}

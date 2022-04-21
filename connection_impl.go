@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -84,6 +85,7 @@ func (c *connection) SetReadTimeout(timeout time.Duration) error {
 
 // Next implements Connection.
 func (c *connection) Next(n int) (p []byte, err error) {
+	log.Printf("netpoll: connection.Next(%d)\n", n)
 	if err = c.waitRead(n); err != nil {
 		return p, err
 	}
@@ -209,6 +211,11 @@ func (c *connection) Flush() error {
 		return Exception(ErrConnClosed, "when flush")
 	}
 	defer c.unlock(flushing)
+
+	log.Printf(
+		"netpoll: flushing %d bytes\n",
+		c.outputBuffer.MallocLen(),
+	)
 	c.outputBuffer.Flush()
 	return c.flush()
 }
@@ -385,6 +392,7 @@ func (c *connection) waitRead(n int) (err error) {
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
+		log.Printf("netpoll: try read (%d)\n", c.inputBuffer.Len())
 		if c.IsActive() {
 			<-c.readTrigger
 			continue
@@ -408,6 +416,7 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	}
 
 	for c.inputBuffer.Len() < n {
+		log.Printf("netpoll: try read (%d)\n", c.inputBuffer.Len())
 		if !c.IsActive() {
 			// cannot return directly, stop timer before !
 			// confirm that fd is still valid.
