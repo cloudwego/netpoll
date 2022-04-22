@@ -40,11 +40,3 @@ func TestPollManager(t *testing.T) {
 	MustTrue(t, !rconn.IsActive())
 	MustTrue(t, !wconn.IsActive())
 }
-
-func TestPollManagerReset(t *testing.T) {
-	n := pollmanager.NumLoops
-	err := pollmanager.Reset()
-	MustNil(t, err)
-	Equal(t, len(pollmanager.polls), n)
-	Equal(t, pollmanager.NumLoops, n)
-}

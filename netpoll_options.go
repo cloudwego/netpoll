@@ -23,6 +23,7 @@ import (
 // If the number of cores in your service process is less than 20c, theoretically only one poller is needed.
 // Otherwise you may need to adjust the number of pollers to achieve the best results.
 // Experience recommends assigning a poller every 20c.
+// You can only use SetNumLoops before any connection is created.
 func SetNumLoops(numLoops int) error {
 	return setNumLoops(numLoops)
 }

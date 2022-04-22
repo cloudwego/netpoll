@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 )
 
@@ -50,13 +51,30 @@ func (m *manager) SetNumLoops(numLoops int) error {
 	if numLoops < 1 {
 		return fmt.Errorf("set invaild numLoops[%d]", numLoops)
 	}
-	// if less than, reset all; else new the delta.
+
 	if numLoops < m.NumLoops {
+		// if less than, close the redundant pollers
+		var polls = m.polls[:numLoops]
+		for idx := numLoops; idx < m.NumLoops; idx++ {
+			if err := m.polls[idx].Close(); err != nil {
+				log.Printf("poller close failed: %v\n", err)
+			}
+		}
 		m.NumLoops = numLoops
-		return m.Reset()
+		m.polls = polls
+	} else {
+		// new poll to fill delta.
+		m.NumLoops = numLoops
+		for idx := len(m.polls); idx < m.NumLoops; idx++ {
+			var poll = openPoll()
+			m.polls = append(m.polls, poll)
+			go poll.Wait()
+		}
 	}
-	m.NumLoops = numLoops
-	return m.Run()
+
+	// LoadBalance must be set first
+	m.balance.Rebalance(m.polls)
+	return nil
 }
 
 // SetLoadBalance set load balance.
@@ -77,28 +95,6 @@ func (m *manager) Close() error {
 	m.balance = nil
 	m.polls = nil
 	return nil
-}
-
-// Run all pollers.
-func (m *manager) Run() error {
-	// new poll to fill delta.
-	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll = openPoll()
-		m.polls = append(m.polls, poll)
-		go poll.Wait()
-	}
-	// LoadBalance must be set before calling Run, otherwise it will panic.
-	m.balance.Rebalance(m.polls)
-	return nil
-}
-
-// Reset pollers, this operation is very dangerous, please make sure to do this when calling !
-func (m *manager) Reset() error {
-	for _, poll := range m.polls {
-		poll.Close()
-	}
-	m.polls = nil
-	return m.Run()
 }
 
 // Pick will select the poller for use each time based on the LoadBalance.
