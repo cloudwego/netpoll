@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 )
 
@@ -50,11 +51,25 @@ func (m *manager) SetNumLoops(numLoops int) error {
 	if numLoops < 1 {
 		return fmt.Errorf("set invaild numLoops[%d]", numLoops)
 	}
-	// if less than, reset all; else new the delta.
+
 	if numLoops < m.NumLoops {
+		// if less than, close the redundant pollers
+		var polls = make([]Poll, numLoops)
+		for idx := 0; idx < m.NumLoops; idx++ {
+			if idx < numLoops {
+				polls[idx] = m.polls[idx]
+			} else {
+				if err := m.polls[idx].Close(); err != nil {
+					log.Printf("poller close failed: %v\n", err)
+				}
+			}
+		}
 		m.NumLoops = numLoops
-		return m.Reset()
+		m.polls = polls
+		m.balance.Rebalance(m.polls)
+		return nil
 	}
+
 	m.NumLoops = numLoops
 	return m.Run()
 }
