@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build (darwin || netbsd || freebsd || openbsd || dragonfly) && race
 // +build darwin netbsd freebsd openbsd dragonfly
 // +build race
 
 package netpoll
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -89,41 +91,52 @@ func (p *defaultPoll) Wait() error {
 			if !operator.do() {
 				continue
 			}
-			switch {
-			case events[i].Flags&syscall.EV_EOF != 0:
-				hups = append(hups, operator)
-			case events[i].Filter == syscall.EVFILT_READ && events[i].Flags&syscall.EV_ENABLE != 0:
-				// for non-connection
+
+			// check poll in
+			if events[i].Filter == syscall.EVFILT_READ && events[i].Flags&syscall.EV_ENABLE != 0 {
 				if operator.OnRead != nil {
+					// for non-connection
 					operator.OnRead(p)
-					break
+				} else {
+					// only for connection
+					var bs = operator.Inputs(barriers[i].bs)
+					if len(bs) > 0 {
+						var n, err = readv(operator.FD, bs, barriers[i].ivs)
+						operator.InputAck(n)
+						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
+							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+							hups = append(hups, operator)
+							operator.done()
+							continue
+						}
+					}
 				}
-				// only for connection
-				var bs = operator.Inputs(barriers[i].bs)
-				if len(bs) == 0 {
-					break
-				}
-				var n, err = readv(operator.FD, bs, barriers[i].ivs)
-				operator.InputAck(n)
-				if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-					hups = append(hups, operator)
-				}
-			case events[i].Filter == syscall.EVFILT_WRITE && events[i].Flags&syscall.EV_ENABLE != 0:
-				// for non-connection
+			}
+
+			// check hup
+			if events[i].Flags&syscall.EV_EOF != 0 {
+				hups = append(hups, operator)
+				operator.done()
+				continue
+			}
+
+			// check poll out
+			if events[i].Filter == syscall.EVFILT_WRITE && events[i].Flags&syscall.EV_ENABLE != 0 {
 				if operator.OnWrite != nil {
+					// for non-connection
 					operator.OnWrite(p)
-					break
-				}
-				// only for connection
-				var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
-				if len(bs) == 0 {
-					break
-				}
-				// TODO: Let the upper layer pass in whether to use ZeroCopy.
-				var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
-				operator.OutputAck(n)
-				if err != nil && err != syscall.EAGAIN {
-					hups = append(hups, operator)
+				} else {
+					// only for connection
+					var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
+					if len(bs) > 0 {
+						// TODO: Let the upper layer pass in whether to use ZeroCopy.
+						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
+						operator.OutputAck(n)
+						if err != nil && err != syscall.EAGAIN {
+							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+							hups = append(hups, operator)
+						}
+					}
 				}
 			}
 			operator.done()

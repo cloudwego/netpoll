@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 )
 
@@ -31,22 +32,10 @@ func setLoadBalance(lb LoadBalance) error {
 var pollmanager *manager
 
 func init() {
+	var loops = runtime.GOMAXPROCS(0)/20 + 1
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
-	pollmanager.SetNumLoops(defaultNumLoops())
-}
-
-func defaultNumLoops() int {
-	procs := runtime.GOMAXPROCS(0)
-	loops := 1
-	// Loops produce events that handlers consume,
-	// so the producer should be faster than consumer otherwise it will have a bottleneck.
-	// But there is no universal option that could be appropriate for any use cases,
-	// plz use `SetNumLoops` if you do know what you want.
-	if procs > 4 {
-		loops = procs
-	}
-	return loops
+	pollmanager.SetNumLoops(loops)
 }
 
 // LoadBalance is used to do load balancing among multiple pollers.
@@ -62,11 +51,25 @@ func (m *manager) SetNumLoops(numLoops int) error {
 	if numLoops < 1 {
 		return fmt.Errorf("set invaild numLoops[%d]", numLoops)
 	}
-	// if less than, reset all; else new the delta.
+
 	if numLoops < m.NumLoops {
+		// if less than, close the redundant pollers
+		var polls = make([]Poll, numLoops)
+		for idx := 0; idx < m.NumLoops; idx++ {
+			if idx < numLoops {
+				polls[idx] = m.polls[idx]
+			} else {
+				if err := m.polls[idx].Close(); err != nil {
+					log.Printf("poller close failed: %v\n", err)
+				}
+			}
+		}
 		m.NumLoops = numLoops
-		return m.Reset()
+		m.polls = polls
+		m.balance.Rebalance(m.polls)
+		return nil
 	}
+
 	m.NumLoops = numLoops
 	return m.Run()
 }

@@ -37,7 +37,7 @@ We developed the RPC framework [Kitex][Kitex] and HTTP
 framework [Hertz][Hertz] (coming soon) based
 on [Netpoll][Netpoll], both with industry-leading performance.
 
-[Examples][netpoll-benchmark] show how to build RPC client and server
+[Examples][netpoll-examples] show how to build RPC client and server
 using [Netpoll][Netpoll].
 
 For more information, please refer to [Document](#document).
@@ -94,6 +94,7 @@ More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmar
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
 [kitex-benchmark]: https://github.com/cloudwego/kitex-benchmark
 [hertz-benchmark]: https://github.com/cloudwego/hertz-benchmark
+[netpoll-examples]:https://github.com/cloudwego/netpoll-examples
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io

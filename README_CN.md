@@ -32,7 +32,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 基于 [Netpoll][Netpoll] 开发的 RPC 框架 [Kitex][Kitex] 和 HTTP
 框架 [Hertz][Hertz] (即将开源)，性能均业界领先。
 
-[范例][netpoll-benchmark] 展示了如何使用 [Netpoll][Netpoll]
+[范例][netpoll-examples] 展示了如何使用 [Netpoll][Netpoll]
 构建 RPC Client 和 Server。
 
 更多信息请参阅 [文档](#文档)。
@@ -87,6 +87,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
 [kitex-benchmark]: https://github.com/cloudwego/kitex-benchmark
 [hertz-benchmark]: https://github.com/cloudwego/hertz-benchmark
+[netpoll-examples]:https://github.com/cloudwego/netpoll-examples
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
