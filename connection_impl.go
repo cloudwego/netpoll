@@ -352,6 +352,8 @@ func (c *connection) initFDOperator() {
 func (c *connection) initFinalizer() {
 	c.AddCloseCallback(func(connection Connection) error {
 		c.stop(flushing)
+		// stop the finalizing state to prevent conn.fill function to be performed
+		c.stop(finalizing)
 		c.netFD.Close()
 		c.closeBuffer()
 		freeop(c.operator)
@@ -440,6 +442,11 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 
 // fill data after connection is closed.
 func (c *connection) fill(need int) (err error) {
+	if !c.lock(finalizing) {
+		return ErrConnClosed
+	}
+	defer c.unlock(finalizing)
+
 	var n int
 	for {
 		n, err = readv(c.fd, c.inputs(c.inputBarrier.bs), c.inputBarrier.ivs)
