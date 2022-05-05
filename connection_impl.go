@@ -15,7 +15,6 @@
 package netpoll
 
 import (
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -353,10 +352,8 @@ func (c *connection) initFDOperator() {
 func (c *connection) initFinalizer() {
 	c.AddCloseCallback(func(connection Connection) error {
 		c.stop(flushing)
-
-		for !c.lock(finalizing) {
-			runtime.Gosched()
-		}
+		// stop the finalizing state to prevent conn.fill function to be performed
+		c.stop(finalizing)
 		c.netFD.Close()
 		c.closeBuffer()
 		freeop(c.operator)
