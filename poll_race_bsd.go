@@ -52,6 +52,7 @@ type defaultPoll struct {
 	fd      int
 	trigger uint32
 	m       sync.Map
+	hups    []func(p Poll) error
 }
 
 // Wait implements Poll.
@@ -65,7 +66,6 @@ func (p *defaultPoll) Wait() error {
 	}
 	// wait
 	for {
-		var hups []*FDOperator
 		n, err := syscall.Kevent(p.fd, nil, events, nil)
 		if err != nil && err != syscall.EINTR {
 			// exit gracefully
@@ -105,8 +105,7 @@ func (p *defaultPoll) Wait() error {
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
-							hups = append(hups, operator)
-							operator.done()
+							p.appendHup(operator)
 							continue
 						}
 					}
@@ -115,8 +114,7 @@ func (p *defaultPoll) Wait() error {
 
 			// check hup
 			if events[i].Flags&syscall.EV_EOF != 0 {
-				hups = append(hups, operator)
-				operator.done()
+				p.appendHup(operator)
 				continue
 			}
 
@@ -134,7 +132,8 @@ func (p *defaultPoll) Wait() error {
 						operator.OutputAck(n)
 						if err != nil && err != syscall.EAGAIN {
 							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
-							hups = append(hups, operator)
+							p.appendHup(operator)
+							continue
 						}
 					}
 				}
@@ -142,9 +141,7 @@ func (p *defaultPoll) Wait() error {
 			operator.done()
 		}
 		// hup conns together to avoid blocking the poll.
-		if len(hups) > 0 {
-			p.detaches(hups)
-		}
+		p.detaches()
 	}
 }
 
@@ -200,18 +197,23 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	return err
 }
 
-func (p *defaultPoll) detaches(hups []*FDOperator) error {
-	var onhups = make([]func(p Poll) error, len(hups))
-	for i := range hups {
-		onhups[i] = hups[i].OnHup
-		p.Control(hups[i], PollDetach)
+func (p *defaultPoll) appendHup(operator *FDOperator) {
+	p.hups = append(p.hups, operator.OnHup)
+	operator.Control(PollDetach)
+	operator.done()
+}
+
+func (p *defaultPoll) detaches() {
+	if len(p.hups) == 0 {
+		return
 	}
+	hups := p.hups
+	p.hups = nil
 	go func(onhups []func(p Poll) error) {
 		for i := range onhups {
 			if onhups[i] != nil {
 				onhups[i](p)
 			}
 		}
-	}(onhups)
-	return nil
+	}(hups)
 }

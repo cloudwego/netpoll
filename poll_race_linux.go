@@ -62,6 +62,7 @@ type pollArgs struct {
 	caps     int
 	events   []syscall.EpollEvent
 	barriers []barrier
+	hups     []func(p Poll) error
 }
 
 func (a *pollArgs) reset(size, caps int) {
@@ -100,7 +101,6 @@ func (p *defaultPoll) Wait() (err error) {
 }
 
 func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
-	var hups []*FDOperator
 	for i := range events {
 		var operator *FDOperator
 		if tmp, ok := p.m.Load(int(events[i].Fd)); ok {
@@ -139,8 +139,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 					operator.InputAck(n)
 					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
-						hups = append(hups, operator)
-						operator.done()
+						p.appendHup(operator)
 						continue
 					}
 				}
@@ -149,16 +148,14 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 
 		// check hup
 		if evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0 {
-			hups = append(hups, operator)
-			operator.done()
+			p.appendHup(operator)
 			continue
 		}
 		if evt&syscall.EPOLLERR != 0 {
 			// Under block-zerocopy, the kernel may give an error callback, which is not a real error, just an EAGAIN.
 			// So here we need to check this error, if it is EAGAIN then do nothing, otherwise still mark as hup.
 			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
-				hups = append(hups, operator)
-				operator.done()
+				p.appendHup(operator)
 				continue
 			}
 		}
@@ -177,7 +174,8 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 					operator.OutputAck(n)
 					if err != nil && err != syscall.EAGAIN {
 						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
-						hups = append(hups, operator)
+						p.appendHup(operator)
+						continue
 					}
 				}
 			}
@@ -185,9 +183,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 		operator.done()
 	}
 	// hup conns together to avoid blocking the poll.
-	if len(hups) > 0 {
-		p.detaches(hups)
-	}
+	p.detaches()
 	return false
 }
 
@@ -244,18 +240,23 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	return syscall.EpollCtl(p.fd, op, operator.FD, &evt)
 }
 
-func (p *defaultPoll) detaches(hups []*FDOperator) error {
-	var onhups = make([]func(p Poll) error, len(hups))
-	for i := range hups {
-		onhups[i] = hups[i].OnHup
-		p.Control(hups[i], PollDetach)
+func (p *defaultPoll) appendHup(operator *FDOperator) {
+	p.hups = append(p.hups, operator.OnHup)
+	operator.Control(PollDetach)
+	operator.done()
+}
+
+func (p *defaultPoll) detaches() {
+	if len(p.hups) == 0 {
+		return
 	}
+	hups := p.hups
+	p.hups = nil
 	go func(onhups []func(p Poll) error) {
 		for i := range onhups {
 			if onhups[i] != nil {
 				onhups[i](p)
 			}
 		}
-	}(onhups)
-	return nil
+	}(hups)
 }
