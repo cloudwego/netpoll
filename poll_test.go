@@ -67,8 +67,8 @@ func TestPollMod(t *testing.T) {
 	}()
 
 	var rfd, wfd = GetSysFdPairs()
-	var rop = &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup}
-	var wop = &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup}
+	var rop = &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
+	var wop = &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
 	var err error
 	var r, w, h int32
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
