@@ -169,7 +169,6 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollDetach:
-		defer operator.unused()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
 		operator.inuse()

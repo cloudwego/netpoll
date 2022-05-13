@@ -230,7 +230,6 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
-		defer operator.unused()
 		p.m.Delete(operator.FD)
 		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable:

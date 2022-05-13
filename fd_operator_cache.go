@@ -68,9 +68,7 @@ func (c *operatorCache) alloc() *FDOperator {
 }
 
 func (c *operatorCache) free(op *FDOperator) {
-	if !op.isUnused() {
-		panic("op is using now")
-	}
+	op.unused()
 	op.reset()
 
 	c.lock()

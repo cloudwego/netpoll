@@ -185,7 +185,6 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollDetach:
-		defer operator.unused()
 		p.m.Delete(operator.FD)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
