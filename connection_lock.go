@@ -47,6 +47,7 @@ const (
 	closing key = iota
 	processing
 	flushing
+	finalizing
 	// total must be at the bottom.
 	total
 )
