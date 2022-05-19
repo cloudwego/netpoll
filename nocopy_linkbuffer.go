@@ -668,10 +668,13 @@ func (b *LinkBuffer) recalLen(delta int) (length int) {
 // Nodes with size <= 0 are marked as readonly, which means the node.buf is not allocated by this mcache.
 func newLinkBufferNode(size int) *linkBufferNode {
 	var node = linkedPool.Get().(*linkBufferNode)
+	// reset node offset
+	node.off, node.malloc, node.refer = 0, 0, 1
 	if size <= 0 {
 		node.readonly = true
 		return node
 	}
+	node.readonly = false
 	if size < LinkBufferCap {
 		size = LinkBufferCap
 	}
@@ -754,14 +757,11 @@ func (node *linkBufferNode) Release() (err error) {
 	}
 	// release self
 	if atomic.AddInt32(&node.refer, -1) == 0 {
-		node.off, node.malloc, node.refer, node.origin, node.next = 0, 0, 1, nil, nil
 		// readonly nodes cannot recycle node.buf, other node.buf are recycled to mcache.
-		if node.readonly {
-			node.readonly = false
-		} else {
+		if !node.readonly {
 			free(node.buf)
 		}
-		node.buf = nil
+		node.buf, node.origin, node.next = nil, nil, nil
 		linkedPool.Put(node)
 	}
 	return nil
