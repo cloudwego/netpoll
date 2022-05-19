@@ -669,12 +669,11 @@ func (b *LinkBuffer) recalLen(delta int) (length int) {
 func newLinkBufferNode(size int) *linkBufferNode {
 	var node = linkedPool.Get().(*linkBufferNode)
 	// reset node offset
-	node.off, node.malloc, node.refer = 0, 0, 1
+	node.off, node.malloc, node.refer, node.readonly = 0, 0, 1, false
 	if size <= 0 {
 		node.readonly = true
 		return node
 	}
-	node.readonly = false
 	if size < LinkBufferCap {
 		size = LinkBufferCap
 	}
