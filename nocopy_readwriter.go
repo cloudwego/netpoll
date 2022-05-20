@@ -103,7 +103,18 @@ func (r *zcReader) ReadByte() (b byte, err error) {
 }
 
 func (r *zcReader) Until(delim byte) (line []byte, err error) {
-	return r.buf.Until(delim)
+	var n, skip int
+	for {
+		n = r.buf.indexByte(delim, skip)
+		if n >= 0 {
+			return r.buf.Next(n + 1)
+		}
+		// try to read more data
+		skip = r.buf.Len()
+		if err = r.waitRead(skip + 1); err != nil {
+			return nil, err
+		}
+	}
 }
 
 func (r *zcReader) waitRead(n int) (err error) {
