@@ -316,7 +316,6 @@ func TestLinkBufferRefer(t *testing.T) {
 	MustNil(t, err)
 	MustTrue(t, rbuf.head != node1)
 	MustTrue(t, buf.head == node2)
-	Equal(t, node1.Len(), 0)
 
 	err = buf.Release()
 	MustNil(t, err)

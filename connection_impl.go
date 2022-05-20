@@ -354,9 +354,9 @@ func (c *connection) initFinalizer() {
 		c.stop(flushing)
 		// stop the finalizing state to prevent conn.fill function to be performed
 		c.stop(finalizing)
+		freeop(c.operator)
 		c.netFD.Close()
 		c.closeBuffer()
-		freeop(c.operator)
 		return nil
 	})
 }
