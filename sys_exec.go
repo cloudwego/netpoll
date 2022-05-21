@@ -62,12 +62,18 @@ type barrier struct {
 
 // writev wraps the writev system call.
 func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
+	var r uintptr
+	var e syscall.Errno
+
 	iovLen := iovecs(bs, ivs)
-	if iovLen == 0 {
+	switch iovLen {
+	case 0:
 		return 0, nil
+	case 1:
+		r, _, e = syscall.RawSyscall(syscall.SYS_WRITE, uintptr(fd), uintptr(unsafe.Pointer(ivs[0].Base)), uintptr(ivs[0].Len))
+	default:
+		r, _, e = syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
 	}
-	// syscall
-	r, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -77,12 +83,18 @@ func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 // readv wraps the readv system call.
 // return 0, nil means EOF.
 func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
+	var r uintptr
+	var e syscall.Errno
+
 	iovLen := iovecs(bs, ivs)
-	if iovLen == 0 {
+	switch iovLen {
+	case 0:
 		return 0, nil
+	case 1:
+		r, _, e = syscall.RawSyscall(syscall.SYS_READ, uintptr(fd), uintptr(unsafe.Pointer(ivs[0].Base)), uintptr(ivs[0].Len))
+	default:
+		r, _, e = syscall.RawSyscall(syscall.SYS_READV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
 	}
-	// syscall
-	r, _, e := syscall.RawSyscall(syscall.SYS_READV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -94,14 +106,12 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 //  UIO_MAXIOV also seems to be 1024.
 func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 	for i := 0; i < len(bs); i++ {
-		chunk := bs[i]
-		if len(chunk) == 0 {
+		if len(bs[i]) == 0 {
 			continue
 		}
-		iov := &syscall.Iovec{Base: &chunk[0]}
-		iov.SetLen(len(chunk))
 		// append
-		ivs[iovLen] = *iov
+		ivs[iovLen].Base = &bs[i][0]
+		ivs[iovLen].SetLen(len(bs[i]))
 		iovLen++
 	}
 	return iovLen
