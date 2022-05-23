@@ -89,14 +89,20 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 	if b.Len() < n {
 		return p, fmt.Errorf("link buffer next[%d] not enough", n)
 	}
-	b.recalLen(-n) // re-cal length
-
-	// single node
 	if b.isSingleNode(n) {
-		return b.read.Next(n), nil
+		return b.singleNext(n), nil
 	}
-	// multiple nodes
+	return b.multipleNext(n), nil
+}
+
+func (b *LinkBuffer) singleNext(n int) (p []byte) {
+	b.recalLen(-n) // re-cal length
+	return b.read.Next(n)
+}
+
+func (b *LinkBuffer) multipleNext(n int) (p []byte) {
 	var pIdx int
+	b.recalLen(-n) // re-cal length
 	if block1k < n && n <= mallocMax {
 		p = malloc(n, n)
 		b.caches = append(b.caches, p)
@@ -115,7 +121,7 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 		b.read = b.read.next
 	}
 	_ = pIdx
-	return p, nil
+	return p
 }
 
 // Peek does not have an independent lifecycle, and there is no signal to
@@ -184,14 +190,14 @@ func (b *LinkBuffer) Skip(n int) (err error) {
 }
 
 // Until returns a slice ends with the delim in the buffer.
-func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
+func (b *LinkBuffer) Until(delim byte) (data []byte, err error) {
 	b.Lock()
 	defer b.Unlock()
-	n := b.indexByte(delim, 0)
-	if n < 0 {
-		return nil, fmt.Errorf("link buffer cannot find delim: '%b'", delim)
+	data = b.find(delim, 0)
+	if len(data) == 0 {
+		return nil, fmt.Errorf("link buffer read slice cannot find: '%b'", delim)
 	}
-	return b.Next(n + 1)
+	return data, nil
 }
 
 // Release the node that has been read.
@@ -657,14 +663,14 @@ func (b *LinkBuffer) calcMaxSize() (sum int) {
 	return sum
 }
 
-func (b *LinkBuffer) indexByte(c byte, skip int) int {
-	b.Lock()
-	defer b.Unlock()
+// find returns the first instance which end with delim in buffer, or nil if delim is not present in buffer.
+func (b *LinkBuffer) find(delim byte, skip int) (data []byte) {
 	size := b.Len()
-	if skip >= size {
-		return -1
+	if skip >= size || size == 0 {
+		return nil
 	}
 	var unread, n, l int
+	var index = -1
 	node := b.read
 	for unread = size; unread > 0; unread -= n {
 		l = node.Len()
@@ -680,14 +686,23 @@ func (b *LinkBuffer) indexByte(c byte, skip int) int {
 			node = node.next
 			continue
 		}
-		i := bytes.IndexByte(node.Peek(n)[skip:], c)
+		i := bytes.IndexByte(node.Peek(n)[skip:], delim)
 		if i >= 0 {
-			return (size - unread) + skip + i // past_read + skip_read + index
+			index = (size - unread) + skip + i // past_read + skip_read + index
+			break
 		}
 		skip = 0 // no skip bytes
 		node = node.next
 	}
-	return -1
+	if index < 0 {
+		return nil
+	}
+	// single node read
+	if node == b.read {
+		return b.singleNext(index + 1)
+	}
+	// multiple node read
+	return b.multipleNext(index + 1)
 }
 
 // resetTail will reset tail node or add an empty tail node to

@@ -143,22 +143,22 @@ func (c *connection) Len() (length int) {
 }
 
 // Until implements Connection.
-func (c *connection) Until(delim byte) (line []byte, err error) {
+func (c *connection) Until(delim byte) (data []byte, err error) {
 	var n, l int
 	for {
 		if err = c.waitRead(n + 1); err != nil {
 			// return all the data in the buffer
-			line, _ = c.inputBuffer.Next(c.inputBuffer.Len())
-			return
+			data, _ = c.inputBuffer.Next(c.inputBuffer.Len())
+			return data, err
 		}
 
 		l = c.inputBuffer.Len()
-		i := c.inputBuffer.indexByte(delim, n)
-		if i < 0 {
+		data = c.inputBuffer.find(delim, n)
+		if len(data) == 0 {
 			n = l //skip all exists bytes
 			continue
 		}
-		return c.Next(i + 1)
+		return data, nil
 	}
 }
 
