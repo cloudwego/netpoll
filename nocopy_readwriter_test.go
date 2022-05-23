@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -88,6 +89,30 @@ func TestZCEOF(t *testing.T) {
 
 	_, err := r.Next(block8k)
 	MustTrue(t, errors.Is(err, ErrEOF))
+}
+
+func TestZCUntil(t *testing.T) {
+	buf := bytes.NewBufferString("\nhello\nworld\n\n")
+	r := newZCReader(buf)
+
+	line, err := r.Until('\n')
+	Equal(t, string(line), "\n")
+	MustNil(t, err)
+
+	line, err = r.Until('\n')
+	Equal(t, string(line), "hello\n")
+	MustNil(t, err)
+
+	line, err = r.Until('\n')
+	Equal(t, string(line), "world\n")
+	MustNil(t, err)
+
+	line, err = r.Until('\n')
+	Equal(t, string(line), "\n")
+	MustNil(t, err)
+
+	line, err = r.Until('\n')
+	Assert(t, errors.Is(err, ErrEOF))
 }
 
 type MockIOReadWriter struct {

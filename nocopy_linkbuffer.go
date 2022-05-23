@@ -612,7 +612,7 @@ func (b *LinkBuffer) calcMaxSize() (sum int) {
 // indexByte returns the index of the first instance of c in buffer, or -1 if c is not present in buffer.
 func (b *LinkBuffer) indexByte(c byte, skip int) int {
 	size := b.Len()
-	if skip >= size {
+	if skip >= size || size == 0 {
 		return -1
 	}
 	var unread, n, l int

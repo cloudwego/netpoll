@@ -109,11 +109,26 @@ func (r *zcReader) Until(delim byte) (line []byte, err error) {
 		if n >= 0 {
 			return r.buf.Next(n + 1)
 		}
+
 		// try to read more data
 		skip = r.buf.Len()
-		if err = r.waitRead(skip + 1); err != nil {
+		err = r.waitRead(skip + 1)
+		if err == nil {
+			continue
+		}
+
+		// try to check exist buf if there is a read error
+		if r.buf.Len() <= skip {
 			return nil, err
 		}
+		n = r.buf.indexByte(delim, skip)
+		// still cannot find delim
+		if n < 0 {
+			return nil, err
+		}
+		// return both result and error
+		line, _ = r.buf.Next(n + 1)
+		return line, err
 	}
 }
 
