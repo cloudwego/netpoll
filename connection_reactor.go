@@ -60,7 +60,11 @@ func (c *connection) onClose() error {
 
 // closeBuffer recycle input & output LinkBuffer.
 func (c *connection) closeBuffer() {
-	c.inputBuffer.Close()
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	if c.inputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		c.inputBuffer.Close()
+	}
 	barrierPool.Put(c.inputBarrier)
 
 	c.outputBuffer.Close()
