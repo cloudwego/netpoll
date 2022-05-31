@@ -43,3 +43,40 @@ func sendmsg(fd int, bs [][]byte, ivs []syscall.Iovec, zerocopy bool) (n int, er
 	}
 	return int(r), nil
 }
+
+// pwritev wraps the sendmsg call.
+// Since the size of bs may exceed 2GB and the maximum size data of pwritev can send is 2G, so
+// we need to handle the offset in pwritev function.
+func pwritev(fd int, bs [][]byte, ivs []syscall.Iovec, offset int, zerocopy bool) (n int, err error) {
+	// skip offset first.
+	if offset > 0 {
+		for i := 0; i < len(bs); i++ {
+			l := len(bs[i])
+			if l <= offset {
+				offset -= l
+				continue
+			}
+			bs[i] = bs[i][offset:]
+			bs = bs[i:]
+			break
+		}
+	}
+
+	iovLen := iovecs(bs, ivs)
+	if iovLen == 0 {
+		return 0, nil
+	}
+	var msghdr = syscall.Msghdr{
+		Iov:    &ivs[0],
+		Iovlen: int32(iovLen),
+	}
+	// flags = syscall.MSG_DONTWAIT
+	r, _, e := syscall.RawSyscall(syscall.SYS_SENDMSG, uintptr(fd), uintptr(unsafe.Pointer(&msghdr)), uintptr(0))
+
+	resetIovecs(nil, ivs[:iovLen])
+	// If some errors happen, sendmsg returns -1 and sets errno.
+	if e != 0 {
+		return 0, syscall.Errno(e)
+	}
+	return int(r), nil
+}

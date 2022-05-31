@@ -35,7 +35,9 @@ type connection struct {
 	locker
 	operator        *FDOperator
 	readTimeout     time.Duration
+	writeTimeout    time.Duration
 	readTimer       *time.Timer
+	writeTimer      *time.Timer
 	readTrigger     chan struct{}
 	waitReadSize    int64
 	writeTrigger    chan error
@@ -43,6 +45,7 @@ type connection struct {
 	outputBuffer    *LinkBuffer
 	inputBarrier    *barrier
 	outputBarrier   *barrier
+	writevBuffer    [][]byte
 	supportZeroCopy bool
 	maxSize         int // The maximum size of data between two Release().
 	bookSize        int // The size of data that can be read at once.
@@ -79,6 +82,14 @@ func (c *connection) SetIdleTimeout(timeout time.Duration) error {
 func (c *connection) SetReadTimeout(timeout time.Duration) error {
 	if timeout >= 0 {
 		c.readTimeout = timeout
+	}
+	return nil
+}
+
+// SetWriteTimeout sets write timeout.
+func (c *connection) SetWriteTimeout(timeout time.Duration) error {
+	if timeout >= 0 {
+		c.writeTimeout = timeout
 	}
 	return nil
 }
@@ -244,6 +255,90 @@ func (c *connection) WriteDirect(p []byte, remainCap int) (err error) {
 // WriteByte implements Connection.
 func (c *connection) WriteByte(b byte) (err error) {
 	return c.outputBuffer.WriteByte(b)
+}
+
+func (c *connection) Writev(v [][]byte) (n int, err error) {
+	// `dataLen` is the total length of v.
+	dataLen := 0
+	for i := 0; i < len(v); i++ {
+		dataLen += len(v[i])
+	}
+	if dataLen <= 0 {
+		return
+	}
+
+	if !c.IsActive() || !c.lock(flushing) {
+		return 0, Exception(ErrConnClosed, "when flush")
+	}
+	defer c.unlock(flushing)
+
+	// send data first.
+	// `offset` records how much data is currently sent. Since it's the
+	// first sent, `offset` is just equal to the send length.
+	offset, err := pwritev(c.fd, v, c.outputBarrier.ivs, 0, false && c.supportZeroCopy)
+	if offset == dataLen {
+		return offset, nil
+	}
+	if err != nil && err != syscall.EAGAIN {
+		return offset, Exception(err, "when flush")
+	}
+
+	// Lock is required only in case of timeout
+	needLock := false
+
+	c.operator.OnWrite = func(p Poll) error {
+		// Remove PollR2RW event if connection is writable and triggers writeTrigger
+		c.rw2r()
+		return nil
+	}
+
+	// Register PollR2RW event so that it can be triggered when writable
+	err = c.operator.Control(PollR2RW)
+	if err != nil {
+		return offset, Exception(err, "when writev")
+	}
+
+	defer func() {
+		if !needLock {
+			c.operator.OnWrite = nil
+			return
+		}
+
+		for !c.operator.do() {
+			time.Sleep(time.Microsecond)
+			continue
+		}
+		c.operator.OnWrite = nil
+		c.operator.done()
+	}()
+
+	for {
+		select {
+		case err = <-c.writeTrigger:
+			if err != nil {
+				return offset, err
+			}
+			// If writeable, write again until all data has been sent.
+			sendLength, err := pwritev(c.fd, v, c.outputBarrier.ivs, offset, false && c.supportZeroCopy)
+			offset += sendLength
+			if offset == dataLen {
+				return offset, nil
+			}
+			if err != nil && err != syscall.EAGAIN {
+				return offset, Exception(err, "when writev")
+			}
+			// Register PollR2RW event so that it can be triggered when writable
+			err = c.operator.Control(PollR2RW)
+			if err != nil {
+				return offset, Exception(err, "when writev")
+			}
+			continue
+		case <-time.After(c.writeTimeout):
+			c.rw2r()
+			needLock = true
+			return n, Exception(ErrWriteTimeout, c.remoteAddr.String())
+		}
+	}
 }
 
 // ------------------------------------------ implement net.Conn ------------------------------------------
