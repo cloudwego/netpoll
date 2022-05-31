@@ -105,6 +105,35 @@ func TestPollMod(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestOnWriteModRace(t *testing.T) {
+	var stop = make(chan error)
+	trigger := make(chan struct{})
+	var p = openDefaultPoll()
+	go func() {
+		stop <- p.Wait()
+	}()
+	var rfd, _ = GetSysFdPairs()
+	var rop = &FDOperator{FD: rfd, poll: p}
+
+	err := p.Control(rop, PollReadable)
+	MustNil(t, err)
+
+	write := func() {
+		rop.OnWrite = func(p Poll) error {
+			p.Control(rop, PollRW2R)
+			trigger <- struct{}{}
+			return nil
+		}
+		p.Control(rop, PollR2RW)
+		<-trigger
+		rop.OnWrite = nil
+	}
+	write()
+	p.Close()
+	err = <-stop
+	MustNil(t, err)
+}
+
 func TestPollClose(t *testing.T) {
 	var p = openDefaultPoll()
 	var wg sync.WaitGroup

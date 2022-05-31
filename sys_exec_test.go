@@ -35,7 +35,7 @@ func TestIovecs(t *testing.T) {
 		make([]byte, 30),
 		make([]byte, 40),
 	}
-	got = iovecs(bs, ivs)
+	got = iovecs(bs, ivs, 0)
 	Equal(t, got, 4)
 	Equal(t, int(ivs[0].Len), 10)
 	Equal(t, int(ivs[1].Len), 20)
@@ -50,7 +50,7 @@ func TestIovecs(t *testing.T) {
 		make([]byte, 30),
 		make([]byte, 40),
 	}
-	got = iovecs(bs, ivs)
+	got = iovecs(bs, ivs, 0)
 	Equal(t, got, 1)
 	Equal(t, int(ivs[0].Len), math.MaxInt32)
 	Assert(t, ivs[1].Base == nil)
@@ -65,7 +65,7 @@ func TestIovecs(t *testing.T) {
 		make([]byte, math.MaxInt32+100),
 		make([]byte, 40),
 	}
-	got = iovecs(bs, ivs)
+	got = iovecs(bs, ivs, 0)
 	Equal(t, got, 3)
 	Equal(t, int(ivs[0].Len), 10)
 	Equal(t, int(ivs[1].Len), 20)

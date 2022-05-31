@@ -64,7 +64,7 @@ type barrier struct {
 
 // writev wraps the writev system call.
 func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
-	iovLen := iovecs(bs, ivs)
+	iovLen := iovecs(bs, ivs, 0)
 	if iovLen == 0 {
 		return 0, nil
 	}
@@ -80,7 +80,7 @@ func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 // readv wraps the readv system call.
 // return 0, nil means EOF.
 func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
-	iovLen := iovecs(bs, ivs)
+	iovLen := iovecs(bs, ivs, 0)
 	if iovLen == 0 {
 		return 0, nil
 	}
@@ -97,8 +97,34 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 //  1024 and this seems conservative enough for now. Darwin's
 //  UIO_MAXIOV also seems to be 1024.
 // iovecs limit length to 2GB(2^31)
-func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
+func iovecs(bs [][]byte, ivs []syscall.Iovec, offset int) (iovLen int) {
 	totalLen := 0
+
+	// originData is used to save the original data in bs.
+	// If the last part of the data is part of bs[i] when
+	// skip offset, the data in bs is modified first and then
+	// restored in order to simplify the processing,
+	var originData []byte
+	defer func() {
+		if originData != nil {
+			bs[0] = originData
+		}
+	}()
+
+	if offset > 0 {
+		for i := 0; i < len(bs); i++ {
+			l := len(bs[i])
+			if l <= offset {
+				offset -= l
+				continue
+			}
+			originData = bs[i]
+			bs[i] = bs[i][offset:]
+			bs = bs[i:]
+			break
+		}
+	}
+
 	for i := 0; i < len(bs); i++ {
 		chunk := bs[i]
 		l := len(chunk)

@@ -235,6 +235,10 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
+		// Golang race detector cannot handle the case that we modify operator.OnWrite after calling
+		// operator.Control(PollR2RW) correctly. The test case is TestOnWriteModRace in poll_test.go.
+		operator.do()
+		defer operator.done()
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR

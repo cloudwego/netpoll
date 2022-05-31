@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -59,6 +60,41 @@ func TestConnectionWrite(t *testing.T) {
 	}
 	wg.Wait()
 	Equal(t, atomic.LoadInt32(&count), expect)
+	rconn.Close()
+}
+
+func TestConnectionWritev(t *testing.T) {
+	var cycle, msgcaps, caps = 1000, 32, 25600
+	var msgcap, msg, buf = make([][]byte, msgcaps), make([]byte, caps), make([]byte, caps)
+	for i := 0; i < msgcaps; i++ {
+		msgcap[i] = msg
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var count int64
+	var expect = int64(cycle * msgcaps * caps)
+	var opts = &options{}
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		n, err := connection.Read(buf)
+		MustNil(t, err)
+		if atomic.AddInt64(&count, int64(n)) >= expect {
+			wg.Done()
+		}
+		return nil
+	}
+
+	r, w := GetSysFdPairs()
+	var rconn, wconn = &connection{writeTimeout: math.MaxInt64}, &connection{writeTimeout: math.MaxInt64}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+
+	for i := 0; i < cycle; i++ {
+		n, err := wconn.Writev(msgcap)
+		MustNil(t, err)
+		Equal(t, n, len(msg)*msgcaps)
+	}
+	wg.Wait()
+	Equal(t, atomic.LoadInt64(&count), expect)
 	rconn.Close()
 }
 
