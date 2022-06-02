@@ -36,6 +36,7 @@ func sendmsg(fd int, bs [][]byte, ivs []syscall.Iovec, zerocopy bool) (n int, er
 	}
 	// flags = syscall.MSG_DONTWAIT
 	r, _, e := syscall.RawSyscall(syscall.SYS_SENDMSG, uintptr(fd), uintptr(unsafe.Pointer(&msghdr)), uintptr(0))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
