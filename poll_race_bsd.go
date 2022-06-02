@@ -103,7 +103,6 @@ func (p *defaultPoll) Wait() error {
 					if len(bs) > 0 {
 						var n, err = readv(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
-						barriers[i].reset()
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
@@ -131,7 +130,6 @@ func (p *defaultPoll) Wait() error {
 						// TODO: Let the upper layer pass in whether to use ZeroCopy.
 						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
-						barriers[i].reset()
 						if err != nil && err != syscall.EAGAIN {
 							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)

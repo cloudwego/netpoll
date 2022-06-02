@@ -60,22 +60,6 @@ type barrier struct {
 	ivs []syscall.Iovec
 }
 
-// barrier should be reset after use to avoid memory leak
-func (b *barrier) reset() {
-	for i := 0; i < len(b.bs); i++ {
-		if b.bs[i] == nil {
-			break
-		}
-		b.bs[i] = nil
-	}
-	for i := 0; i < len(b.ivs); i++ {
-		if b.ivs[i].Base == nil {
-			break
-		}
-		b.ivs[i].Base = nil
-	}
-}
-
 // writev wraps the writev system call.
 func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	iovLen := iovecs(bs, ivs)
@@ -84,6 +68,7 @@ func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -99,6 +84,7 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_READV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -119,6 +105,15 @@ func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 		iovLen++
 	}
 	return iovLen
+}
+
+func resetIovecs(bs [][]byte, ivs []syscall.Iovec) {
+	for i := 0; i < len(bs); i++ {
+		bs[i] = nil
+	}
+	for i := 0; i < len(ivs); i++ {
+		ivs[i].Base = nil
+	}
 }
 
 // Boolean to int.

@@ -137,7 +137,6 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 				if len(bs) > 0 {
 					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
-					p.barriers[i].reset()
 					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
@@ -173,7 +172,6 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
 					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
-					p.barriers[i].reset()
 					if err != nil && err != syscall.EAGAIN {
 						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
