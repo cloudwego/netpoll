@@ -41,10 +41,6 @@ func (c *connection) onHup(p Poll) error {
 // onClose means close by user.
 func (c *connection) onClose() error {
 	if c.closeBy(user) {
-		// If Close is called during OnPrepare, poll is not registered.
-		if c.operator.poll != nil {
-			c.operator.Control(PollDetach)
-		}
 		c.triggerRead()
 		c.triggerWrite(ErrConnClosed)
 		c.closeCallback(true)

@@ -208,6 +208,10 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
 	}
+	// If Close is called during OnPrepare, poll is not registered.
+	if c.closeBy(user) && c.operator.poll != nil {
+		c.operator.Control(PollDetach)
+	}
 	var latest = c.closeCallbacks.Load()
 	if latest == nil {
 		return nil
