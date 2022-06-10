@@ -29,8 +29,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 同时，[Netpoll][Netpoll] 还提供了一些 [特性](#特性)，推荐在 RPC 设计中替代
 [net][net] 。
 
-基于 [Netpoll][Netpoll] 开发的 RPC 框架 [Kitex][Kitex] 和 HTTP
-框架 [Hertz][Hertz] (即将开源)，性能均业界领先。
+基于 [Netpoll][Netpoll] 开发的 RPC 框架 [Kitex][Kitex] 和 HTTP 框架 [Hertz][Hertz]，性能均业界领先。
 
 [范例][netpoll-examples] 展示了如何使用 [Netpoll][Netpoll]
 构建 RPC Client 和 Server。
@@ -66,7 +65,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 
 我们提供了 [netpoll-benchmark][netpoll-benchmark] 项目用来长期追踪和比较 [Netpoll][Netpoll] 与其他框架在不同情况下的性能数据以供参考。
 
-更多测试参考 [kitex-benchmark][kitex-benchmark] 和 [hertz-benchmark][hertz-benchmark] (即将开源)
+更多测试参考 [kitex-benchmark][kitex-benchmark] 和 [hertz-benchmark][hertz-benchmark]
 
 ## 参考
 
