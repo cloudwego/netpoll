@@ -102,14 +102,9 @@ func (p *defaultPoll) Wait() (err error) {
 
 func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 	for i := range events {
-		var operator *FDOperator
-		if tmp, ok := p.m.Load(int(events[i].Fd)); ok {
-			operator = tmp.(*FDOperator)
-		} else {
-			continue
-		}
+		var fd = int(events[i].Fd)
 		// trigger or exit gracefully
-		if operator.FD == p.wfd {
+		if fd == p.wfd {
 			// must clean trigger first
 			syscall.Read(p.wfd, p.buf)
 			atomic.StoreUint32(&p.trigger, 0)
@@ -121,6 +116,11 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			}
 			continue
 		}
+		tmp, ok := p.m.Load(fd)
+		if !ok {
+			continue
+		}
+		operator := tmp.(*FDOperator)
 		if !operator.do() {
 			continue
 		}
