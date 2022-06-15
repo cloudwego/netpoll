@@ -49,7 +49,7 @@ type manager struct {
 // SetNumLoops will return error when set numLoops < 1
 func (m *manager) SetNumLoops(numLoops int) error {
 	if numLoops < 1 {
-		return fmt.Errorf("set invaild numLoops[%d]", numLoops)
+		return fmt.Errorf("set invalid numLoops[%d]", numLoops)
 	}
 
 	if numLoops < m.NumLoops {
