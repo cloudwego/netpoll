@@ -153,7 +153,9 @@ func (c *connection) flush() error {
 	if err != nil {
 		return Exception(err, "when flush")
 	}
-
 	err = <-c.writeTrigger
-	return err
+	if err != nil {
+		return Exception(err, "when flush")
+	}
+	return nil
 }
