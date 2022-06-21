@@ -327,6 +327,27 @@ func TestLinkBufferRefer(t *testing.T) {
 	Equal(t, buf.read.Len(), block8k-9)
 }
 
+func TestLinkBufferResetTail(t *testing.T) {
+	except := byte(1)
+
+	LinkBufferCap = 8
+	buf := NewLinkBuffer()
+
+	// 1. slice reader
+	buf.WriteByte(except)
+	buf.Flush()
+	r1, _ := buf.Slice(1)
+	fmt.Printf("1: %x\n", buf.flush.buf)
+	// 2. release & reset tail
+	buf.resetTail(LinkBufferCap)
+	buf.WriteByte(byte(2))
+	fmt.Printf("2: %x\n", buf.flush.buf)
+
+	// check slice reader
+	got, _ := r1.ReadByte()
+	Equal(t, got, except)
+}
+
 func TestWriteBuffer(t *testing.T) {
 	buf1 := NewLinkBuffer()
 	buf2 := NewLinkBuffer()
