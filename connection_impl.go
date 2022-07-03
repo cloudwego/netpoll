@@ -26,6 +26,7 @@ import (
 
 const (
 	defaultZeroCopyTimeoutSec = 60
+	maxBackOff                = 64
 )
 
 // connection is the implement of Connection

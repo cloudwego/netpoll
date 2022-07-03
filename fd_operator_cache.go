@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"github.com/bytedance/gopkg/lang/fastrand"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
@@ -90,7 +91,10 @@ func (c *operatorCache) free() {
 
 func lock(locked *int32) {
 	for !atomic.CompareAndSwapInt32(locked, 0, 1) {
-		runtime.Gosched()
+		backoff := int(fastrand.Uint32n(maxBackOff)) + 1
+		for i := 0; i < backoff; i++ {
+			runtime.Gosched()
+		}
 	}
 }
 

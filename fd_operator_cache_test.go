@@ -75,3 +75,49 @@ func BenchmarkPersistFDOperator2(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkFDOperatorSpin1(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	fd := FDOperator{}
+	for i := 0; i < b.N; i++ {
+		fd.inuse()
+		fd.unused()
+	}
+}
+
+func BenchmarkFDOperatorSpin2(b *testing.B) {
+	// benchmark
+	b.ReportAllocs()
+	b.SetParallelism(128)
+	b.ResetTimer()
+	fd := FDOperator{}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			fd.inuse()
+			fd.unused()
+		}
+	})
+}
+
+func BenchmarkFDOperatorSpin3(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		opcache.lock()
+		opcache.unlock()
+	}
+}
+
+func BenchmarkFDOperatorSpin4(b *testing.B) {
+	// benchmark
+	b.ReportAllocs()
+	b.SetParallelism(128)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			opcache.lock()
+			opcache.unlock()
+		}
+	})
+}
