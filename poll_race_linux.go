@@ -31,14 +31,14 @@ func openPoll() Poll {
 }
 
 func openDefaultPoll() *defaultPoll {
-	var poll = defaultPoll{}
+	poll := defaultPoll{}
 	poll.buf = make([]byte, 8)
-	var p, err = syscall.EpollCreate1(0)
+	p, err := syscall.EpollCreate1(0)
 	if err != nil {
 		panic(err)
 	}
 	poll.fd = p
-	var r0, _, e0 = syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
+	r0, _, e0 := syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
 	if e0 != 0 {
 		syscall.Close(p)
 		panic(err)
@@ -77,7 +77,7 @@ func (a *pollArgs) reset(size, caps int) {
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
 	// init
-	var caps, msec, n = barriercap, -1, 0
+	caps, msec, n := barriercap, -1, 0
 	p.reset(128, caps)
 	// wait
 	for {
@@ -102,7 +102,7 @@ func (p *defaultPoll) Wait() (err error) {
 
 func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 	for i := range events {
-		var fd = int(events[i].Fd)
+		fd := int(events[i].Fd)
 		// trigger or exit gracefully
 		if fd == p.wfd {
 			// must clean trigger first
@@ -133,9 +133,9 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 				operator.OnRead(p)
 			} else {
 				// for connection
-				var bs = operator.Inputs(p.barriers[i].bs)
+				bs := operator.Inputs(p.barriers[i].bs)
 				if len(bs) > 0 {
-					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
+					n, err := readv(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
 					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
@@ -167,10 +167,10 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 				operator.OnWrite(p)
 			} else {
 				// for connection
-				var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
+				bs, supportZeroCopy := operator.Outputs(p.barriers[i].bs)
 				if len(bs) > 0 {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
-					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
+					n, err := sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
 					if err != nil && err != syscall.EAGAIN {
 						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
@@ -192,7 +192,7 @@ func (p *defaultPoll) Close() error {
 	_, err := syscall.Write(p.wfd, []byte{1, 0, 0, 0, 0, 0, 0, 0})
 	// delete all *FDOperator
 	p.m.Range(func(key, value interface{}) bool {
-		var operator, _ = value.(*FDOperator)
+		operator, _ := value.(*FDOperator)
 		if operator.OnHup != nil {
 			operator.OnHup(p)
 		}

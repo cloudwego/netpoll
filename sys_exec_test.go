@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -21,7 +24,7 @@ import (
 
 func TestWritev(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var barrier = barrier{}
+	barrier := barrier{}
 	barrier.bs = [][]byte{
 		[]byte(""),            // len=0
 		[]byte("first line"),  // len=10
@@ -32,7 +35,7 @@ func TestWritev(t *testing.T) {
 	wn, err := writev(w, barrier.bs, barrier.ivs)
 	MustNil(t, err)
 	Equal(t, wn, 31)
-	var p = make([]byte, 50)
+	p := make([]byte, 50)
 	rn, err := syscall.Read(r, p)
 	MustNil(t, err)
 	Equal(t, rn, 31)
@@ -51,7 +54,7 @@ func TestReadv(t *testing.T) {
 	w3, _ := syscall.Write(w, vs[2])
 	Equal(t, w1+w2+w3, 31)
 
-	var barrier = barrier{}
+	barrier := barrier{}
 	barrier.bs = [][]byte{
 		make([]byte, 0),
 		make([]byte, 10),
@@ -69,7 +72,7 @@ func TestReadv(t *testing.T) {
 
 func TestSendmsg(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var barrier = barrier{}
+	barrier := barrier{}
 	barrier.bs = [][]byte{
 		[]byte(""),            // len=0
 		[]byte("first line"),  // len=10
@@ -80,7 +83,7 @@ func TestSendmsg(t *testing.T) {
 	wn, err := sendmsg(w, barrier.bs, barrier.ivs, false)
 	MustNil(t, err)
 	Equal(t, wn, 31)
-	var p = make([]byte, 50)
+	p := make([]byte, 50)
 	rn, err := syscall.Read(r, p)
 	MustNil(t, err)
 	Equal(t, rn, 31)
@@ -98,14 +101,13 @@ func BenchmarkWrite(b *testing.B) {
 		for {
 			syscall.Read(r, buffer)
 		}
-
 	}()
 
 	// benchmark
 	b.ReportAllocs()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		var wmsg = make([]byte, len(message)*5)
+		wmsg := make([]byte, len(message)*5)
 		var n int
 		for j := 0; j < size; j++ {
 			n += copy(wmsg[n:], message)
@@ -119,7 +121,7 @@ func BenchmarkWritev(b *testing.B) {
 	r, w := GetSysFdPairs()
 	message := "hello, world!"
 	size := 5
-	var barrier = barrier{}
+	barrier := barrier{}
 	barrier.bs = make([][]byte, size)
 	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
 	for i := range barrier.bs {
@@ -131,7 +133,6 @@ func BenchmarkWritev(b *testing.B) {
 		for {
 			syscall.Read(r, buffer)
 		}
-
 	}()
 
 	// benchmark
@@ -147,7 +148,7 @@ func BenchmarkSendmsg(b *testing.B) {
 	r, w := GetSysFdPairs()
 	message := "hello, world!"
 	size := 5
-	var barrier = barrier{}
+	barrier := barrier{}
 	barrier.bs = make([][]byte, size)
 	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
 	for i := range barrier.bs {
@@ -159,7 +160,6 @@ func BenchmarkSendmsg(b *testing.B) {
 		for {
 			syscall.Read(r, buffer)
 		}
-
 	}()
 
 	// benchmark
@@ -185,14 +185,13 @@ func BenchmarkRead(b *testing.B) {
 		for {
 			syscall.Write(w, wmsg)
 		}
-
 	}()
 
 	// benchmark
 	b.ReportAllocs()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		var buffer = make([]byte, size*len(message))
+		buffer := make([]byte, size*len(message))
 		syscall.Read(r, buffer)
 	}
 }
@@ -202,7 +201,7 @@ func BenchmarkReadv(b *testing.B) {
 	r, w := GetSysFdPairs()
 	message := "hello, world!"
 	size := 5
-	var barrier = barrier{}
+	barrier := barrier{}
 	barrier.bs = make([][]byte, size)
 	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
 	for i := range barrier.bs {
@@ -213,7 +212,6 @@ func BenchmarkReadv(b *testing.B) {
 		for {
 			writeAll(w, []byte(message))
 		}
-
 	}()
 
 	// benchmark

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
@@ -96,14 +97,14 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return ln.UDPAccept()
 	}
 	// tcp
-	var fd, sa, err = syscall.Accept(ln.fd)
+	fd, sa, err := syscall.Accept(ln.fd)
 	if err != nil {
 		if err == syscall.EAGAIN {
 			return nil, nil
 		}
 		return nil, err
 	}
-	var nfd = &netFD{}
+	nfd := &netFD{}
 	nfd.fd = fd
 	nfd.localAddr = ln.addr
 	nfd.network = ln.addr.Network()

@@ -369,8 +369,8 @@ func TestWriteBinary(t *testing.T) {
 	LinkBufferCap = 8
 
 	// new b: cap=16, len=9
-	var b = make([]byte, 16)
-	var buf = NewLinkBuffer()
+	b := make([]byte, 16)
+	buf := NewLinkBuffer()
 	buf.WriteBinary(b[:9])
 	buf.Flush()
 
@@ -378,7 +378,7 @@ func TestWriteBinary(t *testing.T) {
 	// WriteBinary/Malloc etc. cannot start from b[9:]
 	buf.WriteBinary([]byte{1})
 	Equal(t, b[9], byte(0))
-	var bs, err = buf.Malloc(1)
+	bs, err := buf.Malloc(1)
 	MustNil(t, err)
 	bs[0] = 2
 	buf.Flush()
@@ -389,7 +389,7 @@ func TestWriteDirect(t *testing.T) {
 	// clean & new
 	LinkBufferCap = 32
 
-	var buf = NewLinkBuffer()
+	buf := NewLinkBuffer()
 	bt, _ := buf.Malloc(32)
 	bt[0] = 'a'
 	bt[1] = 'b'
@@ -466,7 +466,6 @@ func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {
 				buf.Release()
 			}
 		}
-
 	})
 }
 
@@ -559,14 +558,14 @@ func BenchmarkPoolGet(b *testing.B) {
 }
 
 func BenchmarkCopyString(b *testing.B) {
-	var s = make([]byte, 128*1024)
+	s := make([]byte, 128*1024)
 
 	// benchmark
 	b.ReportAllocs()
 	b.SetParallelism(100)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		var v = make([]byte, 1024)
+		v := make([]byte, 1024)
 		for pb.Next() {
 			copy(v, s)
 		}

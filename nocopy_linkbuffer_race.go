@@ -38,12 +38,12 @@ var LinkBufferCap = block4k
 
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
-	var buf = &LinkBuffer{}
+	buf := &LinkBuffer{}
 	var l int
 	if len(size) > 0 {
 		l = size[0]
 	}
-	var node = newLinkBufferNode(l)
+	node := newLinkBufferNode(l)
 	buf.head, buf.read, buf.flush, buf.write = node, node, node, node
 	return buf
 }
@@ -62,8 +62,10 @@ type LinkBuffer struct {
 	caches [][]byte // buf allocated by Next when cross-package, which should be freed when release
 }
 
-var _ Reader = &LinkBuffer{}
-var _ Writer = &LinkBuffer{}
+var (
+	_ Reader = &LinkBuffer{}
+	_ Writer = &LinkBuffer{}
+)
 
 // Len implements Reader.
 func (b *LinkBuffer) Len() int {
@@ -142,7 +144,7 @@ func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
 	} else {
 		p = make([]byte, n)
 	}
-	var node = b.read
+	node := b.read
 	var l int
 	for ack := n; ack > 0; ack = ack - l {
 		l = node.Len()
@@ -324,7 +326,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 		return p, nil
 	}
 	// multiple nodes
-	var l = b.read.Len()
+	l := b.read.Len()
 	node := b.read.Refer(l)
 	b.read = b.read.next
 
@@ -418,7 +420,7 @@ func (b *LinkBuffer) Flush() (err error) {
 
 // Append implements Writer.
 func (b *LinkBuffer) Append(w Writer) (err error) {
-	var buf, ok = w.(*LinkBuffer)
+	buf, ok := w.(*LinkBuffer)
 	if !ok {
 		return errors.New("unsupported writer which is not LinkBuffer")
 	}
@@ -716,7 +718,7 @@ func (b *LinkBuffer) recalLen(delta int) (length int) {
 // newLinkBufferNode create or reuse linkBufferNode.
 // Nodes with size <= 0 are marked as readonly, which means the node.buf is not allocated by this mcache.
 func newLinkBufferNode(size int) *linkBufferNode {
-	var node = linkedPool.Get().(*linkBufferNode)
+	node := linkedPool.Get().(*linkBufferNode)
 	// reset node offset
 	node.off, node.malloc, node.refer, node.readonly = 0, 0, 1, false
 	if size <= 0 {

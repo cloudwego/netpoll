@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -79,7 +82,7 @@ func (c *connection) AddCloseCallback(callback CloseCallback) error {
 	if callback == nil {
 		return nil
 	}
-	var cb = &callbackNode{}
+	cb := &callbackNode{}
 	cb.fn = callback
 	if pre := c.closeCallbacks.Load(); pre != nil {
 		cb.pre = pre.(*callbackNode)
@@ -115,11 +118,11 @@ func (c *connection) onPrepare(opts *options) (err error) {
 
 // onConnect is responsible for executing onRequest if there is new data coming after onConnect callback finished.
 func (c *connection) onConnect() {
-	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	onConnect, _ := c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
 		return
 	}
-	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	onRequest, _ := c.onRequestCallback.Load().(OnRequest)
 	var connected int32
 	c.onProcess(
 		// only process when conn active and have unread data
@@ -145,7 +148,7 @@ func (c *connection) onConnect() {
 
 // onRequest is responsible for executing the closeCallbacks after the connection has been closed.
 func (c *connection) onRequest() (needTrigger bool) {
-	var onRequest, ok = c.onRequestCallback.Load().(OnRequest)
+	onRequest, ok := c.onRequestCallback.Load().(OnRequest)
 	if !ok {
 		return true
 	}
@@ -173,7 +176,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		return false
 	}
 	// add new task
-	var task = func() {
+	task := func() {
 	START:
 		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
 		// Then the loop processing must ensure that the connection `IsActive`.
@@ -212,7 +215,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	if c.closeBy(user) && c.operator.poll != nil {
 		c.operator.Control(PollDetach)
 	}
-	var latest = c.closeCallbacks.Load()
+	latest := c.closeCallbacks.Load()
 	if latest == nil {
 		return nil
 	}

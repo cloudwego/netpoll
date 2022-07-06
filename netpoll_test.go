@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -65,9 +68,9 @@ func TestEqual(t *testing.T) {
 }
 
 func TestOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	network, address := "tcp", ":8888"
 	req, resp := "ping", "pong"
-	var loop = newTestEventLoop(network, address,
+	loop := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			return nil
 		},
@@ -87,7 +90,7 @@ func TestOnConnect(t *testing.T) {
 			}
 		}),
 	)
-	var conn, err = DialConnection(network, address, time.Second)
+	conn, err := DialConnection(network, address, time.Second)
 	MustNil(t, err)
 
 	for i := 0; i < 1024; i++ {
@@ -109,8 +112,8 @@ func TestOnConnect(t *testing.T) {
 }
 
 func TestOnConnectWrite(t *testing.T) {
-	var network, address = "tcp", ":8888"
-	var loop = newTestEventLoop(network, address,
+	network, address := "tcp", ":8888"
+	loop := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			return nil
 		},
@@ -120,7 +123,7 @@ func TestOnConnectWrite(t *testing.T) {
 			return ctx
 		}),
 	)
-	var conn, err = DialConnection(network, address, time.Second)
+	conn, err := DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	s, err := conn.Reader().ReadString(5)
 	MustNil(t, err)
@@ -131,66 +134,66 @@ func TestOnConnectWrite(t *testing.T) {
 }
 
 func TestGracefulExit(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	network, address := "tcp", ":8888"
 
 	// exit without processing connections
-	var eventLoop1 = newTestEventLoop(network, address,
+	eventLoop1 := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			return nil
 		})
-	var _, err = DialConnection(network, address, time.Second)
+	_, err := DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	err = eventLoop1.Shutdown(context.Background())
 	MustNil(t, err)
 
 	// exit with processing connections
-	var eventLoop2 = newTestEventLoop(network, address,
+	eventLoop2 := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			time.Sleep(10 * time.Second)
 			return nil
 		})
 	for i := 0; i < 10; i++ {
 		if i%2 == 0 {
-			var conn, err = DialConnection(network, address, time.Second)
+			conn, err := DialConnection(network, address, time.Second)
 			MustNil(t, err)
 			_, err = conn.Write(make([]byte, 16))
 			MustNil(t, err)
 		}
 	}
-	var ctx2, cancel2 = context.WithTimeout(context.Background(), 5*time.Second)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel2()
 	err = eventLoop2.Shutdown(ctx2)
 	MustTrue(t, err != nil)
 	Equal(t, err.Error(), ctx2.Err().Error())
 
 	// exit with some processing connections
-	var eventLoop3 = newTestEventLoop(network, address,
+	eventLoop3 := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
 			if l := connection.Reader().Len(); l > 0 {
-				var _, err = connection.Reader().Next(l)
+				_, err := connection.Reader().Next(l)
 				MustNil(t, err)
 			}
 			return nil
 		})
 	for i := 0; i < 10; i++ {
-		var conn, err = DialConnection(network, address, time.Second)
+		conn, err := DialConnection(network, address, time.Second)
 		MustNil(t, err)
 		if i%2 == 0 {
 			_, err = conn.Write(make([]byte, 16))
 			MustNil(t, err)
 		}
 	}
-	var ctx3, cancel3 = context.WithTimeout(context.Background(), 5*time.Second)
+	ctx3, cancel3 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel3()
 	err = eventLoop3.Shutdown(ctx3)
 	MustNil(t, err)
 }
 
 func TestCloseCallbackWhenOnRequest(t *testing.T) {
-	var network, address = "tcp", ":8888"
-	var requested, closed = make(chan struct{}), make(chan struct{})
-	var loop = newTestEventLoop(network, address,
+	network, address := "tcp", ":8888"
+	requested, closed := make(chan struct{}), make(chan struct{})
+	loop := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(connection.Reader().Len())
 			MustNil(t, err)
@@ -203,7 +206,7 @@ func TestCloseCallbackWhenOnRequest(t *testing.T) {
 			return nil
 		},
 	)
-	var conn, err = DialConnection(network, address, time.Second)
+	conn, err := DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	_, err = conn.Writer().WriteString("hello")
 	MustNil(t, err)
@@ -219,9 +222,9 @@ func TestCloseCallbackWhenOnRequest(t *testing.T) {
 }
 
 func TestCloseCallbackWhenOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
-	var connected, closed = make(chan struct{}), make(chan struct{})
-	var loop = newTestEventLoop(network, address,
+	network, address := "tcp", ":8888"
+	connected, closed := make(chan struct{}), make(chan struct{})
+	loop := newTestEventLoop(network, address,
 		nil,
 		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
 			err := connection.AddCloseCallback(func(connection Connection) error {
@@ -233,7 +236,7 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 			return ctx
 		}),
 	)
-	var conn, err = DialConnection(network, address, time.Second)
+	conn, err := DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	err = conn.Close()
 	MustNil(t, err)
@@ -246,9 +249,9 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 }
 
 func TestCloseAndWrite(t *testing.T) {
-	var network, address = "tcp", ":18888"
-	var sendMsg = []byte("hello")
-	var loop = newTestEventLoop(network, address,
+	network, address := "tcp", ":18888"
+	sendMsg := []byte("hello")
+	loop := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(len(sendMsg))
 			MustNil(t, err)
@@ -259,7 +262,7 @@ func TestCloseAndWrite(t *testing.T) {
 		},
 	)
 
-	var conn, err = DialConnection(network, address, time.Second)
+	conn, err := DialConnection(network, address, time.Second)
 	MustNil(t, err)
 	_, err = conn.Writer().WriteBinary(sendMsg)
 	MustNil(t, err)
@@ -277,8 +280,8 @@ func TestCloseAndWrite(t *testing.T) {
 }
 
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
-	var listener, _ = CreateListener(network, address)
-	var eventLoop, _ = NewEventLoop(onRequest, opts...)
+	listener, _ := CreateListener(network, address)
+	eventLoop, _ := NewEventLoop(onRequest, opts...)
 	go eventLoop.Serve(listener)
 	return eventLoop
 }

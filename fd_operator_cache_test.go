@@ -23,7 +23,7 @@ import (
 func TestPersistFDOperator(t *testing.T) {
 	// init
 	size := 1000
-	var ops = make([]*FDOperator, size)
+	ops := make([]*FDOperator, size)
 	for i := 0; i < size; i++ {
 		op := allocop()
 		op.FD = i

@@ -139,7 +139,7 @@ func (evl *eventLoop) Serve(ln net.Listener) error {
 // Shutdown signals a shutdown a begins server closing.
 func (evl *eventLoop) Shutdown(ctx context.Context) error {
 	evl.Lock()
-	var svr = evl.svr
+	svr := evl.svr
 	evl.svr = nil
 	evl.Unlock()
 

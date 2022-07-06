@@ -5,8 +5,8 @@
 // This file may have been modified by CloudWeGo authors. (“CloudWeGo Modifications”).
 // All CloudWeGo Modifications are Copyright 2021 CloudWeGo authors.
 
-//go:build aix || darwin || dragonfly || freebsd || linux || nacl || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris
+//go:build !windows
+// +build !windows
 
 package netpoll
 
@@ -53,7 +53,7 @@ type netFD struct {
 }
 
 func newNetFD(fd, family, sotype int, net string) *netFD {
-	var ret = &netFD{}
+	ret := &netFD{}
 	ret.fd = fd
 	ret.network = net
 	ret.family = family

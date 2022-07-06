@@ -36,7 +36,7 @@ func sendmsg(fd int, bs [][]byte, ivs []syscall.Iovec, zerocopy bool) (n int, er
 	if iovLen == 0 {
 		return 0, nil
 	}
-	var msghdr = syscall.Msghdr{
+	msghdr := syscall.Msghdr{
 		Iov:    &ivs[0],
 		Iovlen: uint64(iovLen),
 	}
