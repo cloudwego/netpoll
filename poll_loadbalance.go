@@ -36,7 +36,6 @@ type loadbalance interface {
 	LoadBalance() LoadBalance
 	// Choose the most qualified Poll
 	Pick() (poll Poll)
-
 	Rebalance(polls []Poll)
 }
 

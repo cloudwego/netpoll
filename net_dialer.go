@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -25,7 +28,6 @@ import (
 // The returned net.Conn can be directly asserted as Connection if error is nil.
 type Dialer interface {
 	DialConnection(network, address string, timeout time.Duration) (connection Connection, err error)
-
 	DialTimeout(network, address string, timeout time.Duration) (conn net.Conn, err error)
 }
 

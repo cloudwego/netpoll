@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -113,7 +116,7 @@ func TestDialerFdAlloc(t *testing.T) {
 	go func() {
 		el1.Serve(ln)
 	}()
-	var ctx1, cancel1 = context.WithTimeout(context.Background(), time.Second)
+	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel1()
 	defer el1.Shutdown(ctx1)
 
@@ -141,7 +144,7 @@ func TestFDClose(t *testing.T) {
 	go func() {
 		el1.Serve(ln)
 	}()
-	var ctx1, cancel1 = context.WithTimeout(context.Background(), time.Second)
+	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel1()
 	defer el1.Shutdown(ctx1)
 
@@ -169,7 +172,7 @@ func TestDialerThenClose(t *testing.T) {
 	go func() {
 		el1.Serve(ln1)
 	}()
-	var ctx1, cancel1 = context.WithTimeout(context.Background(), time.Second)
+	ctx1, cancel1 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel1()
 	defer el1.Shutdown(ctx1)
 
@@ -179,7 +182,7 @@ func TestDialerThenClose(t *testing.T) {
 	go func() {
 		el2.Serve(ln2)
 	}()
-	var ctx2, cancel2 = context.WithTimeout(context.Background(), time.Second)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second)
 	defer cancel2()
 	defer el2.Shutdown(ctx2)
 

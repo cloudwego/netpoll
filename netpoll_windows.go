@@ -1,27 +1,9 @@
-// Copyright 2021 CloudWeGo Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
-// +build darwin netbsd freebsd openbsd dragonfly linux
-
 package netpoll
 
 import (
 	"context"
 	"net"
-	"runtime"
-	"sync"
+	"time"
 )
 
 // A EventLoop is a network server.
@@ -98,66 +80,46 @@ type OnConnect func(ctx context.Context, connection Connection) context.Context
 // Return: error is unused which will be ignored directly.
 type OnRequest func(ctx context.Context, connection Connection) error
 
+// Conn extends net.Conn, but supports getting the conn's fd.
+type Conn interface {
+	net.Conn
+
+	// Fd return conn's fd, used by poll
+	Fd() (fd int)
+}
+
+// Listener extends net.Listener, but supports getting the listener's fd.
+type Listener interface {
+	net.Listener
+
+	// Fd return listener's fd, used by poll.
+	Fd() (fd int)
+}
+
+// Dialer extends net.Dialer's API, just for interface compatibility.
+// DialConnection is recommended, but of course all functions are practically the same.
+// The returned net.Conn can be directly asserted as Connection if error is nil.
+type Dialer interface {
+	DialConnection(network, address string, timeout time.Duration) (connection Connection, err error)
+	DialTimeout(network, address string, timeout time.Duration) (conn net.Conn, err error)
+}
+
+// NewDialer only support TCP and unix socket now.
+func NewDialer() Dialer {
+	return nil
+}
+
 // NewEventLoop .
 func NewEventLoop(onRequest OnRequest, ops ...Option) (EventLoop, error) {
-	opts := &options{
-		onRequest: onRequest,
-	}
-	for _, do := range ops {
-		do.f(opts)
-	}
-	return &eventLoop{
-		opts: opts,
-		stop: make(chan error, 1),
-	}, nil
+	return nil, nil
 }
 
-type eventLoop struct {
-	sync.Mutex
-	opts *options
-	svr  *server
-	stop chan error
+// ConvertListener converts net.Listener to Listener
+func ConvertListener(l net.Listener) (nl Listener, err error) {
+	return nil, nil
 }
 
-// Serve implements EventLoop.
-func (evl *eventLoop) Serve(ln net.Listener) error {
-	npln, err := ConvertListener(ln)
-	if err != nil {
-		return err
-	}
-	evl.Lock()
-	evl.svr = newServer(npln, evl.opts, evl.quit)
-	evl.svr.Run()
-	evl.Unlock()
-
-	err = evl.waitQuit()
-	// ensure evl will not be finalized until Serve returns
-	runtime.SetFinalizer(evl, nil)
-	return err
-}
-
-// Shutdown signals a shutdown a begins server closing.
-func (evl *eventLoop) Shutdown(ctx context.Context) error {
-	evl.Lock()
-	svr := evl.svr
-	evl.svr = nil
-	evl.Unlock()
-
-	if svr == nil {
-		return nil
-	}
-	evl.quit(nil)
-	return svr.Close(ctx)
-}
-
-// waitQuit waits for a quit signal
-func (evl *eventLoop) waitQuit() error {
-	return <-evl.stop
-}
-
-func (evl *eventLoop) quit(err error) {
-	select {
-	case evl.stop <- err:
-	default:
-	}
+// CreateListener return a new Listener.
+func CreateListener(network, addr string) (l Listener, err error) {
+	return nil, nil
 }

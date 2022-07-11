@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -60,13 +63,13 @@ func (s *server) Close(ctx context.Context) error {
 	s.operator.Control(PollDetach)
 	s.ln.Close()
 
-	var ticker = time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var hasConn bool
 	for {
 		hasConn = false
 		s.connections.Range(func(key, value interface{}) bool {
-			var conn, ok = value.(gracefulExit)
+			conn, ok := value.(gracefulExit)
 			if !ok || conn.isIdle() {
 				value.(Connection).Close()
 			}
@@ -104,12 +107,12 @@ func (s *server) OnRead(p Poll) error {
 		return nil
 	}
 	// store & register connection
-	var connection = &connection{}
+	connection := &connection{}
 	connection.init(conn.(Conn), s.opts)
 	if !connection.IsActive() {
 		return nil
 	}
-	var fd = conn.(Conn).Fd()
+	fd := conn.(Conn).Fd()
 	connection.AddCloseCallback(func(connection Connection) error {
 		s.connections.Delete(fd)
 		return nil

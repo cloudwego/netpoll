@@ -33,6 +33,7 @@ import (
  * NewShardQueue: create a queue with netpoll.Connection.
  * ShardSize: the recommended number of shards is 32.
  */
+
 var ShardSize int
 
 func init() {

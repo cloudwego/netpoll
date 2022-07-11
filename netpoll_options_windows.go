@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-// +build !windows
-
 package netpoll
 
 import (
@@ -32,14 +29,14 @@ import (
 //     netpoll.SetNumLoops(...)
 // }
 func SetNumLoops(numLoops int) error {
-	return setNumLoops(numLoops)
+	return nil
 }
 
 // LoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
 // to distribute the incoming connections between multiple polls.
 // This option only works when NumLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
-	return setLoadBalance(lb)
+	return nil
 }
 
 // DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
@@ -48,7 +45,7 @@ func SetLoadBalance(lb LoadBalance) error {
 // But if you can confirm that the OnRequest will not cause stack expansion,
 // it is recommended to use DisableGopool to reduce redundancy and improve performance.
 func DisableGopool() error {
-	return disableGopool()
+	return nil
 }
 
 // WithOnPrepare registers the OnPrepare method to EventLoop.

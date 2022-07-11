@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -45,9 +48,11 @@ type connection struct {
 	bookSize        int // The size of data that can be read at once.
 }
 
-var _ Connection = &connection{}
-var _ Reader = &connection{}
-var _ Writer = &connection{}
+var (
+	_ Connection = &connection{}
+	_ Reader     = &connection{}
+	_ Writer     = &connection{}
+)
 
 // Reader implements Connection.
 func (c *connection) Reader() Reader {
@@ -155,7 +160,7 @@ func (c *connection) Until(delim byte) (line []byte, err error) {
 		l = c.inputBuffer.Len()
 		i := c.inputBuffer.indexByte(delim, n)
 		if i < 0 {
-			n = l //skip all exists bytes
+			n = l // skip all exists bytes
 			continue
 		}
 		return c.Next(i + 1)

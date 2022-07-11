@@ -39,7 +39,7 @@ const ErrnoMask = 0xFF
 
 // wrap Errno, implement xerrors.Wrapper
 func Exception(err error, suffix string) error {
-	var no, ok = err.(syscall.Errno)
+	no, ok := err.(syscall.Errno)
 	if !ok {
 		if suffix == "" {
 			return err

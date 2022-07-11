@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -28,13 +31,13 @@ import (
 )
 
 func TestConnectionWrite(t *testing.T) {
-	var cycle, caps = 10000, 256
-	var msg, buf = make([]byte, caps), make([]byte, caps)
+	cycle, caps := 10000, 256
+	msg, buf := make([]byte, caps), make([]byte, caps)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	var count int32
-	var expect = int32(cycle * caps)
-	var opts = &options{}
+	expect := int32(cycle * caps)
+	opts := &options{}
 	opts.onRequest = func(ctx context.Context, connection Connection) error {
 		n, err := connection.Read(buf)
 		MustNil(t, err)
@@ -45,7 +48,7 @@ func TestConnectionWrite(t *testing.T) {
 	}
 
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, opts)
 	wconn.init(&netFD{fd: w}, opts)
 
@@ -61,13 +64,13 @@ func TestConnectionWrite(t *testing.T) {
 
 func TestConnectionRead(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)
 
-	var size = 256
-	var cycleTime = 100000
-	var msg = make([]byte, size)
+	size := 256
+	cycleTime := 100000
+	msg := make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -90,15 +93,15 @@ func TestConnectionRead(t *testing.T) {
 
 func TestConnectionReadAfterClosed(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn = &connection{}
+	rconn := &connection{}
 	rconn.init(&netFD{fd: r}, nil)
-	var size = 256
-	var msg = make([]byte, size)
+	size := 256
+	msg := make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var buf, err = rconn.Reader().Next(size)
+		buf, err := rconn.Reader().Next(size)
 		MustNil(t, err)
 		Equal(t, len(buf), size)
 	}()
@@ -110,10 +113,10 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 
 func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn = &connection{}
+	rconn := &connection{}
 	rconn.init(&netFD{fd: r}, nil)
-	var size = pagesize * 2
-	var msg = make([]byte, size)
+	size := pagesize * 2
+	msg := make([]byte, size)
 
 	// write half packet
 	syscall.Write(w, msg[:size/2])
@@ -127,7 +130,7 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var buf, err = rconn.Reader().Next(size)
+		buf, err := rconn.Reader().Next(size)
 		Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(0))
 		MustNil(t, err)
 		Equal(t, len(buf), size)
@@ -198,7 +201,7 @@ func TestLargeBufferWrite(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	bufferSize := 2 * 1024 * 1024
-	//start large buffer writing
+	// start large buffer writing
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 129; i++ {
@@ -230,13 +233,13 @@ func TestConnectionLargeMemory(t *testing.T) {
 	runtime.ReadMemStats(&start)
 
 	r, w := GetSysFdPairs()
-	var rconn = &connection{}
+	rconn := &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	var rn, wn = 1024, 1 * 1024 * 1024
+	rn, wn := 1024, 1*1024*1024
 
 	wg.Add(1)
 	go func() {
@@ -244,7 +247,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 		rconn.Reader().Next(wn)
 	}()
 
-	var msg = make([]byte, rn)
+	msg := make([]byte, rn)
 	for i := 0; i < wn/rn; i++ {
 		n, err := syscall.Write(w, msg)
 		if err != nil {
@@ -311,11 +314,11 @@ func TestConnectionUntil(t *testing.T) {
 
 func TestBookSizeLargerThanMaxSize(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)
 
-	var length = 25
+	length := 25
 	dataCollection := make([][]byte, length)
 	for i := 0; i < length; i++ {
 		dataCollection[i] = make([]byte, 2<<i)

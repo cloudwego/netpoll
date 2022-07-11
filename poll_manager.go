@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -32,7 +35,7 @@ func setLoadBalance(lb LoadBalance) error {
 var pollmanager *manager
 
 func init() {
-	var loops = runtime.GOMAXPROCS(0)/20 + 1
+	loops := runtime.GOMAXPROCS(0)/20 + 1
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
 	pollmanager.SetNumLoops(loops)
@@ -54,7 +57,7 @@ func (m *manager) SetNumLoops(numLoops int) error {
 
 	if numLoops < m.NumLoops {
 		// if less than, close the redundant pollers
-		var polls = make([]Poll, numLoops)
+		polls := make([]Poll, numLoops)
 		for idx := 0; idx < m.NumLoops; idx++ {
 			if idx < numLoops {
 				polls[idx] = m.polls[idx]
@@ -98,7 +101,7 @@ func (m *manager) Close() error {
 func (m *manager) Run() error {
 	// new poll to fill delta.
 	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll = openPoll()
+		poll := openPoll()
 		m.polls = append(m.polls, poll)
 		go poll.Wait()
 	}

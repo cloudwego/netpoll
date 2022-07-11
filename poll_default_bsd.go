@@ -56,8 +56,8 @@ type defaultPoll struct {
 // Wait implements Poll.
 func (p *defaultPoll) Wait() error {
 	// init
-	var size, caps = 1024, barriercap
-	var events, barriers = make([]syscall.Kevent_t, size), make([]barrier, size)
+	size, caps := 1024, barriercap
+	events, barriers := make([]syscall.Kevent_t, size), make([]barrier, size)
 	for i := range barriers {
 		barriers[i].bs = make([][]byte, caps)
 		barriers[i].ivs = make([]syscall.Iovec, caps)
@@ -79,7 +79,7 @@ func (p *defaultPoll) Wait() error {
 				atomic.StoreUint32(&p.trigger, 0)
 				continue
 			}
-			var operator = *(**FDOperator)(unsafe.Pointer(&events[i].Udata))
+			operator := *(**FDOperator)(unsafe.Pointer(&events[i].Udata))
 			if !operator.do() {
 				continue
 			}
@@ -91,9 +91,9 @@ func (p *defaultPoll) Wait() error {
 					operator.OnRead(p)
 				} else {
 					// only for connection
-					var bs = operator.Inputs(barriers[i].bs)
+					bs := operator.Inputs(barriers[i].bs)
 					if len(bs) > 0 {
-						var n, err = readv(operator.FD, bs, barriers[i].ivs)
+						n, err := readv(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
 							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
@@ -117,10 +117,10 @@ func (p *defaultPoll) Wait() error {
 					operator.OnWrite(p)
 				} else {
 					// only for connection
-					var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
+					bs, supportZeroCopy := operator.Outputs(barriers[i].bs)
 					if len(bs) > 0 {
 						// TODO: Let the upper layer pass in whether to use ZeroCopy.
-						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
+						n, err := sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
 						if err != nil && err != syscall.EAGAIN {
 							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
@@ -139,7 +139,7 @@ func (p *defaultPoll) Wait() error {
 
 // TODO: Close will bad file descriptor here
 func (p *defaultPoll) Close() error {
-	var err = syscall.Close(p.fd)
+	err := syscall.Close(p.fd)
 	return err
 }
 
@@ -158,7 +158,7 @@ func (p *defaultPoll) Trigger() error {
 
 // Control implements Poll.
 func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
-	var evs = make([]syscall.Kevent_t, 1)
+	evs := make([]syscall.Kevent_t, 1)
 	evs[0].Ident = uint64(operator.FD)
 	*(**FDOperator)(unsafe.Pointer(&evs[0].Udata)) = operator
 	switch event {

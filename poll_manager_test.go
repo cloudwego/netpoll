@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
@@ -21,11 +24,11 @@ import (
 
 func TestPollManager(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)
 
-	var msg = []byte("hello world")
+	msg := []byte("hello world")
 	n, err := wconn.Write(msg)
 	MustNil(t, err)
 	Equal(t, n, len(msg))
