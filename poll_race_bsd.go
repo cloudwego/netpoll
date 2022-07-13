@@ -82,12 +82,11 @@ func (p *defaultPoll) Wait() error {
 				atomic.StoreUint32(&p.trigger, 0)
 				continue
 			}
-			var operator *FDOperator
-			if tmp, ok := p.m.Load(fd); ok {
-				operator = tmp.(*FDOperator)
-			} else {
+			tmp, ok := p.m.Load(fd)
+			if !ok {
 				continue
 			}
+			operator := tmp.(*FDOperator)
 			if !operator.do() {
 				continue
 			}

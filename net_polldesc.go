@@ -59,7 +59,7 @@ func (pd *pollDesc) WaitWrite(ctx context.Context) error {
 		pd.operator.poll = pollmanager.Pick()
 		err = pd.operator.Control(PollWritable)
 		if err != nil {
-			pd.operator.Control(PollDetach)
+			pd.detach()
 		}
 	})
 	if err != nil {
@@ -68,7 +68,7 @@ func (pd *pollDesc) WaitWrite(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		pd.operator.Control(PollDetach)
+		pd.detach()
 		return mapErr(ctx.Err())
 	case <-pd.closeTrigger:
 		return Exception(ErrConnClosed, "by peer")
@@ -81,4 +81,9 @@ func (pd *pollDesc) WaitWrite(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+func (pd *pollDesc) detach() {
+	pd.operator.Control(PollDetach)
+	pd.operator.unused()
 }

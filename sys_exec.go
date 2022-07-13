@@ -68,6 +68,7 @@ func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -83,6 +84,7 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_READV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -98,13 +100,20 @@ func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 		if len(chunk) == 0 {
 			continue
 		}
-		iov := &syscall.Iovec{Base: &chunk[0]}
-		iov.SetLen(len(chunk))
-		// append
-		ivs[iovLen] = *iov
+		ivs[iovLen].Base = &chunk[0]
+		ivs[iovLen].SetLen(len(chunk))
 		iovLen++
 	}
 	return iovLen
+}
+
+func resetIovecs(bs [][]byte, ivs []syscall.Iovec) {
+	for i := 0; i < len(bs); i++ {
+		bs[i] = nil
+	}
+	for i := 0; i < len(ivs); i++ {
+		ivs[i].Base = nil
+	}
 }
 
 // Boolean to int.

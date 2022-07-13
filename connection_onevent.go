@@ -54,32 +54,37 @@ type callbackNode struct {
 }
 
 // SetOnConnect set the OnConnect callback.
-func (on *onEvent) SetOnConnect(onConnect OnConnect) error {
+func (c *connection) SetOnConnect(onConnect OnConnect) error {
 	if onConnect != nil {
-		on.onConnectCallback.Store(onConnect)
+		c.onConnectCallback.Store(onConnect)
 	}
 	return nil
 }
 
 // SetOnRequest initialize ctx when setting OnRequest.
-func (on *onEvent) SetOnRequest(onRequest OnRequest) error {
-	if onRequest != nil {
-		on.onRequestCallback.Store(onRequest)
+func (c *connection) SetOnRequest(onRequest OnRequest) error {
+	if onRequest == nil {
+		return nil
+	}
+	c.onRequestCallback.Store(onRequest)
+	// fix: trigger OnRequest if there is already input data.
+	if !c.inputBuffer.IsEmpty() {
+		c.onRequest()
 	}
 	return nil
 }
 
 // AddCloseCallback adds a CloseCallback to this connection.
-func (on *onEvent) AddCloseCallback(callback CloseCallback) error {
+func (c *connection) AddCloseCallback(callback CloseCallback) error {
 	if callback == nil {
 		return nil
 	}
 	var cb = &callbackNode{}
 	cb.fn = callback
-	if pre := on.closeCallbacks.Load(); pre != nil {
+	if pre := c.closeCallbacks.Load(); pre != nil {
 		cb.pre = pre.(*callbackNode)
 	}
-	on.closeCallbacks.Store(cb)
+	c.closeCallbacks.Store(cb)
 	return nil
 }
 
@@ -202,6 +207,10 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 func (c *connection) closeCallback(needLock bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
+	}
+	// If Close is called during OnPrepare, poll is not registered.
+	if c.closeBy(user) && c.operator.poll != nil {
+		c.operator.Control(PollDetach)
 	}
 	var latest = c.closeCallbacks.Load()
 	if latest == nil {

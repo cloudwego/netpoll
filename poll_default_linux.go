@@ -109,6 +109,9 @@ func (p *defaultPoll) Wait() (err error) {
 func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 	for i := range events {
 		var operator = *(**FDOperator)(unsafe.Pointer(&events[i].data))
+		if !operator.do() {
+			continue
+		}
 		// trigger or exit gracefully
 		if operator.FD == p.wop.FD {
 			// must clean trigger first
@@ -118,11 +121,10 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			if p.buf[0] > 0 {
 				syscall.Close(p.wop.FD)
 				syscall.Close(p.fd)
+				operator.done()
 				return true
 			}
-			continue
-		}
-		if !operator.do() {
+			operator.done()
 			continue
 		}
 
