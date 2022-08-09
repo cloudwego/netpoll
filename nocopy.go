@@ -250,4 +250,4 @@ const (
 	block8k = 8 * 1024
 )
 
-const pagesize = block8k
+const pagesize = block1k / 4
