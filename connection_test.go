@@ -59,38 +59,39 @@ func TestConnectionWrite(t *testing.T) {
 	rconn.Close()
 }
 
-// skip test for ci jobs since it cost large memory
-//func TestConnectionLargeWrite(t *testing.T) {
-//	var totalSize = 1024 * 1024 * 1024 * 4
-//	var wg sync.WaitGroup
-//	wg.Add(1)
-//	var opts = &options{}
-//	opts.onRequest = func(ctx context.Context, connection Connection) error {
-//		if connection.Reader().Len() < totalSize {
-//			return nil
-//		}
-//		_, err := connection.Reader().Next(totalSize)
-//		MustNil(t, err)
-//		err = connection.Reader().Release()
-//		MustNil(t, err)
-//		wg.Done()
-//		return nil
-//	}
-//
-//	r, w := GetSysFdPairs()
-//	var rconn, wconn = &connection{}, &connection{}
-//	rconn.init(&netFD{fd: r}, opts)
-//	wconn.init(&netFD{fd: w}, opts)
-//
-//	msg := make([]byte, totalSize/4)
-//	for i := 0; i < 4; i++ {
-//		_, err := wconn.Writer().WriteBinary(msg)
-//		MustNil(t, err)
-//	}
-//	wg.Wait()
-//
-//	rconn.Close()
-//}
+func TestConnectionLargeWrite(t *testing.T) {
+	// ci machine don't have 4GB memory, so skip test
+	t.Skipf("skip large write test for ci job")
+	var totalSize = 1024 * 1024 * 1024 * 4
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var opts = &options{}
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if connection.Reader().Len() < totalSize {
+			return nil
+		}
+		_, err := connection.Reader().Next(totalSize)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		wg.Done()
+		return nil
+	}
+
+	r, w := GetSysFdPairs()
+	var rconn, wconn = &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+
+	msg := make([]byte, totalSize/4)
+	for i := 0; i < 4; i++ {
+		_, err := wconn.Writer().WriteBinary(msg)
+		MustNil(t, err)
+	}
+	wg.Wait()
+
+	rconn.Close()
+}
 
 func TestConnectionRead(t *testing.T) {
 	r, w := GetSysFdPairs()
