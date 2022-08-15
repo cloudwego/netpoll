@@ -18,10 +18,12 @@
 package netpoll
 
 import (
+	"fmt"
 	"log"
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -85,6 +87,12 @@ func (p *defaultPoll) Wait() (err error) {
 	// init
 	var caps, msec, n = barriercap, -1, 0
 	p.Reset(128, caps)
+	// TODO: debug here
+	go func() {
+		for range time.Tick(30 * time.Second) {
+			fmt.Printf("DEBUG: netpoll poller[%d] size=%d\n", p.fd, p.size)
+		}
+	}()
 	// wait
 	for {
 		if n == p.size && p.size < 128*1024 {

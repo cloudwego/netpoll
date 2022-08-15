@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -298,6 +299,16 @@ var barrierPool = sync.Pool{
 	},
 }
 
+var debug_conns int64
+
+func init() {
+	go func() {
+		for range time.Tick(30 * time.Second) {
+			fmt.Printf("DEBUG: netpoll has %d conns\n", atomic.LoadInt64(&debug_conns))
+		}
+	}()
+}
+
 // init initialize the connection with options
 func (c *connection) init(conn Conn, opts *options) (err error) {
 	// init buffer, barrier, finalizer
@@ -353,6 +364,7 @@ func (c *connection) initFDOperator() {
 }
 
 func (c *connection) initFinalizer() {
+	atomic.AddInt64(&debug_conns, 1)
 	c.AddCloseCallback(func(connection Connection) error {
 		c.stop(flushing)
 		// stop the finalizing state to prevent conn.fill function to be performed
@@ -360,6 +372,7 @@ func (c *connection) initFinalizer() {
 		freeop(c.operator)
 		c.netFD.Close()
 		c.closeBuffer()
+		atomic.AddInt64(&debug_conns, -1)
 		return nil
 	})
 }
