@@ -48,9 +48,11 @@ type connection struct {
 	bookSize        int // The size of data that can be read at once.
 }
 
-var _ Connection = &connection{}
-var _ Reader = &connection{}
-var _ Writer = &connection{}
+var (
+	_ Connection = &connection{}
+	_ Reader     = &connection{}
+	_ Writer     = &connection{}
+)
 
 // Reader implements Connection.
 func (c *connection) Reader() Reader {
@@ -158,7 +160,7 @@ func (c *connection) Until(delim byte) (line []byte, err error) {
 		l = c.inputBuffer.Len()
 		i := c.inputBuffer.indexByte(delim, n)
 		if i < 0 {
-			n = l //skip all exists bytes
+			n = l // skip all exists bytes
 			continue
 		}
 		return c.Next(i + 1)
@@ -452,25 +454,14 @@ func (c *connection) fill(need int) (err error) {
 
 	var n int
 	for {
-		n, err = readv(c.fd, c.inputs(c.inputBarrier.bs), c.inputBarrier.ivs)
+		n, err = ioread(c.fd, c.inputs(c.inputBarrier.bs), c.inputBarrier.ivs)
 		c.inputAck(n)
-		err = c.eofError(n, err)
 		if err != nil {
 			break
 		}
 	}
 	if c.inputBuffer.Len() >= need {
 		return nil
-	}
-	return err
-}
-
-func (c *connection) eofError(n int, err error) error {
-	if err == syscall.EINTR {
-		return nil
-	}
-	if n == 0 && err == nil {
-		return Exception(ErrEOF, "")
 	}
 	return err
 }

@@ -19,7 +19,6 @@
 package netpoll
 
 import (
-	"log"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -93,10 +92,9 @@ func (p *defaultPoll) Wait() error {
 					// only for connection
 					var bs = operator.Inputs(barriers[i].bs)
 					if len(bs) > 0 {
-						var n, err = readv(operator.FD, bs, barriers[i].ivs)
+						var n, err = ioread(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
-						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+						if err != nil {
 							p.appendHup(operator)
 							continue
 						}
@@ -120,10 +118,9 @@ func (p *defaultPoll) Wait() error {
 					var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
 					if len(bs) > 0 {
 						// TODO: Let the upper layer pass in whether to use ZeroCopy.
-						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
+						var n, err = iosend(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
-						if err != nil && err != syscall.EAGAIN {
-							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+						if err != nil {
 							p.appendHup(operator)
 							continue
 						}
