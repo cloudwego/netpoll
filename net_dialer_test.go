@@ -145,7 +145,7 @@ func TestFDClose(t *testing.T) {
 	defer cancel1()
 	defer el1.Shutdown(ctx1)
 
-	var fd int
+	var fd fdtype
 	var conn Connection
 	conn, err = DialConnection("tcp", ":1234", time.Second)
 	MustNil(t, err)

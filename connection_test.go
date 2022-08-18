@@ -158,7 +158,7 @@ func TestReadTrigger(t *testing.T) {
 	Equal(t, len(trigger), 1)
 }
 
-func writeAll(fd int, buf []byte) error {
+func writeAll(fd fdtype, buf []byte) error {
 	for len(buf) > 0 {
 		n, err := syscall.Write(fd, buf)
 		if n < 0 {
@@ -175,7 +175,7 @@ func TestLargeBufferWrite(t *testing.T) {
 	ln, err := CreateListener("tcp", ":1234")
 	MustNil(t, err)
 
-	trigger := make(chan int)
+	trigger := make(chan fdtype)
 	defer close(trigger)
 	go func() {
 		for {

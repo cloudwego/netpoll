@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build darwin netbsd freebsd openbsd dragonfly linux
+// +build windows
 
 package netpoll
 
@@ -145,17 +145,27 @@ func (ln *listener) Fd() (fd fdtype) {
 }
 
 func (ln *listener) parseFD() (err error) {
+	var rawConn syscall.RawConn
 	switch netln := ln.ln.(type) {
 	case *net.TCPListener:
-		ln.file, err = netln.File()
+		rawConn, err = netln.SyscallConn()
+		//ln.file, err = netln.SyscallConn()
 	case *net.UnixListener:
-		ln.file, err = netln.File()
+		rawConn, err = netln.SyscallConn()
+		//ln.file, err = netln.File()
 	default:
 		return errors.New("listener type can't support")
 	}
 	if err != nil {
 		return err
 	}
-	ln.fd = fdtype(ln.file.Fd())
+	fdCh := make(chan uintptr, 1)
+	err = rawConn.Control(func(fd uintptr) {
+		fdCh <- fd
+	})
+	if err != nil {
+		return err
+	}
+	ln.fd = fdtype(<-fdCh)
 	return nil
 }

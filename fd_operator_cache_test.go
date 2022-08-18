@@ -26,7 +26,7 @@ func TestPersistFDOperator(t *testing.T) {
 	var ops = make([]*FDOperator, size)
 	for i := 0; i < size; i++ {
 		op := allocop()
-		op.FD = i
+		op.FD = fdtype(i)
 		ops[i] = op
 	}
 	// gc

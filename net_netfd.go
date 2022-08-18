@@ -5,8 +5,8 @@
 // This file may have been modified by CloudWeGo authors. (“CloudWeGo Modifications”).
 // All CloudWeGo Modifications are Copyright 2021 CloudWeGo authors.
 
-//go:build aix || darwin || dragonfly || freebsd || linux || nacl || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris
+//go:build aix || darwin || dragonfly || freebsd || linux || nacl || netbsd || openbsd || solaris || windows
+// +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris windows
 
 package netpoll
 
@@ -31,7 +31,7 @@ var (
 
 type netFD struct {
 	// file descriptor
-	fd int
+	fd fdtype
 	// When calling netFD.dial(), fd will be registered into poll in some scenarios, such as dialing tcp socket,
 	// but not in other scenarios, such as dialing unix socket.
 	// This leads to a different behavior in register poller at after, so use this field to mark it.
@@ -52,7 +52,7 @@ type netFD struct {
 	remoteAddr    net.Addr
 }
 
-func newNetFD(fd, family, sotype int, net string) *netFD {
+func newNetFD(fd fdtype, family, sotype int, net string) *netFD {
 	var ret = &netFD{}
 	ret.fd = fd
 	ret.network = net
@@ -186,7 +186,7 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 		if err := c.pd.WaitWrite(ctx); err != nil {
 			return nil, err
 		}
-		nerr, err := syscall.GetsockoptInt(c.fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+		nerr, err := syscall.GetsockoptInt(c.fd, syscall.SOL_SOCKET, SO_ERROR)
 		if err != nil {
 			return nil, os.NewSyscallError("getsockopt", err)
 		}

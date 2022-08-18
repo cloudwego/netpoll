@@ -20,7 +20,7 @@ import (
 )
 
 // TODO: recycle *pollDesc
-func newPollDesc(fd int) *pollDesc {
+func newPollDesc(fd fdtype) *pollDesc {
 	pd, op := &pollDesc{}, &FDOperator{}
 	op.FD = fd
 	pd.operator = op

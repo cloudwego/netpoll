@@ -12,33 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build darwin dragonfly freebsd netbsd openbsd
+// +build !windows
 
 package netpoll
 
 import (
 	"syscall"
-	"unsafe"
 )
 
-var supportZeroCopySend bool
+type iovec = syscall.Iovec
+type fdtype = int
 
-// sendmsg wraps the sendmsg system call.
-// Must len(iovs) >= len(vs)
-func sendmsg(fd int, bs [][]byte, ivs []iovec, zerocopy bool) (n int, err error) {
-	iovLen := iovecs(bs, ivs)
-	if iovLen == 0 {
-		return 0, nil
-	}
-	var msghdr = syscall.Msghdr{
-		Iov:    &ivs[0],
-		Iovlen: int32(iovLen),
-	}
-	// flags = syscall.MSG_DONTWAIT
-	r, _, e := syscall.RawSyscall(syscall.SYS_SENDMSG, uintptr(fd), uintptr(unsafe.Pointer(&msghdr)), uintptr(0))
-	resetIovecs(bs, ivs[:iovLen])
-	if e != 0 {
-		return int(r), syscall.Errno(e)
-	}
-	return int(r), nil
+const (
+	SO_ERROR = syscall.SO_ERROR
+)
+
+func sysRead(fd fdtype, p []byte) (n int, err error) {
+	n, err = syscall.Read(fd, p)
+	return n, err
+}
+
+func sysWrite(fd fdtype, p []byte) (n int, err error) {
+	n, err = syscall.Write(fd, p)
+	return n, err
 }

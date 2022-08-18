@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build darwin netbsd freebsd openbsd dragonfly linux
+// +build darwin netbsd freebsd openbsd dragonfly linux windows
 
 package netpoll
 
@@ -30,13 +30,13 @@ type Conn interface {
 	net.Conn
 
 	// Fd return conn's fd, used by poll
-	Fd() (fd int)
+	Fd() (fd fdtype)
 }
 
 var _ Conn = &netFD{}
 
 // Fd implements Conn.
-func (c *netFD) Fd() (fd int) {
+func (c *netFD) Fd() (fd fdtype) {
 	return c.fd
 }
 

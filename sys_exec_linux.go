@@ -23,7 +23,7 @@ import (
 )
 
 // GetSysFdPairs creates and returns the fds of a pair of sockets.
-func GetSysFdPairs() (r, w int) {
+func GetSysFdPairs() (r, w fdtype) {
 	fds, _ := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	return fds[0], fds[1]
 }
@@ -35,7 +35,7 @@ func setTCPNoDelay(fd int, b bool) (err error) {
 
 // Wrapper around the socket system call that marks the returned file
 // descriptor as nonblocking and close-on-exec.
-func sysSocket(family, sotype, proto int) (int, error) {
+func sysSocket(family, sotype, proto int) (fdtype, error) {
 	// See ../syscall/exec_unix.go for description of ForkLock.
 	syscall.ForkLock.RLock()
 	s, err := syscall.Socket(family, sotype, proto)
@@ -57,11 +57,11 @@ const barriercap = 32
 
 type barrier struct {
 	bs  [][]byte
-	ivs []syscall.Iovec
+	ivs []iovec
 }
 
 // writev wraps the writev system call.
-func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
+func writev(fd fdtype, bs [][]byte, ivs []iovec) (n int, err error) {
 	iovLen := iovecs(bs, ivs)
 	if iovLen == 0 {
 		return 0, nil
@@ -77,7 +77,7 @@ func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 
 // readv wraps the readv system call.
 // return 0, nil means EOF.
-func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
+func readv(fd fdtype, bs [][]byte, ivs []iovec) (n int, err error) {
 	iovLen := iovecs(bs, ivs)
 	if iovLen == 0 {
 		return 0, nil
@@ -94,12 +94,12 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 // TODO: read from sysconf(_SC_IOV_MAX)? The Linux default is
 //  1024 and this seems conservative enough for now. Darwin's
 //  UIO_MAXIOV also seems to be 1024.
-func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
+func iovecs(bs [][]byte, ivs []iovec) (iovLen int) {
 	for i := 0; i < len(bs); i++ {
 		chunk := bs[i]
 		if len(chunk) == 0 {
 			continue
-		}
+		}                                                                          
 		ivs[iovLen].Base = &chunk[0]
 		ivs[iovLen].SetLen(len(chunk))
 		iovLen++
@@ -107,7 +107,7 @@ func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 	return iovLen
 }
 
-func resetIovecs(bs [][]byte, ivs []syscall.Iovec) {
+func resetIovecs(bs [][]byte, ivs []iovec) {
 	for i := 0; i < len(bs); i++ {
 		bs[i] = nil
 	}

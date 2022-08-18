@@ -27,7 +27,7 @@ const (
 
 // connection is the implement of Connection
 type connection struct {
-	netFD
+	netFD           
 	onEvent
 	locker
 	operator        *FDOperator
@@ -290,7 +290,7 @@ var barrierPool = sync.Pool{
 	New: func() interface{} {
 		return &barrier{
 			bs:  make([][]byte, barriercap),
-			ivs: make([]syscall.Iovec, barriercap),
+			ivs: make([]iovec, barriercap),
 		}
 	},
 }

@@ -20,12 +20,28 @@ package netpoll
 import (
 	"log"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"syscall"
-	"unsafe"
 )
 
-// Includes defaultPoll/multiPoll/uringPoll...
+var fd2FDOperator sync.Map
+
+const (
+	POLLRDNORM = 0x0100
+	POLLRDBAND = 0x0200
+	POLLIN     = (POLLRDNORM | POLLRDBAND)
+	POLLPRI    = 0x0400
+
+	POLLWRNORM = 0x0010
+	POLLOUT    = (POLLWRNORM)
+	POLLWRBAND = 0x0020
+
+	POLLERR  = 0x0001
+	POLLHUP  = 0x0002
+	POLLNVAL = 0x0004
+)
+
 func openPoll() Poll {
 	return openDefaultPoll()
 }
@@ -33,31 +49,25 @@ func openPoll() Poll {
 func openDefaultPoll() *defaultPoll {
 	var poll = defaultPoll{}
 	poll.buf = make([]byte, 8)
-	var p, err = syscall.EpollCreate1(0)
-	if err != nil {
-		panic(err)
-	}
-	poll.fd = p
-	var r0, _, e0 = syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
-	if e0 != 0 {
-		syscall.Close(p)
-		panic(err)
-	}
+	poll.fdarray = make([]epollevent, 0)
+	r, w := GetSysFdPairs()
 
 	poll.Reset = poll.reset
 	poll.Handler = poll.handler
 
-	poll.wop = &FDOperator{FD: fdtype(r0)}
-	poll.Control(poll.wop, PollReadable)
+	poll.wopr = &FDOperator{FD: fdtype(r)}
+	poll.wopw = &FDOperator{FD: fdtype(w)}
+	poll.Control(poll.wopr, PollReadable)
 	return &poll
 }
 
 type defaultPoll struct {
 	pollArgs
-	fd      fdtype         // epoll fd
-	wop     *FDOperator // eventfd, wake epoll_wait
-	buf     []byte      // read wfd trigger msg
-	trigger uint32      // trigger flag
+	fdarray []epollevent // epoll fds
+	wopr    *FDOperator  // eventfd, wake epoll_wait
+	wopw    *FDOperator
+	buf     []byte // read wfd trigger msg
+	trigger uint32 // trigger flag
 	// fns for handle events
 	Reset   func(size, caps int)
 	Handler func(events []epollevent) (closed bool)
@@ -83,23 +93,33 @@ func (a *pollArgs) reset(size, caps int) {
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
 	// init
-	var caps, msec, n = barriercap, -1, 0
+	// can not be blocked
+	var caps, msec, n = barriercap, 0, 0
 	p.Reset(128, caps)
 	// wait
 	for {
 		if n == p.size && p.size < 128*1024 {
 			p.Reset(p.size<<1, caps)
 		}
-		n, err = EpollWait(p.fd, p.events, msec)
-		if err != nil && err != syscall.EINTR {
-			return err
+		n, _ = EpollWait(p.fdarray, p.events, msec)
+
+		if n == 0xffffffff {
+			for i := 0; i < len(p.fdarray); i++ {
+				if p.fdarray[i].fd == syscall.InvalidHandle {
+					continue
+				}
+				_, err := syscall.Getsockname(p.fdarray[i].fd)
+				if err != nil {
+					p.fdarray[i].fd = syscall.InvalidHandle
+				}
+			}
+			continue
 		}
-		if n <= 0 {
-			msec = -1
+		if n == 0 {
+			//msec = -1
 			runtime.Gosched()
 			continue
 		}
-		msec = 0
 		if p.Handler(p.events[:n]) {
 			return nil
 		}
@@ -108,19 +128,23 @@ func (p *defaultPoll) Wait() (err error) {
 
 func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 	for i := range events {
-		var operator = *(**FDOperator)(unsafe.Pointer(&events[i].data))
+		v, ok := fd2FDOperator.Load(events[i].fd)
+		if !ok {
+			return false
+		}
+		operator := v.(*FDOperator)
 		if !operator.do() {
 			continue
 		}
 		// trigger or exit gracefully
-		if operator.FD == p.wop.FD {
+		if operator.FD == p.wopr.FD {
 			// must clean trigger first
-			syscall.Read(p.wop.FD, p.buf)
+			sysRead(p.wopr.FD, p.buf)
 			atomic.StoreUint32(&p.trigger, 0)
 			// if closed & exit
 			if p.buf[0] > 0 {
-				syscall.Close(p.wop.FD)
-				syscall.Close(p.fd)
+				syscall.Close(p.wopr.FD)
+				syscall.Close(p.wopw.FD)
 				operator.done()
 				return true
 			}
@@ -128,9 +152,9 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			continue
 		}
 
-		evt := events[i].events
+		evt := events[i].revents
 		// check poll in
-		if evt&syscall.EPOLLIN != 0 {
+		if evt&POLLIN != 0 || evt&POLLHUP!=0 {
 			if operator.OnRead != nil {
 				// for non-connection
 				operator.OnRead(p)
@@ -150,21 +174,17 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 		}
 
 		// check hup
-		if evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0 {
+		if evt&POLLHUP != 0 {
 			p.appendHup(operator)
 			continue
 		}
-		if evt&syscall.EPOLLERR != 0 {
-			// Under block-zerocopy, the kernel may give an error callback, which is not a real error, just an EAGAIN.
-			// So here we need to check this error, if it is EAGAIN then do nothing, otherwise still mark as hup.
-			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
-				p.appendHup(operator)
-				continue
-			}
+		if evt&POLLERR != 0 {
+			p.appendHup(operator)
+			continue
 		}
 
 		// check poll out
-		if evt&syscall.EPOLLOUT != 0 {
+		if evt&POLLOUT != 0 {
 			if operator.OnWrite != nil {
 				// for non-connection
 				operator.OnWrite(p)
@@ -192,7 +212,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 
 // Close will write 10000000
 func (p *defaultPoll) Close() error {
-	_, err := syscall.Write(p.wop.FD, []byte{1, 0, 0, 0, 0, 0, 0, 0})
+	_, err := sysWrite(p.wopw.FD, []byte{1, 0, 0, 0, 0, 0, 0, 0})
 	return err
 }
 
@@ -202,7 +222,7 @@ func (p *defaultPoll) Trigger() error {
 		return nil
 	}
 	// MAX(eventfd) = 0xfffffffffffffffe
-	_, err := syscall.Write(p.wop.FD, []byte{0, 0, 0, 0, 0, 0, 0, 1})
+	_, err := sysWrite(p.wopw.FD, []byte{0, 0, 0, 0, 0, 0, 0, 1})
 	return err
 }
 
@@ -210,25 +230,26 @@ func (p *defaultPoll) Trigger() error {
 func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	var op int
 	var evt epollevent
-	*(**FDOperator)(unsafe.Pointer(&evt.data)) = operator
+	evt.fd = operator.FD
+	fd2FDOperator.Store(operator.FD, operator)
 	switch event {
 	case PollReadable:
 		operator.inuse()
-		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = EPOLL_CTL_ADD, POLLIN
 	case PollModReadable:
 		operator.inuse()
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = EPOLL_CTL_MOD, POLLIN
 	case PollDetach:
-		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = EPOLL_CTL_DEL, POLLIN|POLLOUT
 	case PollWritable:
 		operator.inuse()
-		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = EPOLL_CTL_ADD, POLLOUT
 	case PollR2RW:
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = EPOLL_CTL_MOD, POLLOUT
 	case PollRW2R:
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.events = EPOLL_CTL_MOD, POLLIN
 	}
-	return EpollCtl(p.fd, op, operator.FD, &evt)
+	return EpollCtl(&p.fdarray, op, operator.FD, &evt)
 }
 
 func (p *defaultPoll) appendHup(operator *FDOperator) {

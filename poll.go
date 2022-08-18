@@ -17,6 +17,7 @@ package netpoll
 // Poll monitors fd(file descriptor), calls the FDOperator to perform specific actions,
 // and shields underlying differences. On linux systems, poll uses epoll by default,
 // and kevent by default on bsd systems.
+// and WSAPoll on windows system
 type Poll interface {
 	// Wait will poll all registered fds, and schedule processing based on the triggered event.
 	// The call will block, so the usage can be like:

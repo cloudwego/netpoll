@@ -48,7 +48,7 @@ func openDefaultPoll() *defaultPoll {
 }
 
 type defaultPoll struct {
-	fd      int
+	fd      fdtype
 	trigger uint32
 	hups    []func(p Poll) error
 }
@@ -60,7 +60,7 @@ func (p *defaultPoll) Wait() error {
 	var events, barriers = make([]syscall.Kevent_t, size), make([]barrier, size)
 	for i := range barriers {
 		barriers[i].bs = make([][]byte, caps)
-		barriers[i].ivs = make([]syscall.Iovec, caps)
+		barriers[i].ivs = make([]iovec, caps)
 	}
 	// wait
 	for {

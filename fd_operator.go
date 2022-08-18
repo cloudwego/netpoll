@@ -22,7 +22,7 @@ import (
 // FDOperator is a collection of operations on file descriptors.
 type FDOperator struct {
 	// FD is file descriptor, poll will bind when register.
-	FD int
+	FD fdtype
 
 	// The FDOperator provides three operations of reading, writing, and hanging.
 	// The poll actively fire the FDOperator when fd changes, no check the return value of FDOperator.
