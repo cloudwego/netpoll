@@ -52,7 +52,6 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 	}
 	ln := &listener{}
 	ln.ln = l
-	println(l)
 	ln.addr = l.Addr()
 	err = ln.parseFD()
 	if err != nil {
