@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-// +build !windows
+// +build dragonfly freebsd linux netbsd openbsd darwin
 
 package netpoll
 

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
@@ -24,6 +23,13 @@ import (
 	"syscall"
 )
 
+// Listener extends net.Listener, but supports getting the listener's fd.
+type Listener interface {
+	net.Listener
+
+	// Fd return listener's fd, used by poll.
+	Fd() (fd fdtype)
+}
 
 // CreateListener return a new Listener.
 func CreateListener(network, addr string) (l Listener, err error) {

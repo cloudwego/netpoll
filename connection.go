@@ -65,27 +65,3 @@ type Connection interface {
 	AddCloseCallback(callback CloseCallback) error
 }
 
-// Conn extends net.Conn, but supports getting the conn's fd.
-type Conn interface {
-	net.Conn
-
-	// Fd return conn's fd, used by poll
-	Fd() (fd fdtype)
-}
-
-// Listener extends net.Listener, but supports getting the listener's fd.
-type Listener interface {
-	net.Listener
-
-	// Fd return listener's fd, used by poll.
-	Fd() (fd fdtype)
-}
-
-// Dialer extends net.Dialer's API, just for interface compatibility.
-// DialConnection is recommended, but of course all functions are practically the same.
-// The returned net.Conn can be directly asserted as Connection if error is nil.
-type Dialer interface {
-	DialConnection(network, address string, timeout time.Duration) (connection Connection, err error)
-
-	DialTimeout(network, address string, timeout time.Duration) (conn net.Conn, err error)
-}

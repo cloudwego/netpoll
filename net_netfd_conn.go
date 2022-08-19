@@ -26,6 +26,13 @@ import (
 	"time"
 )
 
+// Conn extends net.Conn, but supports getting the conn's fd.
+type Conn interface {
+	net.Conn
+
+	// Fd return conn's fd, used by poll
+	Fd() (fd fdtype)
+}
 
 var _ Conn = &netFD{}
 
