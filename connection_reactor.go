@@ -97,7 +97,7 @@ func (c *connection) inputAck(n int) (err error) {
 	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
 	}
-	if needTrigger && length >= int(atomic.LoadInt32(&c.waitReadSize)) {
+	if needTrigger && length >= int(atomic.LoadInt64(&c.waitReadSize)) {
 		c.triggerRead()
 	}
 	return nil

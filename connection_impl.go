@@ -34,7 +34,7 @@ type connection struct {
 	readTimeout     time.Duration
 	readTimer       *time.Timer
 	readTrigger     chan struct{}
-	waitReadSize    int32
+	waitReadSize    int64
 	writeTrigger    chan error
 	inputBuffer     *LinkBuffer
 	outputBuffer    *LinkBuffer
@@ -380,8 +380,8 @@ func (c *connection) waitRead(n int) (err error) {
 	if n <= c.inputBuffer.Len() {
 		return nil
 	}
-	atomic.StoreInt32(&c.waitReadSize, int32(n))
-	defer atomic.StoreInt32(&c.waitReadSize, 0)
+	atomic.StoreInt64(&c.waitReadSize, int64(n))
+	defer atomic.StoreInt64(&c.waitReadSize, 0)
 	if c.readTimeout > 0 {
 		return c.waitReadWithTimeout(n)
 	}
