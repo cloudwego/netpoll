@@ -23,7 +23,12 @@ import (
 func newPollDesc(fd fdtype) *pollDesc {
 	pd, op := &pollDesc{}, &FDOperator{}
 	op.FD = fd
+	op.OnWrite = pd.onwrite
+	op.OnHup = pd.onhup
+
 	pd.operator = op
+	pd.writeTrigger = make(chan struct{})
+	pd.closeTrigger = make(chan struct{})
 	return pd
 }
 
@@ -41,20 +46,6 @@ type pollDesc struct {
 func (pd *pollDesc) WaitWrite(ctx context.Context) error {
 	var err error
 	pd.once.Do(func() {
-		pd.writeTrigger = make(chan struct{})
-		pd.closeTrigger = make(chan struct{})
-		pd.operator.OnWrite = func(p Poll) error {
-			select {
-			case <-pd.writeTrigger:
-			default:
-				close(pd.writeTrigger)
-			}
-			return nil
-		}
-		pd.operator.OnHup = func(p Poll) error {
-			close(pd.closeTrigger)
-			return nil
-		}
 		// add ET|Write|Hup
 		pd.operator.poll = pollmanager.Pick()
 		err = pd.operator.Control(PollWritable)
@@ -81,6 +72,20 @@ func (pd *pollDesc) WaitWrite(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+func (pd *pollDesc) onwrite(p Poll) error {
+	select {
+	case <-pd.writeTrigger:
+	default:
+		close(pd.writeTrigger)
+	}
+	return nil
+}
+
+func (pd *pollDesc) onhup(p Poll) error {
+	close(pd.closeTrigger)
+	return nil
 }
 
 func (pd *pollDesc) detach() {

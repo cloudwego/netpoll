@@ -160,7 +160,7 @@ func TestReadTrigger(t *testing.T) {
 
 func writeAll(fd fdtype, buf []byte) error {
 	for len(buf) > 0 {
-		n, err := syscall.Write(fd, buf)
+		n, err := sysWrite(fd, buf)
 		if n < 0 {
 			return err
 		}

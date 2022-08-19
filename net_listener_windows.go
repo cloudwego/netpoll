@@ -23,14 +23,6 @@ import (
 	"syscall"
 )
 
-// Listener extends net.Listener, but supports getting the listener's fd.
-type Listener interface {
-	net.Listener
-
-	// Fd return listener's fd, used by poll.
-	Fd() (fd fdtype)
-}
-
 // CreateListener return a new Listener.
 func CreateListener(network, addr string) (l Listener, err error) {
 	if network == "udp" {
