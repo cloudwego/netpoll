@@ -5,8 +5,7 @@
 // This file may have been modified by CloudWeGo authors. (“CloudWeGo Modifications”).
 // All CloudWeGo Modifications are Copyright 2021 CloudWeGo authors.
 
-//go:build !windows
-// +build !windows
+// +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris windows
 
 package netpoll
 

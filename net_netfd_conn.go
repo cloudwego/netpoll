@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
@@ -25,6 +24,14 @@ import (
 	"syscall"
 	"time"
 )
+
+// Conn extends net.Conn, but supports getting the conn's fd.
+type Conn interface {
+	net.Conn
+
+	// Fd return conn's fd, used by poll
+	Fd() (fd int)
+}
 
 var _ Conn = &netFD{}
 
