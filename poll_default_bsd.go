@@ -25,7 +25,10 @@ import (
 	"unsafe"
 )
 
-func openPoll() Poll {
+func openPoll(pollType PollType) Poll {
+	if pollType == PollIOURing {
+		return openIOURingPoll()
+	}
 	return openDefaultPoll()
 }
 
