@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"math"
 	"os"
 	"syscall"
 	"unsafe"
@@ -95,15 +96,36 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 // TODO: read from sysconf(_SC_IOV_MAX)? The Linux default is
 //  1024 and this seems conservative enough for now. Darwin's
 //  UIO_MAXIOV also seems to be 1024.
+// iovecs limit length to 2GB(2^31)
 func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
+	totalLen := 0
 	for i := 0; i < len(bs); i++ {
 		chunk := bs[i]
-		if len(chunk) == 0 {
+		l := len(chunk)
+		if l == 0 {
 			continue
 		}
 		ivs[iovLen].Base = &chunk[0]
-		ivs[iovLen].SetLen(len(chunk))
+		ivs[iovLen].SetLen(l)
+		totalLen += l
 		iovLen++
+	}
+	// iovecs limit length to 2GB(2^31)
+	if totalLen <= math.MaxInt32 {
+		return iovLen
+	}
+	// reset here
+	totalLen = math.MaxInt32
+	for i := 0; i < iovLen; i++ {
+		l := int(ivs[i].Len)
+		if l < totalLen {
+			totalLen -= l
+			continue
+		}
+		ivs[i].SetLen(totalLen)
+		iovLen = i + 1
+		resetIovecs(nil, ivs[iovLen:])
+		return iovLen
 	}
 	return iovLen
 }

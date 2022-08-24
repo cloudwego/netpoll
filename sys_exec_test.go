@@ -18,9 +18,60 @@
 package netpoll
 
 import (
+	"math"
 	"syscall"
 	"testing"
 )
+
+func TestIovecs(t *testing.T) {
+	var got int
+	var bs [][]byte
+	var ivs = make([]syscall.Iovec, 4)
+
+	// case 1
+	bs = [][]byte{
+		make([]byte, 10),
+		make([]byte, 20),
+		make([]byte, 30),
+		make([]byte, 40),
+	}
+	got = iovecs(bs, ivs)
+	Equal(t, got, 4)
+	Equal(t, int(ivs[0].Len), 10)
+	Equal(t, int(ivs[1].Len), 20)
+	Equal(t, int(ivs[2].Len), 30)
+	Equal(t, int(ivs[3].Len), 40)
+
+	// case 2
+	resetIovecs(bs, ivs)
+	bs = [][]byte{
+		make([]byte, math.MaxInt32+100),
+		make([]byte, 20),
+		make([]byte, 30),
+		make([]byte, 40),
+	}
+	got = iovecs(bs, ivs)
+	Equal(t, got, 1)
+	Equal(t, int(ivs[0].Len), math.MaxInt32)
+	Assert(t, ivs[1].Base == nil)
+	Assert(t, ivs[2].Base == nil)
+	Assert(t, ivs[3].Base == nil)
+
+	// case 3
+	resetIovecs(bs, ivs)
+	bs = [][]byte{
+		make([]byte, 10),
+		make([]byte, 20),
+		make([]byte, math.MaxInt32+100),
+		make([]byte, 40),
+	}
+	got = iovecs(bs, ivs)
+	Equal(t, got, 3)
+	Equal(t, int(ivs[0].Len), 10)
+	Equal(t, int(ivs[1].Len), 20)
+	Equal(t, int(ivs[2].Len), math.MaxInt32-30)
+	Assert(t, ivs[3].Base == nil)
+}
 
 func TestWritev(t *testing.T) {
 	r, w := GetSysFdPairs()
