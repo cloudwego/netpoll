@@ -100,3 +100,13 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 
 	return nil
 }
+
+// Magic offsets for the application to mmap the data it needs
+const (
+	// IORING_OFF_SQ_RING maps sqring to program memory space
+	IORING_OFF_SQ_RING uint64 = 0
+	// IORING_OFF_CQ_RING maps cqring to program memory space
+	IORING_OFF_CQ_RING uint64 = 0x8000000
+	// IORING_OFF_SQES maps sqes array to program memory space
+	IORING_OFF_SQES uint64 = 0x10000000
+)
