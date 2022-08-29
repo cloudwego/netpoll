@@ -87,9 +87,9 @@ func (p *defaultPoll) Wait() (err error) {
 	p.Reset(128, caps)
 	// wait
 	for {
-		if n == p.size && p.size < 128*1024 {
-			p.Reset(p.size<<1, caps)
-		}
+		//if n == p.size && p.size < 128*1024 {
+		//	p.Reset(p.size<<1, caps)
+		//}
 		n, err = EpollWait(p.fd, p.events, msec)
 		if err != nil && err != syscall.EINTR {
 			return err
