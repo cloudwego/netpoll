@@ -31,17 +31,17 @@ type probeOp struct {
 	resv2 uint32
 }
 
+// Op implements Probe, returns info for operation by flag.
+func (p Probe) Op(idx int) *probeOp {
+	return &p.ops[idx]
+}
+
 // OpFlagSupported implements Probe
 func (p Probe) OpFlagSupported(op OpFlag) uint16 {
 	if op > p.lastOp {
 		return 0
 	}
 	return uint16(p.ops[op].flags) & IO_URING_OP_SUPPORTED
-}
-
-// getOp implements Probe, returns info for operation by flag.
-func (p Probe) getOp(idx int) *probeOp {
-	return &p.ops[idx]
 }
 
 // IO_URING_OP_SUPPORTED means OpFlags whether io_uring supported or not
