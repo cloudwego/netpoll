@@ -18,6 +18,37 @@ import (
 	"syscall"
 )
 
+// Submission Queue Entry, IO submission data structure
+type URingSQE struct {
+	OpCode     uint8  // type of operation for this sqe
+	Flags      uint8  // IOSQE_ flags
+	IOPrio     uint16 // ioprio for the request
+	Fd         int32  // file descriptor to do IO on
+	Off        uint64 // offset into file
+	Addr       uint64 // pointer to buffer or iovecs
+	Len        uint32 // buffer size or number of iovecs
+	UnionFlags uint32
+	UserData   uint64 // data to be passed back at completion time
+
+	pad [3]uint64
+}
+
+// PrepRW implements SQE
+func (s *URingSQE) PrepRW(op OpFlag, fd int32, addr uintptr, len uint32, offset uint64) {
+	s.OpCode = uint8(op)
+	s.Flags = 0
+	s.IOPrio = 0
+	s.Fd = fd
+	s.Off = offset
+	s.setAddr(addr)
+	s.Len = len
+	s.UnionFlags = 0
+	s.UserData = 0
+	s.pad[0] = 0
+	s.pad[1] = 0
+	s.pad[2] = 0
+}
+
 // Completion Queue Eveny, IO completion data structure
 type URingCQE struct {
 	UserData uint64 // sqe->data submission passed back
@@ -26,7 +57,7 @@ type URingCQE struct {
 
 	// If the ring is initialized with IORING_SETUP_CQE32, then this field
 	// contains 16-bytes of padding, doubling the size of the CQE.
-	BigCQE []uint64
+	BigCQE [2]uint64
 }
 
 // Error implements CQE
@@ -37,25 +68,6 @@ func (c *URingCQE) Error() error {
 // getData implements CQE
 func (c *URingCQE) getData() uint64 {
 	return c.UserData
-}
-
-// Submission Queue Entry, IO submission data structure
-type URingSQE struct {
-	OpCode      uint8  // type of operation for this sqe
-	Flags       uint8  // IOSQE_ flags
-	IOPrio      uint16 // ioprio for the request
-	Fd          int32  // file descriptor to do IO on
-	Off         uint64 // offset into file
-	Addr        uint64 // pointer to buffer or iovecs
-	Len         uint32 // buffer size or number of iovecs
-	OpcodeFlags uint32
-	UserData    uint64 // data to be passed back at completion time
-
-	BufIG uint16
-
-	Personality uint16 // personality to use, if used
-	SpliceFdIn  int32
-	_pad2       [2]uint64
 }
 
 // setData sets the user data field of the SQE instance passed in.
@@ -71,24 +83,6 @@ func (s *URingSQE) setFlags(flags uint8) {
 // setAddr sets the flags field of the SQE instance passed in.
 func (s *URingSQE) setAddr(addr uintptr) {
 	s.Addr = uint64(addr)
-}
-
-// PrepRW implements SQE
-func (s *URingSQE) PrepRW(op OpFlag, fd int32, addr uintptr, len uint32, offset uint64) {
-	s.OpCode = uint8(op)
-	s.Flags = 0
-	s.IOPrio = 0
-	s.Fd = fd
-	s.Off = offset
-	s.setAddr(addr)
-	s.Len = len
-	s.OpcodeFlags = 0
-	s.UserData = 0
-	s.BufIG = 0
-	s.Personality = 0
-	s.SpliceFdIn = 0
-	s._pad2[0] = 0
-	s._pad2[1] = 0
 }
 
 // Flags of CQE
