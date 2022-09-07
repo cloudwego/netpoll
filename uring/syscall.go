@@ -15,15 +15,17 @@
 package uring
 
 import (
+	"math"
 	"os"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
 
-// sysRegister registers user buffers or files for use in an io_uring(7) instance referenced by fd.
+// SysRegister registers user buffers or files for use in an io_uring(7) instance referenced by fd.
 // Registering files or user buffers allows the kernel to take long term references to internal data structures
 // or create long term mappings of application memory, greatly reducing per-I/O overhead.
-func sysRegister(ringFd int, op int, arg unsafe.Pointer, nrArgs int) error {
+func SysRegister(ringFd int, op int, arg unsafe.Pointer, nrArgs int) error {
 	_, _, err := syscall.Syscall6(SYS_IO_URING_REGISTER, uintptr(ringFd), uintptr(op), uintptr(arg), uintptr(nrArgs), 0, 0)
 	if err != 0 {
 		return os.NewSyscallError("io_uring_register", err)
@@ -31,10 +33,10 @@ func sysRegister(ringFd int, op int, arg unsafe.Pointer, nrArgs int) error {
 	return nil
 }
 
-// sysSetUp sets up a SQ and CQ with at least entries entries, and
+// SysSetUp sets up a SQ and CQ with at least entries entries, and
 // returns a file descriptor which can be used to perform subsequent operations on the io_uring instance.
 // The SQ and CQ are shared between userspace and the kernel, which eliminates the need to copy data when initiating and completing I/O.
-func sysSetUp(entries uint32, params *ringParams) (int, error) {
+func SysSetUp(entries uint32, params *ringParams) (int, error) {
 	p, _, err := syscall.Syscall(SYS_IO_URING_SETUP, uintptr(entries), uintptr(unsafe.Pointer(params)), uintptr(0))
 	if err != 0 {
 		return int(p), os.NewSyscallError("io_uring_setup", err)
@@ -42,13 +44,9 @@ func sysSetUp(entries uint32, params *ringParams) (int, error) {
 	return int(p), err
 }
 
-// sysEnter is used to initiate and complete I/O using the shared SQ and CQ setup by a call to io_uring_setup(2).
+// SysEnter is used to initiate and complete I/O using the shared SQ and CQ setup by a call to io_uring_setup(2).
 // A single call can both submit new I/O and wait for completions of I/O initiated by this call or previous calls to io_uring_enter().
-func sysEnter(fd int, toSubmit uint32, minComplete uint32, flags uint32, sig unsafe.Pointer) (uint, error) {
-	return sysEnter6(fd, toSubmit, minComplete, flags, sig, NSIG/8)
-}
-
-func sysEnter6(fd int, toSubmit uint32, minComplete uint32, flags uint32, sig unsafe.Pointer, sz int) (uint, error) {
+func SysEnter(fd int, toSubmit uint32, minComplete uint32, flags uint32, sig unsafe.Pointer, sz int) (uint, error) {
 	p, _, err := syscall.Syscall6(SYS_IO_URING_ENTER, uintptr(fd), uintptr(toSubmit), uintptr(minComplete), uintptr(flags), uintptr(unsafe.Pointer(sig)), uintptr(sz))
 	if err != 0 {
 		return 0, os.NewSyscallError("iouring_enter", err)
@@ -59,12 +57,59 @@ func sysEnter6(fd int, toSubmit uint32, minComplete uint32, flags uint32, sig un
 	return uint(p), err
 }
 
-func min(a, b uint32) uint32 {
-	if a > b {
-		return b
-	}
-	return a
+// _sizeU32 is size of uint32
+const _sizeU32 uintptr = unsafe.Sizeof(uint32(0))
+
+// _sizeUR is size of URing
+const _sizeUR uintptr = unsafe.Sizeof(URing{})
+
+// _sizeCQE is size of URingCQE
+const _sizeCQE uintptr = unsafe.Sizeof(URingCQE{})
+
+// _sizeSQE is size of URingSQE
+const _sizeSQE uintptr = unsafe.Sizeof(URingSQE{})
+
+// _sizeEventsArg is size of eventsArg
+const _sizeEventsArg uintptr = unsafe.Sizeof(eventsArg{})
+
+// Init system call numbers
+const (
+	SYS_IO_URING_SETUP    = 425
+	SYS_IO_URING_ENTER    = 426
+	SYS_IO_URING_REGISTER = 427
+
+	NSIG = 64
+)
+
+// Flags of uringSQ
+const (
+	// IORING_SQ_NEED_WAKEUP means needs io_uring_enter wakeup
+	IORING_SQ_NEED_WAKEUP uint32 = 1 << iota
+	// IORING_SQ_CQ_OVERFLOW means CQ ring is overflown
+	IORING_SQ_CQ_OVERFLOW
+	// IORING_SQ_TASKRUN means task should enter the kernel
+	IORING_SQ_TASKRUN
+)
+
+// Flags of uringCQ
+// IORING_CQ_EVENTFD_DISABLED means disable eventfd notifications
+const IORING_CQ_EVENTFD_DISABLED uint32 = 1 << iota
+
+const INT_FLAG_REG_RING = 1
+const LIBURING_UDATA_TIMEOUT = math.MaxUint64
+
+func WRITE_ONCE_U32(p *uint32, v uint32) {
+	atomic.StoreUint32(p, v)
 }
 
-//go:linkname sockaddr syscall.Sockaddr.sockaddr
-func sockaddr(addr syscall.Sockaddr) (unsafe.Pointer, uint32, error)
+func READ_ONCE_U32(p *uint32) uint32 {
+	return atomic.LoadUint32(p)
+}
+
+func SMP_STORE_RELEASE_U32(p *uint32, v uint32) {
+	atomic.StoreUint32(p, v)
+}
+
+func SMP_LOAD_ACQUIRE_U32(p *uint32) uint32 {
+	return atomic.LoadUint32(p)
+}
