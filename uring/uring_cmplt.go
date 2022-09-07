@@ -15,8 +15,7 @@
 package uring
 
 import (
-	"math"
-	"runtime"
+	"errors"
 	"syscall"
 	"time"
 	"unsafe"
@@ -30,102 +29,11 @@ type getData struct {
 	arg      unsafe.Pointer
 }
 
-type getEventsArg struct {
+type eventsArg struct {
 	sigMask   uintptr
 	sigMaskSz uint32
 	_pad      uint32
 	ts        uintptr
-}
-
-// WaitCQE implements URing, it returns an I/O CQE, waiting for it if necessary
-func (u *URing) WaitCQE() (cqe *URingCQE, err error) {
-	return u.WaitCQENr(1)
-}
-
-// WaitCQENr implements URing, it returns an I/O CQE, waiting for nr completions if one isn’t readily
-func (u *URing) WaitCQENr(nr uint32) (cqe *URingCQE, err error) {
-	return u.getCQE(getData{
-		submit: 0,
-		waitNr: nr,
-		arg:    unsafe.Pointer(nil),
-	})
-}
-
-// WaitCQEs implements URing, like WaitCQE() except it accepts a timeout value as well.
-// Note that an SQE is used internally to handle the timeout. Applications using this function
-// must never set sqe->user_data to LIBURING_UDATA_TIMEOUT.
-func (u *URing) WaitCQEs(nr uint32, timeout time.Duration) (*URingCQE, error) {
-	var toSubmit uint32
-
-	if u.Params.flags&IORING_FEAT_EXT_ARG != 0 {
-		return u.WaitCQEsNew(nr, timeout)
-	}
-	toSubmit, err := u.submitTimeout(timeout)
-	if toSubmit == 0 {
-		return nil, err
-	}
-	return u.getCQE(getData{
-		submit: toSubmit,
-		waitNr: nr,
-		arg:    unsafe.Pointer(nil),
-		sz:     NSIG / 8,
-	})
-}
-
-// WaitCQETimeout implements URing, returns an I/O completion,
-// if one is readily available. Doesn’t wait.
-func (u *URing) WaitCQETimeout(timeout time.Duration) (cqe *URingCQE, err error) {
-	return u.WaitCQEs(1, timeout)
-}
-
-// PeekBatchCQE implements URing, it fills in an array of I/O CQE up to count,
-// if they are available, returning the count of completions filled.
-// Does not wait for completions. They have to be already available for them to be returned by this function.
-func (u *URing) PeekBatchCQE(cqes []*URingCQE) int {
-	var shift int
-	if u.Params.flags&IORING_SETUP_CQE32 != 0 {
-		shift = 1
-	}
-
-	n := u.peekBatchCQE(cqes, shift)
-
-	if n == 0 && u.cqRingNeedFlush() {
-		sysEnter(u.fd, 0, 0, IORING_ENTER_GETEVENTS, nil)
-		n = u.peekBatchCQE(cqes, shift)
-	}
-
-	return n
-}
-
-// CQESeen implements URing, it must be called after PeekCQE() or WaitCQE()
-// and after the cqe has been processed by the application.
-func (u *URing) CQESeen() {
-	if u.cqRing.cqes != nil {
-		u.Advance(1)
-	}
-}
-
-// GetEventsArg implements URing
-func GetEventsArg(sigMask uintptr, sigMaskSz uint32, ts uintptr) *getEventsArg {
-	return &getEventsArg{sigMask: sigMask, sigMaskSz: sigMaskSz, ts: ts}
-}
-
-// WaitCQEsNew implements URing
-func (u *URing) WaitCQEsNew(nr uint32, timeout time.Duration) (cqe *URingCQE, err error) {
-	ts := syscall.NsecToTimespec(timeout.Nanoseconds())
-	arg := GetEventsArg(uintptr(unsafe.Pointer(nil)), NSIG/8, uintptr(unsafe.Pointer(&ts)))
-
-	cqe, err = u.getCQE(getData{
-		submit:   0,
-		waitNr:   nr,
-		getFlags: IORING_ENTER_EXT_ARG,
-		arg:      unsafe.Pointer(arg),
-		sz:       int(unsafe.Sizeof(getEventsArg{})),
-	})
-
-	runtime.KeepAlive(arg)
-	runtime.KeepAlive(ts)
-	return
 }
 
 // getCQE implements URing
@@ -167,7 +75,7 @@ func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
 		}
 
 		var ret uint
-		ret, err = sysEnter6(u.fd, data.submit, data.waitNr, flags, data.arg, data.sz)
+		ret, err = SysEnter(u.fd, data.submit, data.waitNr, flags, data.arg, data.sz)
 
 		if err != nil {
 			break
@@ -181,6 +89,11 @@ func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
 
 	}
 	return
+}
+
+// getEventsArg implements URing
+func getEventsArg(sigMask uintptr, sigMaskSz uint32, ts uintptr) *eventsArg {
+	return &eventsArg{sigMask: sigMask, sigMaskSz: sigMaskSz, ts: ts}
 }
 
 // submitTimeout implements URing
@@ -218,7 +131,7 @@ func (u *URing) peekCQE() (avail uint32, cqe *URingCQE, err error) {
 		if avail == 0 {
 			break
 		}
-		cqe = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*unsafe.Sizeof(URing{})))
+		cqe = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*_sizeUR))
 
 		if !(u.Params.features&IORING_FEAT_EXT_ARG == 0) && cqe.UserData == LIBURING_UDATA_TIMEOUT {
 			if cqe.Res < 0 {
@@ -238,18 +151,63 @@ func (u *URing) peekCQE() (avail uint32, cqe *URingCQE, err error) {
 // peekCQE implements URing
 func (u *URing) peekBatchCQE(cqes []*URingCQE, shift int) int {
 	ready := u.cqRing.ready()
-	count := min(uint32(len(cqes)), ready)
+	lenCQEs := uint32(len(cqes))
+	var count uint32
+	if lenCQEs > ready {
+		count = ready
+	} else {
+		count = lenCQEs
+	}
 	if ready != 0 {
 		head := SMP_LOAD_ACQUIRE_U32(u.cqRing.kHead)
 		mask := SMP_LOAD_ACQUIRE_U32(u.cqRing.kRingMask)
 
 		last := head + count
 		for i := 0; head != last; head, i = head+1, i+1 {
-			cqes[i] = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*unsafe.Sizeof(URingCQE{})))
+			cqes[i] = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*_sizeCQE))
 		}
 	}
 	return int(count)
 }
 
-const INT_FLAG_REG_RING = 1
-const LIBURING_UDATA_TIMEOUT = math.MaxUint64
+// nextSQE implements URing
+func (u *URing) nextSQE() (sqe *URingSQE, err error) {
+	head := SMP_LOAD_ACQUIRE_U32(u.sqRing.kHead)
+	next := u.sqRing.sqeTail + 1
+
+	if *u.sqRing.kRingEntries >= next-head {
+		idx := u.sqRing.sqeTail & *u.sqRing.kRingMask * uint32(_sizeSQE)
+		sqe = (*URingSQE)(unsafe.Pointer(&u.sqRing.sqeBuff[idx]))
+		u.sqRing.sqeTail = next
+	} else {
+		err = errors.New("sq ring overflow")
+	}
+	return
+}
+
+// caRingNeedEnter implements URing
+func (u *URing) caRingNeedEnter() bool {
+	return u.Params.flags&IORING_SETUP_IOPOLL != 0 || u.cqRingNeedFlush()
+}
+
+// cqRingNeedFlush implements URing
+func (u *URing) cqRingNeedFlush() bool {
+	return READ_ONCE_U32(u.sqRing.kFlags)&(IORING_SQ_CQ_OVERFLOW|IORING_SQ_TASKRUN) != 0
+}
+
+// sqRingNeedEnter implements URing
+func (u *URing) sqRingNeedEnter(flags *uint32) bool {
+	if u.Params.flags&IORING_SETUP_SQPOLL == 0 {
+		return true
+	}
+	if READ_ONCE_U32(u.sqRing.kFlags)&IORING_ENTER_SQ_WAKEUP != 0 {
+		*flags |= IORING_ENTER_SQ_WAKEUP
+		return true
+	}
+	return false
+}
+
+// ready implements URing
+func (c *uringCQ) ready() uint32 {
+	return SMP_LOAD_ACQUIRE_U32(c.kTail) - SMP_LOAD_ACQUIRE_U32(c.kHead)
+}

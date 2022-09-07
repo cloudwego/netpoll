@@ -15,67 +15,24 @@
 package uring
 
 import (
-	"errors"
+	"runtime"
+	"syscall"
+	"time"
 	"unsafe"
 )
 
-// URing means I/O Userspace Ring
-type URing struct {
-	cqRing *uringCQ
-	sqRing *uringSQ
-
-	fd int
-
-	Params *ringParams
-}
-
-// uringSQ means Submit Queue
-type uringSQ struct {
-	buff    []byte
-	sqeBuff []byte
-
-	kHead        *uint32
-	kTail        *uint32
-	kRingMask    *uint32
-	kRingEntries *uint32
-	kFlags       *uint32
-	kDropped     *uint32
-	array        *uint32
-	sqes         *URingSQE
-
-	sqeHead uint32
-	sqeTail uint32
-
-	ringSize uint64
-}
-
-// uringCQ means Completion Queue
-type uringCQ struct {
-	buff   []byte
-	kFlags uintptr
-
-	kHead        *uint32
-	kTail        *uint32
-	kRingMask    *uint32
-	kRingEntries *uint32
-	kOverflow    *uint32
-	cqes         *URingCQE
-
-	ringSize uint64
-}
-
 // IOURing create new io_uring instance with Setup Options
-func IOURing(entries uint32, ops ...setupOp) (r *URing, err error) {
+func IOURing(entries uint32, ops ...setupOp) (u *URing, err error) {
 	params := &ringParams{}
 	for _, op := range ops {
 		op(params)
 	}
-	fd, err := sysSetUp(entries, params)
+	fd, err := SysSetUp(entries, params)
 	if err != nil {
 		return nil, err
 	}
-	r = &URing{Params: params, fd: fd, sqRing: &uringSQ{}, cqRing: &uringCQ{}}
-	err = r.sysMmap(params)
+	u = &URing{Params: params, fd: fd, sqRing: &uringSQ{}, cqRing: &uringCQ{}}
+	err = u.sysMmap(params)
 
 	return
 }
@@ -85,9 +42,21 @@ func (u *URing) Fd() int {
 	return u.fd
 }
 
-// Close implements URing
-func (u *URing) Close() error {
-	err := u.sysMunmap()
+// SQE will return a submission queue entry that can be used to submit an I/O operation.
+func (u *URing) SQE() *URingSQE {
+	return u.sqRing.sqes
+}
+
+// Probe implements URing, it returns io_uring probe
+func (u *URing) Probe() (probe *Probe, err error) {
+	probe = &Probe{}
+	err = SysRegister(u.fd, IORING_REGISTER_PROBE, unsafe.Pointer(probe), 256)
+	return
+}
+
+// RegisterProbe implements URing
+func (r URing) RegisterProbe(p *Probe, nrOps int) error {
+	err := SysRegister(r.fd, IORING_REGISTER_PROBE, unsafe.Pointer(p), nrOps)
 	return err
 }
 
@@ -100,106 +69,111 @@ func (u *URing) Advance(nr uint32) {
 	}
 }
 
-// getSQE will return a submission queue entry that can be used to submit an I/O operation.
-func (u *URing) getSQE() *URingSQE {
-	return u.sqRing.sqes
-}
-
-// nextSQE implements URing
-func (u *URing) nextSQE() (sqe *URingSQE, err error) {
-	head := SMP_LOAD_ACQUIRE_U32(u.sqRing.kHead)
-	next := u.sqRing.sqeTail + 1
-
-	if *u.sqRing.kRingEntries >= next-head {
-		idx := u.sqRing.sqeTail & *u.sqRing.kRingMask * uint32(unsafe.Sizeof(URingSQE{}))
-		sqe = (*URingSQE)(unsafe.Pointer(&u.sqRing.sqeBuff[idx]))
-		u.sqRing.sqeTail = next
-	} else {
-		err = errors.New("sq ring overflow")
-	}
-	return
-}
-
-// flushSQ implements URing
-func (u *URing) flushSQ() uint32 {
-	mask := *u.sqRing.kRingMask
-	tail := SMP_LOAD_ACQUIRE_U32(u.sqRing.kTail)
-	subCnt := u.sqRing.sqeTail - u.sqRing.sqeHead
-
-	if subCnt == 0 {
-		return tail - SMP_LOAD_ACQUIRE_U32(u.sqRing.kHead)
-	}
-
-	for i := subCnt; i > 0; i-- {
-		*(*uint32)(unsafe.Add(unsafe.Pointer(u.sqRing.array), tail&mask*uint32(unsafe.Sizeof(uint32(0))))) = u.sqRing.sqeHead & mask
-		tail++
-		u.sqRing.sqeHead++
-	}
-
-	SMP_STORE_RELEASE_U32(u.sqRing.kTail, tail)
-
-	return tail - SMP_LOAD_ACQUIRE_U32(u.sqRing.kHead)
-}
-
-// getProbe implements URing, it returns io_uring probe
-func (u *URing) getProbe() (probe *Probe, err error) {
-	probe = &Probe{}
-	err = sysRegister(u.fd, IORING_REGISTER_PROBE, unsafe.Pointer(probe), 256)
-	return
-}
-
-// registerProbe implements URing
-func (r URing) registerProbe(p *Probe, nrOps int) error {
-	err := sysRegister(r.fd, IORING_REGISTER_PROBE, unsafe.Pointer(p), nrOps)
+// Close implements URing
+func (u *URing) Close() error {
+	err := u.sysMunmap()
 	return err
 }
 
-// caRingNeedEnter implements URing
-func (u *URing) caRingNeedEnter() bool {
-	return u.Params.flags&IORING_SETUP_IOPOLL != 0 || u.cqRingNeedFlush()
+// ------------------------------------------ implement submission ------------------------------------------
+
+// Submit will return the number of SQEs submitted.
+func (u *URing) Submit() (uint, error) {
+	return u.submitAndWait(0)
 }
 
-// cqRingNeedFlush implements URing
-func (u *URing) cqRingNeedFlush() bool {
-	return READ_ONCE_U32(u.sqRing.kFlags)&(IORING_SQ_CQ_OVERFLOW|IORING_SQ_TASKRUN) != 0
+// SubmitAndWait is the same as Submit(), but takes an additional parameter
+// nr that lets you specify how many completions to wait for.
+// This call will block until nr submission requests are processed by the kernel
+// and their details placed in the CQ.
+func (u *URing) SubmitAndWait(nr uint32) (uint, error) {
+	return u.submitAndWait(nr)
 }
 
-// sqRingNeedEnter implements URing
-func (u *URing) sqRingNeedEnter(flags *uint32) bool {
-	if u.Params.flags&IORING_SETUP_SQPOLL == 0 {
-		return true
+// ------------------------------------------ implement completion ------------------------------------------
+
+// WaitCQE implements URing, it returns an I/O CQE, waiting for it if necessary
+func (u *URing) WaitCQE() (cqe *URingCQE, err error) {
+	return u.WaitCQENr(1)
+}
+
+// WaitCQENr implements URing, it returns an I/O CQE, waiting for nr completions if one isn’t readily
+func (u *URing) WaitCQENr(nr uint32) (cqe *URingCQE, err error) {
+	return u.getCQE(getData{
+		submit: 0,
+		waitNr: nr,
+		arg:    unsafe.Pointer(nil),
+	})
+}
+
+// WaitCQEs implements URing, like WaitCQE() except it accepts a timeout value as well.
+// Note that an SQE is used internally to handle the timeout. Applications using this function
+// must never set sqe->user_data to LIBURING_UDATA_TIMEOUT.
+func (u *URing) WaitCQEs(nr uint32, timeout time.Duration) (*URingCQE, error) {
+	var toSubmit uint32
+
+	if u.Params.flags&IORING_FEAT_EXT_ARG != 0 {
+		return u.WaitCQEsNew(nr, timeout)
 	}
-	if READ_ONCE_U32(u.sqRing.kFlags)&IORING_ENTER_SQ_WAKEUP != 0 {
-		*flags |= IORING_ENTER_SQ_WAKEUP
-		return true
+	toSubmit, err := u.submitTimeout(timeout)
+	if toSubmit == 0 {
+		return nil, err
 	}
-	return false
+	return u.getCQE(getData{
+		submit: toSubmit,
+		waitNr: nr,
+		arg:    unsafe.Pointer(nil),
+		sz:     NSIG / 8,
+	})
 }
 
-// ready implements URing
-func (c *uringCQ) ready() uint32 {
-	return SMP_LOAD_ACQUIRE_U32(c.kTail) - SMP_LOAD_ACQUIRE_U32(c.kHead)
+// WaitCQETimeout implements URing, returns an I/O completion,
+// if one is readily available. Doesn’t wait.
+func (u *URing) WaitCQETimeout(timeout time.Duration) (cqe *URingCQE, err error) {
+	return u.WaitCQEs(1, timeout)
 }
 
-// Init system call numbers
-const (
-	SYS_IO_URING_SETUP    = 425
-	SYS_IO_URING_ENTER    = 426
-	SYS_IO_URING_REGISTER = 427
+// PeekBatchCQE implements URing, it fills in an array of I/O CQE up to count,
+// if they are available, returning the count of completions filled.
+// Does not wait for completions. They have to be already available for them to be returned by this function.
+func (u *URing) PeekBatchCQE(cqes []*URingCQE) int {
+	var shift int
+	if u.Params.flags&IORING_SETUP_CQE32 != 0 {
+		shift = 1
+	}
 
-	NSIG = 64
-)
+	n := u.peekBatchCQE(cqes, shift)
 
-// Flags of uringSQ
-const (
-	// IORING_SQ_NEED_WAKEUP means needs io_uring_enter wakeup
-	IORING_SQ_NEED_WAKEUP uint32 = 1 << iota
-	// IORING_SQ_CQ_OVERFLOW means CQ ring is overflown
-	IORING_SQ_CQ_OVERFLOW
-	// IORING_SQ_TASKRUN means task should enter the kernel
-	IORING_SQ_TASKRUN
-)
+	if n == 0 && u.cqRingNeedFlush() {
+		SysEnter(u.fd, 0, 0, IORING_ENTER_GETEVENTS, nil, NSIG/8)
+		n = u.peekBatchCQE(cqes, shift)
+	}
 
-// Flags of uringCQ
-// IORING_CQ_EVENTFD_DISABLED means disable eventfd notifications
-const IORING_CQ_EVENTFD_DISABLED uint32 = 1 << iota
+	return n
+}
+
+// CQESeen implements URing, it must be called after PeekCQE() or WaitCQE()
+// and after the cqe has been processed by the application.
+func (u *URing) CQESeen() {
+	if u.cqRing.cqes != nil {
+		u.Advance(1)
+	}
+}
+
+// WaitCQEsNew implements URing
+func (u *URing) WaitCQEsNew(nr uint32, timeout time.Duration) (cqe *URingCQE, err error) {
+	ts := syscall.NsecToTimespec(timeout.Nanoseconds())
+	arg := getEventsArg(uintptr(unsafe.Pointer(nil)), NSIG/8, uintptr(unsafe.Pointer(&ts)))
+
+	cqe, err = u.getCQE(getData{
+		submit:   0,
+		waitNr:   nr,
+		getFlags: IORING_ENTER_EXT_ARG,
+		arg:      unsafe.Pointer(arg),
+		sz:       int(_sizeEventsArg),
+	})
+
+	runtime.KeepAlive(arg)
+	runtime.KeepAlive(ts)
+	return
+}
