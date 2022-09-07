@@ -21,9 +21,9 @@ import (
 
 // sysMmap is used to free the URingSQE and URingCQE,
 func (u *URing) sysMunmap() (err error) {
-	err = syscall.Munmap(u.sqRing.buff)
+	err = mumap(u.sqRing.buff)
 	if u.cqRing.buff != nil && &u.cqRing.buff[0] != &u.sqRing.buff[0] {
-		err = syscall.Munmap(u.cqRing.buff)
+		err = mumap(u.cqRing.buff)
 	}
 	return
 }
@@ -31,11 +31,11 @@ func (u *URing) sysMunmap() (err error) {
 // sysMmap is used to configure the URingSQE and URingCQE,
 // it should only be called after the sysSetUp function has completed successfully.
 func (u *URing) sysMmap(p *ringParams) (err error) {
-	size := unsafe.Sizeof(URingCQE{})
+	size := _sizeCQE
 	if p.flags&IORING_SETUP_CQE32 != 0 {
-		size += unsafe.Sizeof(URingCQE{})
+		size += _sizeCQE
 	}
-	u.sqRing.ringSize = uint64(p.sqOffset.array) + uint64(p.sqEntries*(uint32)(unsafe.Sizeof(uint32(0))))
+	u.sqRing.ringSize = uint64(p.sqOffset.array) + uint64(p.sqEntries*(uint32)(_sizeU32))
 	u.cqRing.ringSize = uint64(p.cqOffset.cqes) + uint64(p.cqEntries*(uint32)(size))
 
 	if p.features&IORING_FEAT_SINGLE_MMAP != 0 {
@@ -45,8 +45,7 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 		u.cqRing.ringSize = u.sqRing.ringSize
 	}
 
-	// TODO: syscall.MAP_POPULATE unsupport for macox
-	data, err := syscall.Mmap(u.fd, 0, int(u.sqRing.ringSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	data, err := mmap(u.fd, 0, int(u.sqRing.ringSize))
 	if err != nil {
 		return err
 	}
@@ -55,8 +54,7 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 	if p.features&IORING_FEAT_SINGLE_MMAP != 0 {
 		u.cqRing.buff = u.sqRing.buff
 	} else {
-		// TODO: syscall.MAP_POPULATE unsupport for macox
-		data, err = syscall.Mmap(u.fd, int64(IORING_OFF_CQ_RING), int(u.cqRing.ringSize), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		data, err = mmap(u.fd, int64(IORING_OFF_CQ_RING), int(u.cqRing.ringSize))
 		if err != nil {
 			u.sysMunmap()
 			return err
@@ -73,12 +71,12 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 	u.sqRing.kDropped = (*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(ringStart)) + uintptr(p.sqOffset.dropped)))
 	u.sqRing.array = (*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(ringStart)) + uintptr(p.sqOffset.array)))
 
-	size = unsafe.Sizeof(URingSQE{})
+	size = _sizeCQE
 	if p.flags&IORING_SETUP_SQE128 != 0 {
 		size += 64
 	}
-	// TODO: syscall.MAP_POPULATE unsupport for macox
-	buff, err := syscall.Mmap(u.fd, int64(IORING_OFF_SQES), int(size), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+
+	buff, err := mmap(u.fd, int64(IORING_OFF_SQES), int(size))
 	if err != nil {
 		_ = u.sysMunmap()
 		return err
@@ -99,6 +97,14 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 	}
 
 	return nil
+}
+
+func mumap(b []byte) (err error) {
+	return syscall.Munmap(b)
+}
+
+func mmap(fd int, offset int64, length int) (data []byte, err error) {
+	return syscall.Mmap(fd, offset, length, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED|syscall.MAP_POPULATE)
 }
 
 // Magic offsets for the application to mmap the data it needs
