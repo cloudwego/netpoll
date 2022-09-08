@@ -98,16 +98,10 @@ func (m *manager) Close() error {
 }
 
 // Run all pollers.
-func (m *manager) Run(pollTypes ...PollType) error {
-	// set PollDefault as type of poll
-	pollType := PollDefault
-	// set poll type, only executed if the parameter is unique
-	if len(pollTypes) == 1 {
-		pollType = pollTypes[0]
-	}
+func (m *manager) Run() error {
 	// new poll to fill delta.
 	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll = openPoll(pollType)
+		var poll = openPoll()
 		m.polls = append(m.polls, poll)
 		go poll.Wait()
 	}
@@ -129,15 +123,3 @@ func (m *manager) Reset() error {
 func (m *manager) Pick() Poll {
 	return m.balance.Pick()
 }
-
-// PollType defines the type of manager.polls.
-type PollType int
-
-const (
-	// PollDefault is used to set poll as epoll on linux systems by default,
-	// and kevent by default on bsd systems.
-	PollDefault PollType = 0x1
-
-	// PollIOURing is used to set poll as io_uring.
-	PollIOURing PollType = 0x2
-)

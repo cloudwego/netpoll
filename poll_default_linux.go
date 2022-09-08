@@ -26,10 +26,7 @@ import (
 )
 
 // Includes defaultPoll/multiPoll/uringPoll...
-func openPoll(pollType PollType) Poll {
-	if pollType == PollIOURing {
-		return openIOURingPoll()
-	}
+func openPoll() Poll {
 	return openDefaultPoll()
 }
 
