@@ -46,7 +46,7 @@ func EpollCtl(fdarray *[]epollevent, op int, fd fdtype, event *epollevent) (err 
 		flag := 0
 		for i := 0; i < len(*fdarray); i++ {
 			if (*fdarray)[i].fd == syscall.InvalidHandle {
-				(*fdarray)[i] = e
+				(*fdarray)[i].events |= e.events
 				flag = 1
 				break
 			}

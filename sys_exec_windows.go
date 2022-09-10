@@ -22,7 +22,6 @@ import (
 	"syscall"
 )
 
-var acceptProc = ws2_32_mod.NewProc("accept")
 
 func init(){
 	var startData syscall.WSAData

@@ -154,7 +154,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 
 		evt := events[i].revents
 		// check poll in
-		if evt&POLLIN != 0 || evt&POLLHUP!=0 {
+		if evt&POLLIN != 0 || evt&POLLHUP != 0 {
 			if operator.OnRead != nil {
 				// for non-connection
 				operator.OnRead(p)

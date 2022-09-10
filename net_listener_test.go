@@ -49,6 +49,7 @@ func TestListenerDialer(t *testing.T) {
 			if conn == nil && err == nil {
 				continue
 			}
+			MustNil(t, err)
 			go func(conn net.Conn) {
 				<-trigger
 				buf := make([]byte, 10)
@@ -80,6 +81,7 @@ func TestListenerDialer(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		conn, err := dialer.DialConnection(network, addr, time.Second)
 		if err != nil {
+			//fmt.Println(err.Error())
 			continue
 		}
 		conn.AddCloseCallback(callback)

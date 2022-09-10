@@ -35,7 +35,7 @@ func TestPersistFDOperator(t *testing.T) {
 	}
 	// check alloc
 	for i := range ops {
-		Equal(t, ops[i].FD, i)
+		Equal(t, ops[i].FD, fdtype(i))
 		freeop(ops[i])
 	}
 }

@@ -19,8 +19,8 @@ package netpoll
 import (
 	"errors"
 	"net"
-	"os"
 	"syscall"
+	"unsafe"
 )
 
 // Listener extends net.Listener, but supports getting the listener's fd.
@@ -57,36 +57,28 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return ln, syscall.SetNonblock(ln.fd, true)
+	imode := 1
+	r, _, err := ioctlsocketProc.Call(uintptr(ln.fd), FIONBIO, uintptr(unsafe.Pointer(&imode)))
+	if r != 0 {
+		return ln, err
+	}
+	return ln, nil
 }
 
 // TODO: udpListener does not work now.
 func udpListener(network, addr string) (l Listener, err error) {
-	ln := &listener{}
-	ln.pconn, err = net.ListenPacket(network, addr)
-	if err != nil {
-		return nil, err
-	}
-	ln.addr = ln.pconn.LocalAddr()
-	switch pconn := ln.pconn.(type) {
-	case *net.UDPConn:
-		ln.file, err = pconn.File()
-	}
-	if err != nil {
-		return nil, err
-	}
-	ln.fd = fdtype(ln.file.Fd())
-	return ln, syscall.SetNonblock(ln.fd, true)
+	return nil, nil
 }
 
 var _ net.Listener = &listener{}
 
 type listener struct {
-	fd    fdtype
-	addr  net.Addr       // listener's local addr
-	ln    net.Listener   // tcp|unix listener
-	pconn net.PacketConn // udp listener
-	file  *os.File
+	fd        fdtype
+	addr      net.Addr       // listener's local addr
+	ln        net.Listener   // tcp|unix listener
+	pconn     net.PacketConn // udp listener
+	rawConn   syscall.RawConn
+	syncClose chan int
 }
 
 // Accept implements Listener.
@@ -96,19 +88,22 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return ln.UDPAccept()
 	}
 	// tcp
-	var fd, sa, err = syscall.Accept(ln.fd)
+	var sa syscall.RawSockaddrAny
+	var len = unsafe.Sizeof(sa)
+	fd, _, err := acceptProc.Call(uintptr(ln.fd), uintptr(unsafe.Pointer(&sa)), uintptr(unsafe.Pointer(&len)))
 	if err != nil {
-		if err == syscall.EAGAIN {
+		if err == WSAEWOULDBLOCK {
 			return nil, nil
 		}
 		return nil, err
 	}
 	var nfd = &netFD{}
-	nfd.fd = fd
+	nfd.fd = fdtype(fd)
 	nfd.localAddr = ln.addr
 	nfd.network = ln.addr.Network()
-	nfd.remoteAddr = sockaddrToAddr(sa)
-	return nfd, nil
+	sa4, err := sa.Sockaddr()
+	nfd.remoteAddr = sockaddrToAddr(sa4)
+	return nfd, err
 }
 
 // TODO: UDPAccept Not implemented.
@@ -118,11 +113,9 @@ func (ln *listener) UDPAccept() (net.Conn, error) {
 
 // Close implements Listener.
 func (ln *listener) Close() error {
+	ln.syncClose <- 1
 	if ln.fd != 0 {
 		syscall.Close(ln.fd)
-	}
-	if ln.file != nil {
-		ln.file.Close()
 	}
 	if ln.ln != nil {
 		ln.ln.Close()
@@ -144,14 +137,11 @@ func (ln *listener) Fd() (fd fdtype) {
 }
 
 func (ln *listener) parseFD() (err error) {
-	var rawConn syscall.RawConn
 	switch netln := ln.ln.(type) {
 	case *net.TCPListener:
-		rawConn, err = netln.SyscallConn()
-		//ln.file, err = netln.SyscallConn()
+		ln.rawConn, err = netln.SyscallConn()
 	case *net.UnixListener:
-		rawConn, err = netln.SyscallConn()
-		//ln.file, err = netln.File()
+		ln.rawConn, err = netln.SyscallConn()
 	default:
 		return errors.New("listener type can't support")
 	}
@@ -159,12 +149,13 @@ func (ln *listener) parseFD() (err error) {
 		return err
 	}
 	fdCh := make(chan uintptr, 1)
-	err = rawConn.Control(func(fd uintptr) {
-		fdCh <- fd
-	})
-	if err != nil {
-		return err
-	}
+	ln.syncClose = make(chan int)
+	go func() {
+		ln.rawConn.Control(func(fd uintptr) {
+			fdCh <- fd
+			<-ln.syncClose
+		})
+	}()
 	ln.fd = fdtype(<-fdCh)
 	return nil
 }

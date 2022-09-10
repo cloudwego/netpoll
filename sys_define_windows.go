@@ -27,9 +27,13 @@ type fdtype = syscall.Handle
 var ws2_32_mod = syscall.NewLazyDLL("ws2_32.dll")
 var recvProc = ws2_32_mod.NewProc("recv")
 var sendProc = ws2_32_mod.NewProc("send")
+var acceptProc = ws2_32_mod.NewProc("accept")
+var ioctlsocketProc = ws2_32_mod.NewProc("ioctlsocket")
 
 const (
-	SO_ERROR = 0x4
+	SO_ERROR                     = 0x4
+	FIONBIO                      = 0x8004667e
+	WSAEWOULDBLOCK syscall.Errno = 10035
 )
 
 func sysRead(fd fdtype, p []byte) (n int, err error) {
