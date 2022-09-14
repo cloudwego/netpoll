@@ -71,10 +71,7 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 	u.sqRing.kDropped = (*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(ringStart)) + uintptr(p.sqOffset.dropped)))
 	u.sqRing.array = (*uint32)(unsafe.Pointer(uintptr(unsafe.Pointer(ringStart)) + uintptr(p.sqOffset.array)))
 
-	size = _sizeCQE
-	if p.flags&IORING_SETUP_SQE128 != 0 {
-		size += 64
-	}
+	size = uintptr(p.sqEntries) * _sizeSQE
 
 	buff, err := mmap(u.fd, int64(IORING_OFF_SQES), int(size))
 	if err != nil {
