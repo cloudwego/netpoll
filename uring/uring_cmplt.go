@@ -38,34 +38,36 @@ type eventsArg struct {
 
 // getCQE implements URing
 func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
+	var looped = false
 	for {
-		var looped, needEnter bool
+		var needEnter bool
 		var flags, nrAvail uint32
 
 		nrAvail, cqe, err = u.peekCQE()
-
 		if err != nil {
 			break
 		}
+
 		if cqe == nil && data.waitNr == 0 && data.submit == 0 {
 			// If we already looped once, we already entererd
 			// the kernel. Since there's nothing to submit or
 			// wait for, don't keep retrying.
-			if looped || u.caRingNeedEnter() {
+			if looped || !u.cqRingNeedFlush() {
 				err = syscall.EAGAIN
 				break
 			}
 			needEnter = true
 		}
 
-		if data.waitNr > nrAvail || nrAvail != 0 {
+		if data.waitNr > nrAvail || needEnter {
 			flags = IORING_ENTER_GETEVENTS | data.getFlags
 			needEnter = true
 		}
 
-		if data.submit != 0 && u.sqRingNeedEnter(&flags) {
+		if u.sqRingNeedEnter(data.submit, &flags) {
 			needEnter = true
 		}
+
 		if !needEnter {
 			break
 		}
@@ -74,9 +76,10 @@ func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
 			flags |= IORING_ENTER_REGISTERED_RING
 		}
 
-		var ret uint
-		ret, err = SysEnter(u.fd, data.submit, data.waitNr, flags, data.arg, data.sz)
-
+		// TODO: Add println to make timer expired
+		println("SysEnter in")
+		ret, err := SysEnter(u.fd, data.submit, data.waitNr, flags, data.arg, data.sz)
+		println("SysEnter out")
 		if err != nil {
 			break
 		}
@@ -86,7 +89,6 @@ func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
 			break
 		}
 		looped = true
-
 	}
 	return
 }
@@ -97,21 +99,24 @@ func getEventsArg(sigMask uintptr, sigMaskSz uint32, ts uintptr) *eventsArg {
 }
 
 // submitTimeout implements URing
-func (u *URing) submitTimeout(timeout time.Duration) (uint32, error) {
+func (u *URing) submitTimeout(timeout time.Duration) (int64, error) {
 	sqe, err := u.nextSQE()
 	if err != nil {
 		_, err = u.Submit()
 		if err != nil {
-			return 0, err
+			return -1, err
 		}
+
 		sqe, err = u.nextSQE()
 		if err != nil {
-			return uint32(syscall.EAGAIN), err
+			return -int64(syscall.EAGAIN), err
 		}
 	}
+
 	Timeout(timeout).Prep(sqe)
-	sqe.setData(LIBURING_UDATA_TIMEOUT)
-	return u.flushSQ(), nil
+	sqe.setUserData(LIBURING_UDATA_TIMEOUT)
+
+	return int64(u.flushSQ()), nil
 }
 
 // peekCQE implements URing
@@ -131,18 +136,22 @@ func (u *URing) peekCQE() (avail uint32, cqe *URingCQE, err error) {
 		if avail == 0 {
 			break
 		}
-		cqe = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*_sizeUR))
 
-		if !(u.Params.features&IORING_FEAT_EXT_ARG == 0) && cqe.UserData == LIBURING_UDATA_TIMEOUT {
+		cqe = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*_sizeCQE))
+
+		if u.Params.features&IORING_FEAT_EXT_ARG == 0 && cqe.UserData == LIBURING_UDATA_TIMEOUT {
 			if cqe.Res < 0 {
 				err = cqe.Error()
 			}
+
 			u.Advance(1)
-			if err != nil {
+
+			if err == nil {
 				continue
 			}
-			err = nil
+			cqe = nil
 		}
+		break
 	}
 
 	return
@@ -186,7 +195,7 @@ func (u *URing) nextSQE() (sqe *URingSQE, err error) {
 }
 
 // caRingNeedEnter implements URing
-func (u *URing) caRingNeedEnter() bool {
+func (u *URing) cqRingNeedEnter() bool {
 	return u.Params.flags&IORING_SETUP_IOPOLL != 0 || u.cqRingNeedFlush()
 }
 
@@ -196,11 +205,14 @@ func (u *URing) cqRingNeedFlush() bool {
 }
 
 // sqRingNeedEnter implements URing
-func (u *URing) sqRingNeedEnter(flags *uint32) bool {
+func (u *URing) sqRingNeedEnter(submit uint32, flags *uint32) bool {
+	if submit == 0 {
+		return false
+	}
 	if u.Params.flags&IORING_SETUP_SQPOLL == 0 {
 		return true
 	}
-	if READ_ONCE_U32(u.sqRing.kFlags)&IORING_ENTER_SQ_WAKEUP != 0 {
+	if READ_ONCE_U32(u.sqRing.kFlags)&IORING_SQ_NEED_WAKEUP != 0 {
 		*flags |= IORING_ENTER_SQ_WAKEUP
 		return true
 	}
