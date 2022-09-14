@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build linux
+
 package netpoll
 
-import uring "github.com/cloudwego/netpoll/io_uring"
+import "github.com/cloudwego/netpoll/uring"
 
 // TODO: init uringPoll
 func openIOURingPoll() *uringPoll {
 	poll := new(uringPoll)
-	ring, err := uring.IOURing(0)
+	ring, err := IOURing(0)
 	if err != nil {
 		panic(err)
 	}
