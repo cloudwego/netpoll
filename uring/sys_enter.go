@@ -55,23 +55,26 @@ type URingCQE struct {
 	Res      int32  // result code for this event
 	Flags    uint32
 
-	// If the ring is initialized with IORING_SETUP_CQE32, then this field
+	// TODO: If the ring is initialized with IORING_SETUP_CQE32, then this field
 	// contains 16-bytes of padding, doubling the size of the CQE.
-	BigCQE [2]uint64
+	// BigCQE [2]uint64
 }
 
 // Error implements CQE
 func (c *URingCQE) Error() error {
-	return syscall.Errno(uintptr(-c.Res))
+	if c.Res < 0 {
+		return syscall.Errno(uintptr(-c.Res))
+	}
+	return nil
 }
 
-// getData implements CQE
-func (c *URingCQE) getData() uint64 {
+// Data implements CQE
+func (c *URingCQE) Data() uint64 {
 	return c.UserData
 }
 
 // setData sets the user data field of the SQE instance passed in.
-func (s *URingSQE) setData(ud uint64) {
+func (s *URingSQE) setUserData(ud uint64) {
 	s.UserData = ud
 }
 
