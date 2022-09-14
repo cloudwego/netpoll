@@ -63,14 +63,15 @@ type uringCQ struct {
 
 // submitAndWait implements URing
 func (u *URing) submitAndWait(nr uint32) (uint, error) {
-	return u.submit(u.flushSQ(), nr)
+	return u.submit(u.flushSQ(), nr, false)
 }
 
 // submit implements URing
-func (u *URing) submit(submitted uint32, nr uint32) (uint, error) {
+func (u *URing) submit(submitted uint32, nr uint32, getEvents bool) (uint, error) {
+	cqNeedsEnter := getEvents || nr != 0 || u.cqRingNeedEnter()
 	var flags uint32
-	if u.sqRingNeedEnter(&flags) {
-		if u.Params.flags&IORING_SETUP_IOPOLL != 0 {
+	if u.sqRingNeedEnter(submitted, &flags) || cqNeedsEnter {
+		if cqNeedsEnter {
 			flags |= IORING_ENTER_GETEVENTS
 		}
 		if u.Params.flags&INT_FLAG_REG_RING == 1 {
@@ -79,7 +80,7 @@ func (u *URing) submit(submitted uint32, nr uint32) (uint, error) {
 	} else {
 		return uint(submitted), nil
 	}
-	ret, err := SysEnter(u.fd, submitted, 0, flags, nil, NSIG/8)
+	ret, err := SysEnter(u.fd, submitted, nr, flags, nil, NSIG/8)
 	return ret, err
 }
 
