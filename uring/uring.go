@@ -47,6 +47,20 @@ func (u *URing) SQE() *URingSQE {
 	return u.sqRing.sqes
 }
 
+// Queue add an operation to SQ queue
+func (u *URing) Queue(op Op, flags uint8, userData uint64) error {
+	sqe, err := u.nextSQE()
+	if err != nil {
+		return err
+	}
+
+	op.Prep(sqe)
+	sqe.setFlags(flags)
+	sqe.setUserData(userData)
+
+	return nil
+}
+
 // Probe implements URing, it returns io_uring probe
 func (u *URing) Probe() (probe *Probe, err error) {
 	probe = &Probe{}
@@ -100,9 +114,11 @@ func (u *URing) WaitCQE() (cqe *URingCQE, err error) {
 // WaitCQENr implements URing, it returns an I/O CQE, waiting for nr completions if one isn’t readily
 func (u *URing) WaitCQENr(nr uint32) (cqe *URingCQE, err error) {
 	return u.getCQE(getData{
-		submit: 0,
-		waitNr: nr,
-		arg:    unsafe.Pointer(nil),
+		submit:   0,
+		waitNr:   nr,
+		getFlags: 0,
+		arg:      unsafe.Pointer(nil),
+		sz:       NSIG / 8,
 	})
 }
 
@@ -110,17 +126,18 @@ func (u *URing) WaitCQENr(nr uint32) (cqe *URingCQE, err error) {
 // Note that an SQE is used internally to handle the timeout. Applications using this function
 // must never set sqe->user_data to LIBURING_UDATA_TIMEOUT.
 func (u *URing) WaitCQEs(nr uint32, timeout time.Duration) (*URingCQE, error) {
-	var toSubmit uint32
+	var toSubmit int64
 
 	if u.Params.flags&IORING_FEAT_EXT_ARG != 0 {
 		return u.WaitCQEsNew(nr, timeout)
 	}
 	toSubmit, err := u.submitTimeout(timeout)
-	if toSubmit == 0 {
+
+	if toSubmit < 0 {
 		return nil, err
 	}
 	return u.getCQE(getData{
-		submit: toSubmit,
+		submit: uint32(toSubmit),
 		waitNr: nr,
 		arg:    unsafe.Pointer(nil),
 		sz:     NSIG / 8,
@@ -144,9 +161,11 @@ func (u *URing) PeekBatchCQE(cqes []*URingCQE) int {
 
 	n := u.peekBatchCQE(cqes, shift)
 
-	if n == 0 && u.cqRingNeedFlush() {
-		SysEnter(u.fd, 0, 0, IORING_ENTER_GETEVENTS, nil, NSIG/8)
-		n = u.peekBatchCQE(cqes, shift)
+	if n == 0 {
+		if u.cqRingNeedFlush() {
+			SysEnter(u.fd, 0, 0, IORING_ENTER_GETEVENTS, nil, NSIG/8)
+			n = u.peekBatchCQE(cqes, shift)
+		}
 	}
 
 	return n
