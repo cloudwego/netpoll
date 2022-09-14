@@ -37,11 +37,11 @@ func SysRegister(ringFd int, op int, arg unsafe.Pointer, nrArgs int) error {
 // returns a file descriptor which can be used to perform subsequent operations on the io_uring instance.
 // The SQ and CQ are shared between userspace and the kernel, which eliminates the need to copy data when initiating and completing I/O.
 func SysSetUp(entries uint32, params *ringParams) (int, error) {
-	p, _, err := syscall.Syscall(SYS_IO_URING_SETUP, uintptr(entries), uintptr(unsafe.Pointer(params)), uintptr(0))
+	p, _, err := syscall.Syscall(SYS_IO_URING_SETUP, uintptr(entries), uintptr(unsafe.Pointer(params)), 0)
 	if err != 0 {
 		return int(p), os.NewSyscallError("io_uring_setup", err)
 	}
-	return int(p), err
+	return int(p), nil
 }
 
 // SysEnter is used to initiate and complete I/O using the shared SQ and CQ setup by a call to io_uring_setup(2).
@@ -51,26 +51,23 @@ func SysEnter(fd int, toSubmit uint32, minComplete uint32, flags uint32, sig uns
 	if err != 0 {
 		return 0, os.NewSyscallError("iouring_enter", err)
 	}
-	if p == 0 {
-		return 0, os.NewSyscallError("iouring_enter", syscall.Errno(-p))
-	}
-	return uint(p), err
+	return uint(p), nil
 }
 
 // _sizeU32 is size of uint32
-const _sizeU32 uintptr = unsafe.Sizeof(uint32(0))
+const _sizeU32 = unsafe.Sizeof(uint32(0))
 
 // _sizeUR is size of URing
-const _sizeUR uintptr = unsafe.Sizeof(URing{})
+const _sizeUR = unsafe.Sizeof(URing{})
 
 // _sizeCQE is size of URingCQE
-const _sizeCQE uintptr = unsafe.Sizeof(URingCQE{})
+const _sizeCQE = unsafe.Sizeof(URingCQE{})
 
 // _sizeSQE is size of URingSQE
-const _sizeSQE uintptr = unsafe.Sizeof(URingSQE{})
+const _sizeSQE = unsafe.Sizeof(URingSQE{})
 
 // _sizeEventsArg is size of eventsArg
-const _sizeEventsArg uintptr = unsafe.Sizeof(eventsArg{})
+const _sizeEventsArg = unsafe.Sizeof(eventsArg{})
 
 // Init system call numbers
 const (
