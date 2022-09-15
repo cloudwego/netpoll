@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !arm64 && !loong64
-// +build !arm64,!loong64
+//go:build linux && loong64
+// +build linux,loong64
 
 package netpoll
 
@@ -22,10 +22,11 @@ import (
 	"unsafe"
 )
 
-const EPOLLET = -syscall.EPOLLET
+const EPOLLET = syscall.EPOLLET
 
 type epollevent struct {
 	events uint32
+	_      int32
 	data   [8]byte // unaligned uintptr
 }
 
@@ -43,9 +44,9 @@ func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
 	var r0 uintptr
 	var _p0 = unsafe.Pointer(&events[0])
 	if msec == 0 {
-		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
+		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
 	} else {
-		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
+		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
 	}
 	if err == syscall.Errno(0) {
 		err = nil
