@@ -25,6 +25,7 @@ const (
 	none who = iota
 	user
 	poller
+	rpal
 )
 
 type key int32

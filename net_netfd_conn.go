@@ -68,6 +68,20 @@ func (c *netFD) Close() (err error) {
 	return err
 }
 
+// DummyClose will be executed only once.
+func (c *netFD) DummyClose() (err error) {
+	if atomic.AddUint32(&c.closed, 1) != 1 {
+		return nil
+	}
+	//if c.fd > 0 {
+	//	err = syscall.Close(c.fd)
+	//	if err != nil {
+	//		log.Printf("netFD[%d] close error: %s", c.fd, err.Error())
+	//	}
+	//}
+	return err
+}
+
 // LocalAddr implements Conn.
 func (c *netFD) LocalAddr() (addr net.Addr) {
 	return c.localAddr
