@@ -20,7 +20,7 @@ import (
 
 // Submission Queue Entry, IO submission data structure
 type URingSQE struct {
-	OpCode     uint8  // type of operation for this sqe
+	OpFlag     uint8  // type of operation for this sqe
 	Flags      uint8  // IOSQE_ flags
 	IOPrio     uint16 // ioprio for the request
 	Fd         int32  // file descriptor to do IO on
@@ -35,7 +35,7 @@ type URingSQE struct {
 
 // PrepRW implements SQE
 func (s *URingSQE) PrepRW(op OpFlag, fd int32, addr uintptr, len uint32, offset uint64) {
-	s.OpCode = uint8(op)
+	s.OpFlag = uint8(op)
 	s.Flags = 0
 	s.IOPrio = 0
 	s.Fd = fd
