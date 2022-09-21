@@ -128,14 +128,17 @@ func (u *URing) WaitCQENr(nr uint32) (cqe *URingCQE, err error) {
 func (u *URing) WaitCQEs(nr uint32, timeout time.Duration) (*URingCQE, error) {
 	var toSubmit int64
 
-	if u.Params.flags&IORING_FEAT_EXT_ARG != 0 {
-		return u.WaitCQEsNew(nr, timeout)
-	}
-	toSubmit, err := u.submitTimeout(timeout)
+	if timeout > 0 {
+		if u.Params.flags&IORING_FEAT_EXT_ARG != 0 {
+			return u.WaitCQEsNew(nr, timeout)
+		}
+		toSubmit, err := u.submitTimeout(timeout)
 
-	if toSubmit < 0 {
-		return nil, err
+		if toSubmit < 0 {
+			return nil, err
+		}
 	}
+
 	return u.getCQE(getData{
 		submit: uint32(toSubmit),
 		waitNr: nr,
