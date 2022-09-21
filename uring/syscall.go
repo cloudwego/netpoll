@@ -47,9 +47,9 @@ func SysSetUp(entries uint32, params *ringParams) (int, error) {
 // SysEnter is used to initiate and complete I/O using the shared SQ and CQ setup by a call to io_uring_setup(2).
 // A single call can both submit new I/O and wait for completions of I/O initiated by this call or previous calls to io_uring_enter().
 func SysEnter(fd int, toSubmit uint32, minComplete uint32, flags uint32, sig unsafe.Pointer, sz int) (uint, error) {
-	p, _, err := syscall.Syscall6(SYS_IO_URING_ENTER, uintptr(fd), uintptr(toSubmit), uintptr(minComplete), uintptr(flags), uintptr(unsafe.Pointer(sig)), uintptr(sz))
+	p, _, err := syscall.Syscall6(SYS_IO_URING_ENTER, uintptr(fd), uintptr(toSubmit), uintptr(minComplete), uintptr(flags), uintptr(sig), uintptr(sz))
 	if err != 0 {
-		return 0, os.NewSyscallError("iouring_enter", err)
+		return 0, os.NewSyscallError("io_uring_enter", err)
 	}
 	return uint(p), nil
 }
