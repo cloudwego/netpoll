@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // OpFlag defines the type of OpFlags
@@ -196,7 +198,7 @@ func (op *NopOp) getFlag() OpFlag {
 
 // ------------------------------------------ implement Read ------------------------------------------
 
-func Read(fd uint32, nbytes []byte, offset uint64) *ReadOp {
+func Read(fd uintptr, nbytes []byte, offset uint64) *ReadOp {
 	return &ReadOp{
 		fd:     fd,
 		nbytes: nbytes,
@@ -205,7 +207,7 @@ func Read(fd uint32, nbytes []byte, offset uint64) *ReadOp {
 }
 
 type ReadOp struct {
-	fd     uint32
+	fd     uintptr
 	nbytes []byte
 	offset uint64
 }
@@ -220,7 +222,7 @@ func (op *ReadOp) getFlag() OpFlag {
 
 // ------------------------------------------ implement Write ------------------------------------------
 
-func Write(fd uint32, nbytes []byte, offset uint64) *WriteOp {
+func Write(fd uintptr, nbytes []byte, offset uint64) *WriteOp {
 	return &WriteOp{
 		fd:     fd,
 		nbytes: nbytes,
@@ -229,7 +231,7 @@ func Write(fd uint32, nbytes []byte, offset uint64) *WriteOp {
 }
 
 type WriteOp struct {
-	fd     uint32
+	fd     uintptr
 	nbytes []byte
 	offset uint64
 }
@@ -372,6 +374,37 @@ func (op *SendMsgOp) getFlag() OpFlag {
 	return IORING_OP_SENDMSG
 }
 
+// ------------------------------------------ implement Accept ------------------------------------------
+
+func Accept(fd uintptr, flags uint32) *AcceptOp {
+	return &AcceptOp{
+		fd:    fd,
+		addr:  &unix.RawSockaddrAny{},
+		len:   unix.SizeofSockaddrAny,
+		flags: flags,
+	}
+}
+
+type AcceptOp struct {
+	fd    uintptr
+	addr  *unix.RawSockaddrAny
+	len   uint32
+	flags uint32
+}
+
+func (op *AcceptOp) Prep(sqe *URingSQE) {
+	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(op.addr)), 0, uint64(uintptr(unsafe.Pointer(&op.len))))
+	sqe.UnionFlags = op.flags
+}
+
+func (op *AcceptOp) getFlag() OpFlag {
+	return IORING_OP_ACCEPT
+}
+
+func (op *AcceptOp) Fd() int {
+	return int(op.fd)
+}
+
 // ------------------------------------------ implement Recv ------------------------------------------
 
 func Recv(sockFd uintptr, buf []byte, flags uint32) *RecvOp {
@@ -401,6 +434,10 @@ func (op *RecvOp) Fd() int {
 	return int(op.fd)
 }
 
+func (op *RecvOp) SetBuff(buf []byte) {
+	op.buf = buf
+}
+
 // ------------------------------------------ implement Send ------------------------------------------
 
 func Send(sockFd uintptr, buf []byte, flags uint32) *SendOp {
@@ -428,6 +465,10 @@ func (op *SendOp) getFlag() OpFlag {
 
 func (op *SendOp) Fd() int {
 	return int(op.fd)
+}
+
+func (op *SendOp) SetBuff(buf []byte) {
+	op.buf = buf
 }
 
 // ------------------------------------------ implement Timeout ------------------------------------------
