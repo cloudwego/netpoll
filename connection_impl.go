@@ -308,7 +308,7 @@ func (c *connection) init(conn Conn, opts *options) (err error) {
 	c.initFDOperator()
 	c.initFinalizer()
 
-	syscall.SetNonblock(c.fd, true)
+	sysSetNonblock(c.fd, true)
 	// enable TCP_NODELAY by default
 	switch c.network {
 	case "tcp", "tcp4", "tcp6":

@@ -57,12 +57,7 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 	if err != nil {
 		return nil, err
 	}
-	imode := 1
-	r, _, err := ioctlsocketProc.Call(uintptr(ln.fd), FIONBIO, uintptr(unsafe.Pointer(&imode)))
-	if r != 0 {
-		return ln, err
-	}
-	return ln, nil
+	return ln, sysSetNonblock(ln.fd, true)
 }
 
 // TODO: udpListener does not work now.
@@ -90,15 +85,16 @@ func (ln *listener) Accept() (net.Conn, error) {
 	// tcp
 	var sa syscall.RawSockaddrAny
 	var len = unsafe.Sizeof(sa)
-	fd, _, err := acceptProc.Call(uintptr(ln.fd), uintptr(unsafe.Pointer(&sa)), uintptr(unsafe.Pointer(&len)))
-	if err != nil {
+	fduintptr, _, err := acceptProc.Call(uintptr(ln.fd), uintptr(unsafe.Pointer(&sa)), uintptr(unsafe.Pointer(&len)))
+	fd := fdtype(fduintptr)
+	if fd == syscall.InvalidHandle {
 		if err == WSAEWOULDBLOCK {
 			return nil, nil
 		}
 		return nil, err
 	}
 	var nfd = &netFD{}
-	nfd.fd = fdtype(fd)
+	nfd.fd = fd
 	nfd.localAddr = ln.addr
 	nfd.network = ln.addr.Network()
 	sa4, err := sa.Sockaddr()

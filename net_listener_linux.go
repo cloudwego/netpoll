@@ -57,7 +57,7 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return ln, syscall.SetNonblock(ln.fd, true)
+	return ln, sysSetNonblock(ln.fd, true)
 }
 
 // TODO: udpListener does not work now.
@@ -76,7 +76,7 @@ func udpListener(network, addr string) (l Listener, err error) {
 		return nil, err
 	}
 	ln.fd = fdtype(ln.file.Fd())
-	return ln, syscall.SetNonblock(ln.fd, true)
+	return ln, sysSetNonblock(ln.fd, true)
 }
 
 var _ net.Listener = &listener{}

@@ -22,10 +22,10 @@ import (
 	"syscall"
 )
 
-
-func init(){
+func init() {
 	var startData syscall.WSAData
-	syscall.WSAStartup(0,&startData)
+	var version uint32 = 0x0202
+	syscall.WSAStartup(version, &startData)
 }
 
 func inet_addr(ipaddr string) [4]byte {
@@ -68,7 +68,6 @@ func socketPair(family int, typ int, protocol int) (fd [2]fdtype, err error) {
 	if err != nil {
 		return fd, err
 	}
-
 	connector_addr, err := syscall.Getsockname(listener)
 	if err != nil {
 		return fd, err
@@ -109,7 +108,7 @@ func sysSocket(family, sotype, proto int) (fdtype, error) {
 	if err != nil {
 		return fdtype(0), os.NewSyscallError("socket", err)
 	}
-	if err = syscall.SetNonblock(s, true); err != nil {
+	if err = sysSetNonblock(s, true); err != nil {
 		syscall.Close(s)
 		return fdtype(0), os.NewSyscallError("setnonblock", err)
 	}

@@ -46,7 +46,7 @@ func sysSocket(family, sotype, proto int) (fdtype, error) {
 	if err != nil {
 		return -1, os.NewSyscallError("socket", err)
 	}
-	if err = syscall.SetNonblock(s, true); err != nil {
+	if err = sysSetNonblock(s, true); err != nil {
 		syscall.Close(s)
 		return -1, os.NewSyscallError("setnonblock", err)
 	}

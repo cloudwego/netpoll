@@ -36,3 +36,7 @@ func sysWrite(fd fdtype, p []byte) (n int, err error) {
 	n, err = syscall.Write(fd, p)
 	return n, err
 }
+
+func sysSetNonblock(fd fdtype, is bool) error {
+	return syscall.SetNonblock(fd, is)
+}

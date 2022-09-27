@@ -132,7 +132,10 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		println("112")
 		var buf, err = rconn.Reader().Next(size)
+		println("113")
+		//fmt.Println(err)
 		MustNil(t, err)
 		Equal(t, len(buf), size)
 	}()

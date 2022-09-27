@@ -21,5 +21,10 @@ func setDefaultSockopts(s fdtype, family, sotype int, ipv6only bool) error {
 	}
 
 	// Allow broadcast.
-	return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1))
+	// On linux platform, setting broadcast on tcp socket will have no effect.
+	// But on windows platform, it returns an error
+	if sotype == syscall.SOCK_DGRAM {
+		return os.NewSyscallError("setsockopt", syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1))
+	}
+	return nil
 }

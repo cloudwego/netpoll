@@ -25,15 +25,19 @@ type iovec = syscall.WSABuf
 type fdtype = syscall.Handle
 
 var ws2_32_mod = syscall.NewLazyDLL("ws2_32.dll")
+
 var recvProc = ws2_32_mod.NewProc("recv")
 var sendProc = ws2_32_mod.NewProc("send")
 var acceptProc = ws2_32_mod.NewProc("accept")
 var ioctlsocketProc = ws2_32_mod.NewProc("ioctlsocket")
+var getsockoptProc = ws2_32_mod.NewProc("getsockopt")
 
 const (
 	SO_ERROR                     = 0x4
 	FIONBIO                      = 0x8004667e
 	WSAEWOULDBLOCK syscall.Errno = 10035
+	WSAEALREADY    syscall.Errno = 10037
+	WSAEINPROGRESS syscall.Errno = 10036
 )
 
 func sysRead(fd fdtype, p []byte) (n int, err error) {
@@ -52,4 +56,16 @@ func sysWrite(fd fdtype, p []byte) (n int, err error) {
 		return wn, err
 	}
 	return wn, nil
+}
+
+func sysSetNonblock(fd fdtype, is bool) error {
+	imode := 0
+	if is {
+		imode = 1
+	}
+	r, _, err := ioctlsocketProc.Call(uintptr(fd), FIONBIO, uintptr(unsafe.Pointer(&imode)))
+	if r != 0 {
+		return err
+	}
+	return nil
 }

@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	_"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -41,12 +42,21 @@ func EpollCtl(fdarray *[]epollevent, op int, fd fdtype, event *epollevent) (err 
 	defer fdarrayMu.Unlock()
 	e := *event
 	e.fd = fd
+	// print("before op")
+	// for i:=0;i<len(*fdarray);i++{
+	// 	print((*fdarray)[i].fd," ")
+	// 	print((*fdarray)[i].events," ")
+	// 	print((*fdarray)[i].revents,"|")
+	// }
+	// println("")
 	switch op {
 	case EPOLL_CTL_ADD:
+		//println("epoll add")
 		flag := 0
 		for i := 0; i < len(*fdarray); i++ {
 			if (*fdarray)[i].fd == syscall.InvalidHandle {
-				(*fdarray)[i].events |= e.events
+				(*fdarray)[i].fd = e.fd
+				(*fdarray)[i].events = e.events
 				flag = 1
 				break
 			}
@@ -56,6 +66,7 @@ func EpollCtl(fdarray *[]epollevent, op int, fd fdtype, event *epollevent) (err 
 			*fdarray = fdarray_tmp
 		}
 	case EPOLL_CTL_DEL:
+		//println("epoll del")
 		for i := 0; i < len(*fdarray); i++ {
 			if (*fdarray)[i].fd == fd {
 				(*fdarray)[i].fd = syscall.InvalidHandle
@@ -63,6 +74,7 @@ func EpollCtl(fdarray *[]epollevent, op int, fd fdtype, event *epollevent) (err 
 			}
 		}
 	case EPOLL_CTL_MOD:
+		//println("epoll mod")
 		for i := 0; i < len(*fdarray); i++ {
 			if (*fdarray)[i].fd == fd {
 				(*fdarray)[i] = e
@@ -70,6 +82,13 @@ func EpollCtl(fdarray *[]epollevent, op int, fd fdtype, event *epollevent) (err 
 			}
 		}
 	}
+	// print("after op ")
+	// for i:=0;i<len(*fdarray);i++{
+	// 	print((*fdarray)[i].fd," ")
+	// 	print((*fdarray)[i].events," ")
+	// 	print((*fdarray)[i].revents,"|")
+	// }
+	// println("")
 	return nil
 }
 
@@ -82,12 +101,24 @@ func EpollWait(fdarray []epollevent, events []epollevent, msec int) (n int, err 
 	}
 	r, _, err := wsapollProc.Call(uintptr(unsafe.Pointer(&fdarray[0])), uintptr(len(fdarray)), uintptr(msec))
 	vaildNum := int(r)
+	// if vaildNum!=0{
+	// 	print("vaildnum: ",vaildNum," ")
+	// 	for i:=0;i<len(fdarray);i++{
+	// 		print((fdarray)[i].fd," ")
+	// 		print((fdarray)[i].events," ")
+	// 		print((fdarray)[i].revents,"|")
+	// 	}
+	// 	println("")
+	// }
+	// if vaildNum == 0xffffffff{
+	// 	fmt.Println(err)
+	// }
 	if vaildNum != 0xffffffff {
 		j := 0
 		for i := 0; j < vaildNum; i++ {
 			if fdarray[i].fd != syscall.InvalidHandle && fdarray[i].revents != 0 {
 				events[j] = fdarray[i]
-				fdarray[i].events &= ^fdarray[i].revents
+				//fdarray[i].events &= ^fdarray[i].revents
 				j++
 			}
 		}

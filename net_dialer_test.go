@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -61,6 +60,9 @@ func TestDialerTCP(t *testing.T) {
 }
 
 func TestDialerUnix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return
+	}
 	dialer := NewDialer()
 	conn, err := dialer.DialTimeout("unix", "tmp.sock", time.Second)
 	MustTrue(t, err != nil)
@@ -126,7 +128,7 @@ func TestDialerFdAlloc(t *testing.T) {
 			runtime.Gosched()
 		}
 		time.Sleep(time.Millisecond)
-		syscall.SetNonblock(fd, true)
+		sysSetNonblock(fd, true)
 	}
 }
 
@@ -150,13 +152,13 @@ func TestFDClose(t *testing.T) {
 	conn, err = DialConnection("tcp", ":1234", time.Second)
 	MustNil(t, err)
 	fd = conn.(*TCPConnection).fd
-	syscall.SetNonblock(fd, true)
+	sysSetNonblock(fd, true)
 	conn.Close()
 
 	conn, err = DialConnection("tcp", ":1234", time.Second)
 	MustNil(t, err)
 	fd = conn.(*TCPConnection).fd
-	syscall.SetNonblock(fd, true)
+	sysSetNonblock(fd, true)
 	time.Sleep(time.Second)
 	conn.Close()
 }
