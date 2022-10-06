@@ -17,12 +17,15 @@
 package netpoll
 
 import (
+	"os"
 	"syscall"
 	"unsafe"
 )
 
 type iovec = syscall.WSABuf
 type fdtype = syscall.Handle
+
+const SEND_RECV_AGAIN = WSAEWOULDBLOCK
 
 var ws2_32_mod = syscall.NewLazyDLL("ws2_32.dll")
 
@@ -42,11 +45,11 @@ const (
 
 func sysRead(fd fdtype, p []byte) (n int, err error) {
 	rnu, _, err := recvProc.Call(uintptr(fd), uintptr(unsafe.Pointer(&p[0])), uintptr(len(p)), 0)
-	rn := int(rnu)
+	rn := int32(rnu)
 	if rn <= 0 {
-		return rn, err
+		return int(rn), err
 	}
-	return rn, nil
+	return int(rn), nil
 }
 
 func sysWrite(fd fdtype, p []byte) (n int, err error) {
@@ -68,4 +71,23 @@ func sysSetNonblock(fd fdtype, is bool) error {
 		return err
 	}
 	return nil
+}
+
+func sysGetsockoptInt(fd fdtype, level int, optname int) (int, error) {
+	out := 1
+	len := unsafe.Sizeof(out)
+	nerr, _, err := getsockoptProc.Call(uintptr(fd), uintptr(level), uintptr(optname), uintptr(unsafe.Pointer(&out)), uintptr(unsafe.Pointer(&len)))
+	if nerr != 0 {
+		return out, os.NewSyscallError("getsockopt", err)
+	}
+	return out, nil
+}
+
+func isChanClose(ch chan int) bool {
+	select {
+	case _, received := <-ch:
+		return !received
+	default:
+	}
+	return false
 }

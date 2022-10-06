@@ -380,6 +380,7 @@ func (b *LinkBuffer) Flush() (err error) {
 	}
 	b.flush = b.write
 	// re-cal length
+	//ln("flush",b,n)
 	b.recalLen(n)
 	return nil
 }

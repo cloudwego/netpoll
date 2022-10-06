@@ -130,9 +130,8 @@ func writev(fd fdtype, bs [][]byte, ivs []iovec) (n int, err error) {
 	}
 	var (
 		sendBytes  uint32
-		overlapped syscall.Overlapped
 	)
-	e := syscall.WSASend(fd, &ivs[0], uint32(iovLen), &sendBytes, 0, &overlapped, nil)
+	e := syscall.WSASend(fd, &ivs[0], uint32(iovLen), &sendBytes, 0, nil, nil)
 	resetIovecs(bs, ivs[:iovLen])
 	return int(sendBytes), e
 }
@@ -146,10 +145,9 @@ func readv(fd fdtype, bs [][]byte, ivs []iovec) (n int, err error) {
 	}
 	var (
 		recvBytes  uint32
-		overlapped syscall.Overlapped
 		flags      uint32
 	)
-	e := syscall.WSARecv(fd, &ivs[0], uint32(iovLen), &recvBytes, &flags, &overlapped, nil)
+	e := syscall.WSARecv(fd, &ivs[0], uint32(iovLen), &recvBytes, &flags, nil, nil)
 	resetIovecs(bs, ivs[:iovLen])
 	return int(recvBytes), e
 }

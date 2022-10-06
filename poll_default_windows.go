@@ -49,7 +49,10 @@ func openPoll() Poll {
 func openDefaultPoll() *defaultPoll {
 	var poll = defaultPoll{}
 	poll.buf = make([]byte, 8)
+	poll.fdarrayMux.Lock()
 	poll.fdarray = make([]epollevent, 0)
+	poll.fdmode = make([]int, 0)
+	poll.fdarrayMux.Unlock()
 	r, w := GetSysFdPairs()
 
 	poll.Reset = poll.reset
@@ -63,11 +66,13 @@ func openDefaultPoll() *defaultPoll {
 
 type defaultPoll struct {
 	pollArgs
-	fdarray []epollevent // epoll fds
-	wopr    *FDOperator  // eventfd, wake epoll_wait
-	wopw    *FDOperator
-	buf     []byte // read wfd trigger msg
-	trigger uint32 // trigger flag
+	fdarrayMux sync.Mutex
+	fdarray    []epollevent // epoll fds
+	fdmode     []int
+	wopr       *FDOperator // eventfd, wake epoll_wait
+	wopw       *FDOperator
+	buf        []byte // read wfd trigger msg
+	trigger    uint32 // trigger flag
 	// fns for handle events
 	Reset   func(size, caps int)
 	Handler func(events []epollevent) (closed bool)
@@ -101,9 +106,12 @@ func (p *defaultPoll) Wait() (err error) {
 		if n == p.size && p.size < 128*1024 {
 			p.Reset(p.size<<1, caps)
 		}
-		n, _ = EpollWait(p.fdarray, p.events, msec)
+		p.fdarrayMux.Lock()
+		n, _ = EpollWait(p.fdarray, p.events, msec, p.fdmode)
+		p.fdarrayMux.Unlock()
 
 		if n == 0xffffffff {
+			p.fdarrayMux.Lock()
 			for i := 0; i < len(p.fdarray); i++ {
 				if p.fdarray[i].fd == syscall.InvalidHandle {
 					continue
@@ -111,8 +119,10 @@ func (p *defaultPoll) Wait() (err error) {
 				_, err := syscall.Getsockname(p.fdarray[i].fd)
 				if err != nil {
 					p.fdarray[i].fd = syscall.InvalidHandle
+					p.fdmode[i] = 0
 				}
 			}
+			p.fdarrayMux.Unlock()
 			continue
 		}
 		if n == 0 {
@@ -154,7 +164,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 
 		evt := events[i].revents
 		// check poll in
-		if evt&POLLIN != 0 {
+		if evt&POLLIN != 0 || evt&POLLHUP != 0 {
 			if operator.OnRead != nil {
 				// for non-connection
 				operator.OnRead(p)
@@ -164,7 +174,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				if len(bs) > 0 {
 					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
-					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
+					if err != nil && err != SEND_RECV_AGAIN && err != syscall.EINTR {
 						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
@@ -195,7 +205,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
 					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
-					if err != nil && err != syscall.EAGAIN {
+					if err != nil && err != SEND_RECV_AGAIN {
 						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
@@ -231,6 +241,7 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	var op int
 	var evt epollevent
 	evt.fd = operator.FD
+	mode := 0
 	fd2FDOperator.Store(operator.FD, operator)
 	switch event {
 	case PollReadable:
@@ -243,13 +254,15 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		op, evt.events = EPOLL_CTL_DEL, POLLIN|POLLOUT
 	case PollWritable:
 		operator.inuse()
-		op, evt.events = EPOLL_CTL_ADD, POLLOUT
+		op, evt.events, mode = EPOLL_CTL_ADD, POLLOUT, ET_MOD
 	case PollR2RW:
-		op, evt.events = EPOLL_CTL_MOD, POLLOUT
+		op, evt.events = EPOLL_CTL_MOD, POLLIN|POLLOUT
 	case PollRW2R:
 		op, evt.events = EPOLL_CTL_MOD, POLLIN
 	}
-	return EpollCtl(&p.fdarray, op, operator.FD, &evt)
+	p.fdarrayMux.Lock()
+	defer p.fdarrayMux.Unlock()
+	return EpollCtl(&p.fdarray, op, operator.FD, &evt, mode, &p.fdmode)
 }
 
 func (p *defaultPoll) appendHup(operator *FDOperator) {

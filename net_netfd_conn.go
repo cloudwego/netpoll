@@ -43,7 +43,7 @@ func (c *netFD) Fd() (fd fdtype) {
 
 // Read implements Conn.
 func (c *netFD) Read(b []byte) (n int, err error) {
-	n, err = syscall.Read(c.fd, b)
+	n, err = sysRead(c.fd, b)
 	if err != nil {
 		if err == syscall.EAGAIN || err == syscall.EINTR {
 			return 0, nil
@@ -54,7 +54,7 @@ func (c *netFD) Read(b []byte) (n int, err error) {
 
 // Write implements Conn.
 func (c *netFD) Write(b []byte) (n int, err error) {
-	n, err = syscall.Write(c.fd, b)
+	n, err = sysWrite(c.fd, b)
 	if err != nil {
 		if err == syscall.EAGAIN {
 			return 0, nil

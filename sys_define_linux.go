@@ -23,6 +23,8 @@ import (
 type iovec = syscall.Iovec
 type fdtype = int
 
+const SEND_RECV_AGAIN = syscall.EAGAIN
+
 const (
 	SO_ERROR = syscall.SO_ERROR
 )
@@ -39,4 +41,8 @@ func sysWrite(fd fdtype, p []byte) (n int, err error) {
 
 func sysSetNonblock(fd fdtype, is bool) error {
 	return syscall.SetNonblock(fd, is)
+}
+
+func sysGetsockoptInt(fd fdtype, level int, optname int) (int, error) {
+	return syscall.GetsockoptInt(fd, level, optname)
 }

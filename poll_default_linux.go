@@ -115,7 +115,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 		// trigger or exit gracefully
 		if operator.FD == p.wop.FD {
 			// must clean trigger first
-			syscall.Read(p.wop.FD, p.buf)
+			sysRead(p.wop.FD, p.buf)
 			atomic.StoreUint32(&p.trigger, 0)
 			// if closed & exit
 			if p.buf[0] > 0 {
@@ -140,7 +140,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				if len(bs) > 0 {
 					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
-					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
+					if err != nil && err != SEND_RECV_AGAIN && err != syscall.EINTR {
 						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
@@ -176,7 +176,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
 					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
-					if err != nil && err != syscall.EAGAIN {
+					if err != nil && err != SEND_RECV_AGAIN {
 						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
@@ -193,7 +193,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 
 // Close will write 10000000
 func (p *defaultPoll) Close() error {
-	_, err := syscall.Write(p.wop.FD, []byte{1, 0, 0, 0, 0, 0, 0, 0})
+	_, err := sysWrite(p.wop.FD, []byte{1, 0, 0, 0, 0, 0, 0, 0})
 	return err
 }
 
@@ -203,7 +203,7 @@ func (p *defaultPoll) Trigger() error {
 		return nil
 	}
 	// MAX(eventfd) = 0xfffffffffffffffe
-	_, err := syscall.Write(p.wop.FD, []byte{0, 0, 0, 0, 0, 0, 0, 1})
+	_, err := sysWrite(p.wop.FD, []byte{0, 0, 0, 0, 0, 0, 0, 1})
 	return err
 }
 

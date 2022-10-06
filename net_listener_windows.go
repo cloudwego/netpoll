@@ -109,7 +109,9 @@ func (ln *listener) UDPAccept() (net.Conn, error) {
 
 // Close implements Listener.
 func (ln *listener) Close() error {
-	ln.syncClose <- 1
+	if !isChanClose(ln.syncClose) {
+		close(ln.syncClose)
+	}
 	if ln.fd != 0 {
 		syscall.Close(ln.fd)
 	}
