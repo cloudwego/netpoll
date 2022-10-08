@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build darwin dragonfly freebsd netbsd openbsd
-
 package netpoll
 
 import (
@@ -21,24 +19,14 @@ import (
 	"unsafe"
 )
 
-var supportZeroCopySend bool
+// just support ipv4
+func SetKeepAlive(fd fdtype, secs int) error {
 
-// sendmsg wraps the sendmsg system call.
-// Must len(iovs) >= len(vs)
-func sendmsg(fd int, bs [][]byte, ivs []iovec, zerocopy bool) (n int, err error) {
-	iovLen := iovecs(bs, ivs)
-	if iovLen == 0 {
-		return 0, nil
+	// open keep-alive
+	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1); err != nil {
+		return err
 	}
-	var msghdr = syscall.Msghdr{
-		Iov:    &ivs[0],
-		Iovlen: int32(iovLen),
-	}
-	// flags = syscall.MSG_DONTWAIT
-	r, _, e := syscall.RawSyscall(syscall.SYS_SENDMSG, uintptr(fd), uintptr(unsafe.Pointer(&msghdr)), uintptr(0))
-	resetIovecs(bs, ivs[:iovLen])
-	if e != 0 {
-		return int(r), syscall.Errno(e)
-	}
-	return int(r), nil
+	var keepAliveIn = syscall.TCPKeepalive{OnOff: 1, Time: uint32(secs) * 1000, Interval: uint32(secs) * 1000}
+	var bytesReturn uint32 = 0
+	return syscall.WSAIoctl(fd, syscall.SIO_KEEPALIVE_VALS, (*byte)(unsafe.Pointer(&keepAliveIn)), uint32(unsafe.Sizeof(keepAliveIn)), nil, 0, &bytesReturn, nil, 0)
 }

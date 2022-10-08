@@ -16,7 +16,6 @@ package netpoll
 
 import (
 	"sync/atomic"
-	"syscall"
 )
 
 // ------------------------------------------ implement FDOperator ------------------------------------------
@@ -139,7 +138,7 @@ func (c *connection) flush() error {
 	// TODO: Let the upper layer pass in whether to use ZeroCopy.
 	var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
 	var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
-	if err != nil && err != syscall.EAGAIN {
+	if err != nil && err != SEND_RECV_AGAIN {
 		return Exception(err, "when flush")
 	}
 	if n > 0 {

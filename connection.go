@@ -64,3 +64,4 @@ type Connection interface {
 	// to polling check connection status.
 	AddCloseCallback(callback CloseCallback) error
 }
+

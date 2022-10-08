@@ -67,6 +67,7 @@ func (d *dialer) DialConnection(network, address string, timeout time.Duration) 
 		}
 		connection, err = DialTCP(ctx, network, nil, raddr)
 	// case "udp", "udp4", "udp6":  // TODO: unsupport now
+	// TODO: Unix sockets are not supported under the windows platform
 	case "unix", "unixgram", "unixpacket":
 		var raddr *UnixAddr
 		raddr, err = ResolveUnixAddr(network, address)

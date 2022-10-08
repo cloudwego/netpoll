@@ -15,7 +15,6 @@
 package netpoll
 
 import (
-	"syscall"
 	"testing"
 )
 
@@ -28,12 +27,12 @@ func TestWritev(t *testing.T) {
 		[]byte("second line"), // len=11
 		[]byte("third line"),  // len=10
 	}
-	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
+	barrier.ivs = make([]iovec, len(barrier.bs))
 	wn, err := writev(w, barrier.bs, barrier.ivs)
 	MustNil(t, err)
 	Equal(t, wn, 31)
 	var p = make([]byte, 50)
-	rn, err := syscall.Read(r, p)
+	rn, err := sysRead(r, p)
 	MustNil(t, err)
 	Equal(t, rn, 31)
 	t.Logf("READ %s", p[:rn])
@@ -46,9 +45,9 @@ func TestReadv(t *testing.T) {
 		[]byte("second line"), // len=11
 		[]byte("third line"),  // len=10
 	}
-	w1, _ := syscall.Write(w, vs[0])
-	w2, _ := syscall.Write(w, vs[1])
-	w3, _ := syscall.Write(w, vs[2])
+	w1, _ := sysWrite(w, vs[0])
+	w2, _ := sysWrite(w, vs[1])
+	w3, _ := sysWrite(w, vs[2])
 	Equal(t, w1+w2+w3, 31)
 
 	var barrier = barrier{}
@@ -58,7 +57,7 @@ func TestReadv(t *testing.T) {
 		make([]byte, 11),
 		make([]byte, 10),
 	}
-	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
+	barrier.ivs = make([]iovec, len(barrier.bs))
 	rn, err := readv(r, barrier.bs, barrier.ivs)
 	MustNil(t, err)
 	Equal(t, rn, 31)
@@ -76,12 +75,12 @@ func TestSendmsg(t *testing.T) {
 		[]byte("second line"), // len=11
 		[]byte("third line"),  // len=10
 	}
-	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
+	barrier.ivs = make([]iovec, len(barrier.bs))
 	wn, err := sendmsg(w, barrier.bs, barrier.ivs, false)
 	MustNil(t, err)
 	Equal(t, wn, 31)
 	var p = make([]byte, 50)
-	rn, err := syscall.Read(r, p)
+	rn, err := sysRead(r, p)
 	MustNil(t, err)
 	Equal(t, rn, 31)
 	t.Logf("READ %s", p[:rn])
@@ -96,7 +95,7 @@ func BenchmarkWrite(b *testing.B) {
 	go func() {
 		buffer := make([]byte, 13)
 		for {
-			syscall.Read(r, buffer)
+			sysRead(r, buffer)
 		}
 
 	}()
@@ -110,7 +109,7 @@ func BenchmarkWrite(b *testing.B) {
 		for j := 0; j < size; j++ {
 			n += copy(wmsg[n:], message)
 		}
-		syscall.Write(w, wmsg)
+		sysWrite(w, wmsg)
 	}
 }
 
@@ -121,7 +120,7 @@ func BenchmarkWritev(b *testing.B) {
 	size := 5
 	var barrier = barrier{}
 	barrier.bs = make([][]byte, size)
-	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
+	barrier.ivs = make([]iovec, len(barrier.bs))
 	for i := range barrier.bs {
 		barrier.bs[i] = make([]byte, len(message))
 	}
@@ -129,7 +128,7 @@ func BenchmarkWritev(b *testing.B) {
 	go func() {
 		buffer := make([]byte, 13)
 		for {
-			syscall.Read(r, buffer)
+			sysRead(r, buffer)
 		}
 
 	}()
@@ -149,7 +148,7 @@ func BenchmarkSendmsg(b *testing.B) {
 	size := 5
 	var barrier = barrier{}
 	barrier.bs = make([][]byte, size)
-	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
+	barrier.ivs = make([]iovec, len(barrier.bs))
 	for i := range barrier.bs {
 		barrier.bs[i] = make([]byte, len(message))
 	}
@@ -157,7 +156,7 @@ func BenchmarkSendmsg(b *testing.B) {
 	go func() {
 		buffer := make([]byte, 13)
 		for {
-			syscall.Read(r, buffer)
+			sysRead(r, buffer)
 		}
 
 	}()
@@ -183,7 +182,7 @@ func BenchmarkRead(b *testing.B) {
 
 	go func() {
 		for {
-			syscall.Write(w, wmsg)
+			sysWrite(w, wmsg)
 		}
 
 	}()
@@ -193,7 +192,7 @@ func BenchmarkRead(b *testing.B) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		var buffer = make([]byte, size*len(message))
-		syscall.Read(r, buffer)
+		sysRead(r, buffer)
 	}
 }
 
@@ -204,7 +203,7 @@ func BenchmarkReadv(b *testing.B) {
 	size := 5
 	var barrier = barrier{}
 	barrier.bs = make([][]byte, size)
-	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
+	barrier.ivs = make([]iovec, len(barrier.bs))
 	for i := range barrier.bs {
 		barrier.bs[i] = make([]byte, len(message))
 	}

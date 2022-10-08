@@ -103,7 +103,7 @@ func favoriteAddrFamily(network string, laddr, raddr sockaddr) (family int, ipv6
 // asynchronous I/O using the network poller.
 func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only bool, laddr, raddr sockaddr) (netfd *netFD, err error) {
 	// syscall.Socket & set socket options
-	var fd int
+	var fd fdtype
 	fd, err = sysSocket(family, sotype, proto)
 	if err != nil {
 		return nil, err

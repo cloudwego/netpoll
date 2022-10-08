@@ -48,7 +48,7 @@ func openDefaultPoll() *defaultPoll {
 }
 
 type defaultPoll struct {
-	fd      int
+	fd      fdtype
 	trigger uint32
 	hups    []func(p Poll) error
 }
@@ -60,7 +60,7 @@ func (p *defaultPoll) Wait() error {
 	var events, barriers = make([]syscall.Kevent_t, size), make([]barrier, size)
 	for i := range barriers {
 		barriers[i].bs = make([][]byte, caps)
-		barriers[i].ivs = make([]syscall.Iovec, caps)
+		barriers[i].ivs = make([]iovec, caps)
 	}
 	// wait
 	for {
@@ -95,7 +95,7 @@ func (p *defaultPoll) Wait() error {
 					if len(bs) > 0 {
 						var n, err = readv(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
-						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
+						if err != nil && err != SEND_RECV_AGAIN && err != syscall.EINTR {
 							log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
@@ -122,7 +122,7 @@ func (p *defaultPoll) Wait() error {
 						// TODO: Let the upper layer pass in whether to use ZeroCopy.
 						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
-						if err != nil && err != syscall.EAGAIN {
+						if err != nil && err != SEND_RECV_AGAIN {
 							log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue

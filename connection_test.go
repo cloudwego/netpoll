@@ -137,7 +137,7 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 		Equal(t, len(buf), size)
 	}()
 	time.Sleep(time.Millisecond)
-	syscall.Write(w, msg)
+	sysWrite(w, msg)
 	syscall.Close(w)
 	wg.Wait()
 }
@@ -150,7 +150,7 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	var msg = make([]byte, size)
 
 	// write half packet
-	syscall.Write(w, msg[:size/2])
+	sysWrite(w, msg[:size/2])
 	// wait poller reads buffer
 	for rconn.inputBuffer.Len() <= 0 {
 		runtime.Gosched()
@@ -172,7 +172,7 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 		runtime.Gosched()
 	}
 	Equal(t, atomic.LoadInt64(&rconn.waitReadSize), int64(size))
-	syscall.Write(w, msg[size/2:])
+	sysWrite(w, msg[size/2:])
 	wg.Wait()
 }
 
@@ -192,9 +192,9 @@ func TestReadTrigger(t *testing.T) {
 	Equal(t, len(trigger), 1)
 }
 
-func writeAll(fd int, buf []byte) error {
+func writeAll(fd fdtype, buf []byte) error {
 	for len(buf) > 0 {
-		n, err := syscall.Write(fd, buf)
+		n, err := sysWrite(fd, buf)
 		if n < 0 {
 			return err
 		}
@@ -209,7 +209,7 @@ func TestLargeBufferWrite(t *testing.T) {
 	ln, err := CreateListener("tcp", ":1234")
 	MustNil(t, err)
 
-	trigger := make(chan int)
+	trigger := make(chan fdtype)
 	defer close(trigger)
 	go func() {
 		for {
@@ -247,8 +247,12 @@ func TestLargeBufferWrite(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 50)
 	buf := make([]byte, 1024)
-	for i := 0; i < 128*bufferSize/1024; i++ {
-		_, err := syscall.Read(rfd, buf)
+	for i := 0; i < 128*bufferSize; {
+		j, err := sysRead(rfd, buf)
+		if err == syscall.Errno(10035) && runtime.GOOS == "windows" {
+			continue
+		}
+		i += j
 		MustNil(t, err)
 	}
 	// close success
@@ -280,7 +284,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 
 	var msg = make([]byte, rn)
 	for i := 0; i < wn/rn; i++ {
-		n, err := syscall.Write(w, msg)
+		n, err := sysWrite(w, msg)
 		if err != nil {
 			panic(err)
 		}
@@ -292,7 +296,12 @@ func TestConnectionLargeMemory(t *testing.T) {
 
 	runtime.ReadMemStats(&end)
 	alloc := end.TotalAlloc - start.TotalAlloc
-	limit := uint64(4 * 1024 * 1024)
+	var limit uint64
+	if runtime.GOOS == "windows" {
+		limit = uint64(100 * 1024 * 1024)
+	} else {
+		limit = uint64(4 * 1024 * 1024)
+	}
 	if alloc > limit {
 		panic(fmt.Sprintf("alloc[%d] out of memory %d", alloc, limit))
 	}
@@ -301,14 +310,16 @@ func TestConnectionLargeMemory(t *testing.T) {
 // TestSetTCPNoDelay is used to verify the connection initialization set the TCP_NODELAY correctly
 func TestSetTCPNoDelay(t *testing.T) {
 	fd, err := sysSocket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	MustNil(t, err)
+
 	conn := &connection{}
 	conn.init(&netFD{network: "tcp", fd: fd}, nil)
 
-	n, _ := syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	n, _ := sysGetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n > 0)
 	err = setTCPNoDelay(fd, false)
 	MustNil(t, err)
-	n, _ = syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	n, _ = sysGetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
 	MustTrue(t, n == 0)
 }
 

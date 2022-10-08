@@ -28,7 +28,7 @@ type Listener interface {
 	net.Listener
 
 	// Fd return listener's fd, used by poll.
-	Fd() (fd int)
+	Fd() (fd fdtype)
 }
 
 // CreateListener return a new Listener.
@@ -57,7 +57,7 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return ln, syscall.SetNonblock(ln.fd, true)
+	return ln, sysSetNonblock(ln.fd, true)
 }
 
 // TODO: udpListener does not work now.
@@ -75,14 +75,14 @@ func udpListener(network, addr string) (l Listener, err error) {
 	if err != nil {
 		return nil, err
 	}
-	ln.fd = int(ln.file.Fd())
-	return ln, syscall.SetNonblock(ln.fd, true)
+	ln.fd = fdtype(ln.file.Fd())
+	return ln, sysSetNonblock(ln.fd, true)
 }
 
 var _ net.Listener = &listener{}
 
 type listener struct {
-	fd    int
+	fd    fdtype
 	addr  net.Addr       // listener's local addr
 	ln    net.Listener   // tcp|unix listener
 	pconn net.PacketConn // udp listener
@@ -139,7 +139,7 @@ func (ln *listener) Addr() net.Addr {
 }
 
 // Fd implements Listener.
-func (ln *listener) Fd() (fd int) {
+func (ln *listener) Fd() (fd fdtype) {
 	return ln.fd
 }
 
@@ -155,6 +155,6 @@ func (ln *listener) parseFD() (err error) {
 	if err != nil {
 		return err
 	}
-	ln.fd = int(ln.file.Fd())
+	ln.fd = fdtype(ln.file.Fd())
 	return nil
 }

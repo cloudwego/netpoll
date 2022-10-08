@@ -14,11 +14,6 @@
 
 package netpoll
 
-import (
-	"syscall"
-	"unsafe"
-)
-
 //func init() {
 //	err := syscall.Setrlimit(8, &syscall.Rlimit{
 //		Cur: 0xffffffff,
@@ -31,23 +26,8 @@ import (
 
 // sendmsg wraps the sendmsg system call.
 // Must len(iovs) >= len(vs)
-func sendmsg(fd int, bs [][]byte, ivs []iovec, zerocopy bool) (n int, err error) {
-	iovLen := iovecs(bs, ivs)
-	if iovLen == 0 {
-		return 0, nil
-	}
-	var msghdr = syscall.Msghdr{
-		Iov:    &ivs[0],
-		Iovlen: uint64(iovLen),
-	}
-	var flags uintptr
-	if zerocopy {
-		flags = MSG_ZEROCOPY
-	}
-	r, _, e := syscall.RawSyscall(syscall.SYS_SENDMSG, uintptr(fd), uintptr(unsafe.Pointer(&msghdr)), flags)
-	resetIovecs(bs, ivs[:iovLen])
-	if e != 0 {
-		return int(r), syscall.Errno(e)
-	}
-	return int(r), nil
+// TODO Implementing Zero Copy on Windows Platform
+func sendmsg(fd fdtype, bs [][]byte, ivs []iovec, zerocopy bool) (n int, err error) {
+	n, err = writev(fd, bs, ivs)
+	return n, err
 }

@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build darwin netbsd freebsd openbsd dragonfly linux
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux || windows
+// +build darwin netbsd freebsd openbsd dragonfly linux windows
 
 package netpoll
 
@@ -30,19 +31,19 @@ type Conn interface {
 	net.Conn
 
 	// Fd return conn's fd, used by poll
-	Fd() (fd int)
+	Fd() (fd fdtype)
 }
 
 var _ Conn = &netFD{}
 
 // Fd implements Conn.
-func (c *netFD) Fd() (fd int) {
+func (c *netFD) Fd() (fd fdtype) {
 	return c.fd
 }
 
 // Read implements Conn.
 func (c *netFD) Read(b []byte) (n int, err error) {
-	n, err = syscall.Read(c.fd, b)
+	n, err = sysRead(c.fd, b)
 	if err != nil {
 		if err == syscall.EAGAIN || err == syscall.EINTR {
 			return 0, nil
@@ -53,7 +54,7 @@ func (c *netFD) Read(b []byte) (n int, err error) {
 
 // Write implements Conn.
 func (c *netFD) Write(b []byte) (n int, err error) {
-	n, err = syscall.Write(c.fd, b)
+	n, err = sysWrite(c.fd, b)
 	if err != nil {
 		if err == syscall.EAGAIN {
 			return 0, nil

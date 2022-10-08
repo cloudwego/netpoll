@@ -29,7 +29,7 @@ type epollevent struct {
 }
 
 // EpollCtl implements epoll_ctl.
-func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
+func EpollCtl(epfd fdtype, op int, fd fdtype, event *epollevent) (err error) {
 	_, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_CTL, uintptr(epfd), uintptr(op), uintptr(fd), uintptr(unsafe.Pointer(event)), 0, 0)
 	if err == syscall.Errno(0) {
 		err = nil
@@ -38,7 +38,7 @@ func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
 }
 
 // EpollWait implements epoll_wait.
-func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
+func EpollWait(epfd fdtype, events []epollevent, msec int) (n int, err error) {
 	var r0 uintptr
 	var _p0 = unsafe.Pointer(&events[0])
 	if msec == 0 {
