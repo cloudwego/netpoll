@@ -185,7 +185,7 @@ func TestDialerThenClose(t *testing.T) {
 	defer cancel2()
 	defer el2.Shutdown(ctx2)
 
-	size := 1
+	size := 20
 	var wg sync.WaitGroup
 	wg.Add(size)
 	for i := 0; i < size; i++ {
