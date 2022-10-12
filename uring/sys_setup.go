@@ -47,7 +47,7 @@ type sqRingOffsets struct {
 type cqRingOffsets struct {
 	head        uint32
 	tail        uint32
-	ringMsk     uint32
+	ringMask    uint32
 	ringEntries uint32
 	overflow    uint32
 	cqes        uint32
