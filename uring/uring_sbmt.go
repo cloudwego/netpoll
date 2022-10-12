@@ -88,19 +88,34 @@ func (u *URing) submit(submitted uint32, nr uint32, getEvents bool) (uint, error
 func (u *URing) flushSQ() uint32 {
 	mask := *u.sqRing.kRingMask
 	tail := SMP_LOAD_ACQUIRE_U32(u.sqRing.kTail)
-	subCnt := u.sqRing.sqeTail - u.sqRing.sqeHead
+	toSubmit := u.sqRing.sqeTail - u.sqRing.sqeHead
 
-	if subCnt == 0 {
+	if toSubmit == 0 {
 		return tail - SMP_LOAD_ACQUIRE_U32(u.sqRing.kHead)
 	}
 
-	for i := subCnt; i > 0; i-- {
+	for toSubmit > 0 {
 		*(*uint32)(unsafe.Add(unsafe.Pointer(u.sqRing.array), tail&mask*uint32(_sizeU32))) = u.sqRing.sqeHead & mask
 		tail++
 		u.sqRing.sqeHead++
+		toSubmit--
 	}
 
+	/*
+	 * Ensure kernel sees the SQE updates before the tail update.
+	 */
 	SMP_STORE_RELEASE_U32(u.sqRing.kTail, tail)
 
+	/*
+	 * This _may_ look problematic, as we're not supposed to be reading
+	 * SQ->head without acquire semantics. When we're in SQPOLL mode, the
+	 * kernel submitter could be updating this right now. For non-SQPOLL,
+	 * task itself does it, and there's no potential race. But even for
+	 * SQPOLL, the load is going to be potentially out-of-date the very
+	 * instant it's done, regardless or whether or not it's done
+	 * atomically. Worst case, we're going to be over-estimating what
+	 * we can submit. The point is, we need to be able to deal with this
+	 * situation regardless of any perceived atomicity.
+	 */
 	return tail - SMP_LOAD_ACQUIRE_U32(u.sqRing.kHead)
 }
