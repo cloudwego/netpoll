@@ -95,6 +95,8 @@ const IORING_CQ_EVENTFD_DISABLED uint32 = 1 << iota
 const INT_FLAG_REG_RING = 1
 const LIBURING_UDATA_TIMEOUT = math.MaxUint64
 
+var SMP_SQRING atomic.Value
+
 func WRITE_ONCE_U32(p *uint32, v uint32) {
 	atomic.StoreUint32(p, v)
 }
@@ -109,4 +111,8 @@ func SMP_STORE_RELEASE_U32(p *uint32, v uint32) {
 
 func SMP_LOAD_ACQUIRE_U32(p *uint32) uint32 {
 	return atomic.LoadUint32(p)
+}
+
+func SMP_MEMORY_BARRIER(p **uringSQ) {
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(p)), SMP_SQRING.Load().(unsafe.Pointer))
 }

@@ -213,6 +213,8 @@ func (u *URing) nextSQE() (sqe *URingSQE, err error) {
 		idx := u.sqRing.sqeTail & *u.sqRing.kRingMask * uint32(_sizeSQE)
 		sqe = (*URingSQE)(unsafe.Pointer(&u.sqRing.sqeBuff[idx]))
 		u.sqRing.sqeTail = next
+
+		SMP_SQRING.Store(u.sqRing)
 	} else {
 		err = errors.New("sq ring overflow")
 	}
@@ -238,10 +240,10 @@ func (u *URing) sqRingNeedEnter(submit uint32, flags *uint32) bool {
 		return true
 	}
 	/*
-	 * TODO: Ensure the kernel can see the store to the SQ tail before we read
+	 * Ensure the kernel can see the store to the SQ tail before we read
 	 * the flags.
 	 */
-	// SMP_STORE_RELEASE_U32(u.sqRing, uint32(1))
+	SMP_MEMORY_BARRIER(&u.sqRing)
 
 	if READ_ONCE_U32(u.sqRing.kFlags)&IORING_SQ_NEED_WAKEUP != 0 {
 		*flags |= IORING_ENTER_SQ_WAKEUP

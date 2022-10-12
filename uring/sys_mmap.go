@@ -93,6 +93,8 @@ func (u *URing) sysMmap(p *ringParams) (err error) {
 		u.cqRing.kFlags = cqRingPtr + uintptr(p.cqOffset.flags)
 	}
 
+	SMP_SQRING.Store(u.sqRing)
+
 	return nil
 }
 
