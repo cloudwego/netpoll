@@ -120,10 +120,13 @@ func (u *URing) submitTimeout(timeout time.Duration) (int64, error) {
 }
 
 // peekCQE implements URing
-func (u *URing) peekCQE() (avail uint32, cqe *URingCQE, err error) {
+func (u *URing) peekCQE() (uint32, *URingCQE, error) {
 	mask := *u.cqRing.kRingMask
+	var cqe *URingCQE
+	var avail uint32
+	var err error
 
-	var shift int
+	var shift = 0
 	if u.Params.flags&IORING_SETUP_CQE32 != 0 {
 		shift = 1
 	}
@@ -132,6 +135,7 @@ func (u *URing) peekCQE() (avail uint32, cqe *URingCQE, err error) {
 		tail := SMP_LOAD_ACQUIRE_U32(u.cqRing.kTail)
 		head := SMP_LOAD_ACQUIRE_U32(u.cqRing.kHead)
 
+		cqe = nil
 		avail = tail - head
 		if avail == 0 {
 			break
@@ -154,29 +158,50 @@ func (u *URing) peekCQE() (avail uint32, cqe *URingCQE, err error) {
 		break
 	}
 
-	return
+	return avail, cqe, err
+}
+
+func (u *URing) getEvents() {
+	flags := IORING_ENTER_GETEVENTS
+
+	if u.Params.flags&INT_FLAG_REG_RING != 0 {
+		flags |= IORING_ENTER_REGISTERED_RING
+	}
+	SysEnter(u.fd, 0, 0, flags, nil, NSIG/8)
 }
 
 // peekCQE implements URing
 func (u *URing) peekBatchCQE(cqes []*URingCQE, shift int) int {
+	overflowChecked := false
+
+again:
 	ready := u.cqRing.ready()
-	lenCQEs := uint32(len(cqes))
-	var count uint32
-	if lenCQEs > ready {
-		count = ready
-	} else {
-		count = lenCQEs
-	}
 	if ready != 0 {
 		head := SMP_LOAD_ACQUIRE_U32(u.cqRing.kHead)
 		mask := SMP_LOAD_ACQUIRE_U32(u.cqRing.kRingMask)
 
+		count := uint32(len(cqes))
+		if count > ready {
+			count = ready
+		}
 		last := head + count
 		for i := 0; head != last; head, i = head+1, i+1 {
 			cqes[i] = (*URingCQE)(unsafe.Add(unsafe.Pointer(u.cqRing.cqes), uintptr((head&mask)<<shift)*_sizeCQE))
 		}
+		return int(count)
 	}
-	return int(count)
+
+	if overflowChecked {
+		return 0
+	}
+
+	if u.cqRingNeedFlush() {
+		u.getEvents()
+		overflowChecked = true
+		goto again
+	}
+
+	return 0
 }
 
 // nextSQE implements URing
@@ -212,6 +237,12 @@ func (u *URing) sqRingNeedEnter(submit uint32, flags *uint32) bool {
 	if u.Params.flags&IORING_SETUP_SQPOLL == 0 {
 		return true
 	}
+	/*
+	 * TODO: Ensure the kernel can see the store to the SQ tail before we read
+	 * the flags.
+	 */
+	// SMP_STORE_RELEASE_U32(u.sqRing, uint32(1))
+
 	if READ_ONCE_U32(u.sqRing.kFlags)&IORING_SQ_NEED_WAKEUP != 0 {
 		*flags |= IORING_ENTER_SQ_WAKEUP
 		return true
