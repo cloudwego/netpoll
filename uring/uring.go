@@ -31,6 +31,7 @@ func IOURing(entries uint32, ops ...setupOp) (u *URing, err error) {
 	if err != nil {
 		return nil, err
 	}
+	SMP_SQRING.Store(u.sqRing)
 	u = &URing{Params: params, fd: fd, sqRing: &uringSQ{}, cqRing: &uringCQ{}}
 	err = u.sysMmap(params)
 
@@ -65,12 +66,14 @@ func (u *URing) Queue(op Op, flags uint8, userData uint64) error {
 func (u *URing) Probe() (probe *Probe, err error) {
 	probe = &Probe{}
 	err = SysRegister(u.fd, IORING_REGISTER_PROBE, unsafe.Pointer(probe), 256)
+	SMP_SQRING.Store(u.sqRing)
 	return
 }
 
 // RegisterProbe implements URing
-func (r URing) RegisterProbe(p *Probe, nrOps int) error {
-	err := SysRegister(r.fd, IORING_REGISTER_PROBE, unsafe.Pointer(p), nrOps)
+func (u URing) RegisterProbe(p *Probe, nrOps int) error {
+	err := SysRegister(u.fd, IORING_REGISTER_PROBE, unsafe.Pointer(p), nrOps)
+	SMP_SQRING.Store(u.sqRing)
 	return err
 }
 
@@ -167,6 +170,7 @@ func (u *URing) PeekBatchCQE(cqes []*URingCQE) int {
 	if n == 0 {
 		if u.cqRingNeedFlush() {
 			SysEnter(u.fd, 0, 0, IORING_ENTER_GETEVENTS, nil, NSIG/8)
+			SMP_SQRING.Store(u.sqRing)
 			n = u.peekBatchCQE(cqes, shift)
 		}
 	}

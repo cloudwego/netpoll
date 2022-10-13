@@ -64,20 +64,28 @@ const (
 
 // RegisterBuffers regists shared buffers
 func (u *URing) RegisterBuffers(buffers []syscall.Iovec) error {
-	return SysRegister(u.fd, IORING_REGISTER_BUFFERS, unsafe.Pointer(&buffers[0]), len(buffers))
+	err := SysRegister(u.fd, IORING_REGISTER_BUFFERS, unsafe.Pointer(&buffers[0]), len(buffers))
+	SMP_SQRING.Store(u.sqRing)
+	return err
 }
 
 // UnRegisterBuffers unregists shared buffers
 func (u *URing) UnRegisterBuffers() error {
-	return SysRegister(u.fd, IORING_UNREGISTER_BUFFERS, unsafe.Pointer(nil), 0)
+	err := SysRegister(u.fd, IORING_UNREGISTER_BUFFERS, unsafe.Pointer(nil), 0)
+	SMP_SQRING.Store(u.sqRing)
+	return err
 }
 
 // RegisterBuffers regists shared files
 func (u *URing) RegisterFilse(dp []int) error {
-	return SysRegister(u.fd, IORING_REGISTER_FILES, unsafe.Pointer(&dp[0]), len(dp))
+	err := SysRegister(u.fd, IORING_REGISTER_FILES, unsafe.Pointer(&dp[0]), len(dp))
+	SMP_SQRING.Store(u.sqRing)
+	return err
 }
 
 // UnRegisterBuffers unregists shared files
 func (u *URing) UnRegisterFiles() error {
-	return SysRegister(u.fd, IORING_UNREGISTER_FILES, unsafe.Pointer(nil), 0)
+	err := SysRegister(u.fd, IORING_UNREGISTER_FILES, unsafe.Pointer(nil), 0)
+	SMP_SQRING.Store(u.sqRing)
+	return err
 }

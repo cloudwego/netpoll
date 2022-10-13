@@ -81,6 +81,7 @@ func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
 		if err != nil {
 			break
 		}
+		SMP_SQRING.Store(u.sqRing)
 
 		data.submit -= uint32(ret)
 		if cqe != nil {

@@ -81,6 +81,7 @@ func (u *URing) submit(submitted uint32, nr uint32, getEvents bool) (uint, error
 		return uint(submitted), nil
 	}
 	ret, err := SysEnter(u.fd, submitted, nr, flags, nil, NSIG/8)
+	SMP_SQRING.Store(u.sqRing)
 	return ret, err
 }
 
