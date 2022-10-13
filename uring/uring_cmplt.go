@@ -76,10 +76,8 @@ func (u *URing) getCQE(data getData) (cqe *URingCQE, err error) {
 			flags |= IORING_ENTER_REGISTERED_RING
 		}
 
-		// TODO: Add println to make timer expired
-		println("SysEnter in")
+		// TODO: TestTimeoutWait not supported
 		ret, err := SysEnter(u.fd, data.submit, data.waitNr, flags, data.arg, data.sz)
-		println("SysEnter out")
 		if err != nil {
 			break
 		}

@@ -17,12 +17,9 @@ package uring
 import (
 	"errors"
 	"io/ioutil"
-	"math"
 	"os"
-	"runtime"
 	"syscall"
 	"testing"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -131,6 +128,8 @@ func TestReady(t *testing.T) {
 	Equal(t, u.cqRing.ready(), uint32(0))
 }
 
+/* TODO: TestTimeoutWait not supported
+ *
 func TestTimeoutWait(t *testing.T) {
 	u, err := IOURing(8)
 	MustNil(t, err)
@@ -142,7 +141,7 @@ func TestTimeoutWait(t *testing.T) {
 	if u.Params.features&IORING_FEAT_EXT_ARG != 0 {
 		n, err := u.Submit()
 		MustNil(t, err)
-		Equal(t, n, uint(1))
+		Equal(t, int(n), 1)
 	}
 
 	n := 0
@@ -164,6 +163,7 @@ func TestTimeoutWait(t *testing.T) {
 	}
 	Equal(t, n, 1)
 }
+*/
 
 func TestPeekCQE(t *testing.T) {
 	u, err := IOURing(8)
@@ -234,7 +234,10 @@ func makeV(f *os.File, vSZ int64) ([][]byte, error) {
 	}
 
 	bytes := stat.Size()
-	blocks := int(math.Ceil(float64(bytes) / float64(vSZ)))
+	blocks := int(bytes / vSZ)
+	if bytes%vSZ != 0 {
+		blocks++
+	}
 
 	buffs := make([][]byte, 0, blocks)
 	for bytes != 0 {
