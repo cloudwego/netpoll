@@ -18,12 +18,9 @@
 package netpoll
 
 // registerPoll is the func of openning Poller
-var registerPoll (func() Poll)
+var registerPoll pollRegister = openDefaultPoll
 
-// mock no race poll
-func init() {
-	registerPoll = openDefaultPoll
-}
+type pollRegister func() Poll
 
 // RegisterEpoll implement Epoll
 func RegisterEpoll() {
