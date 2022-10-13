@@ -31,7 +31,6 @@ func IOURing(entries uint32, ops ...setupOp) (u *URing, err error) {
 	if err != nil {
 		return nil, err
 	}
-	SMP_SQRING.Store(u.sqRing)
 	u = &URing{Params: params, fd: fd, sqRing: &uringSQ{}, cqRing: &uringCQ{}}
 	err = u.sysMmap(params)
 
