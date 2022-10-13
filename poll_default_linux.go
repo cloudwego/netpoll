@@ -25,12 +25,7 @@ import (
 	"unsafe"
 )
 
-// Includes defaultPoll/multiPoll/uringPoll...
-func openPoll() Poll {
-	return openDefaultPoll()
-}
-
-func openDefaultPoll() *defaultPoll {
+func openDefaultPoll() Poll {
 	var poll = defaultPoll{}
 	poll.buf = make([]byte, 8)
 	var p, err = syscall.EpollCreate1(0)
