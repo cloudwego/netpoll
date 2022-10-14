@@ -25,7 +25,7 @@ import (
 
 // Includes defaultPoll/multiPoll/uringPoll...
 func openPoll() Poll {
-	return registerPoll()
+	return pollRegister()
 }
 
 func setNumLoops(numLoops int) error {
