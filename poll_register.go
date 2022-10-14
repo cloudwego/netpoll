@@ -26,6 +26,6 @@ func RegisterEpoll() {
 }
 
 // RegisterURingPoll implement URing Poller
-// func RegisterURingPoll() {
-// 	registerPoll = openURingPoll
-// }
+func RegisterURingPoll() {
+	registerPoll = openURingPoll
+}
