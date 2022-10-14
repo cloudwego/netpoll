@@ -342,7 +342,7 @@ type RecvMsgOp struct {
 
 func (op *RecvMsgOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(op.msg)), 1, 0)
-	sqe.Flags = uint8(op.flags)
+	sqe.Flags = OpFlag(op.flags)
 }
 
 func (op *RecvMsgOp) getFlag() OpFlag {
@@ -367,7 +367,7 @@ type SendMsgOp struct {
 
 func (op *SendMsgOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(op.msg)), 1, 0)
-	sqe.setFlags(uint8(op.flags))
+	sqe.setFlags(OpFlag(op.flags))
 }
 
 func (op *SendMsgOp) getFlag() OpFlag {
@@ -423,7 +423,7 @@ type RecvOp struct {
 
 func (op *RecvOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.buf[0])), uint32(len(op.buf)), 0)
-	sqe.setFlags(uint8(op.flags))
+	sqe.setFlags(OpFlag(op.flags))
 }
 
 func (op *RecvOp) getFlag() OpFlag {
@@ -456,7 +456,7 @@ type SendOp struct {
 
 func (op *SendOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.buf[0])), uint32(len(op.buf)), 0)
-	sqe.setFlags(uint8(op.flags))
+	sqe.setFlags(OpFlag(op.flags))
 }
 
 func (op *SendOp) getFlag() OpFlag {

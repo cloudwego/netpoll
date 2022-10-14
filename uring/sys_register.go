@@ -89,3 +89,8 @@ func (u *URing) UnRegisterFiles() error {
 	SMP_SQRING.Store(u.sqRing)
 	return err
 }
+
+func (u *URing) REGISTER_EVENTFD(fd uintptr) error {
+	err := SysRegister(u.fd, IORING_REGISTER_EVENTFD, unsafe.Pointer(fd), 1)
+	return err
+}
