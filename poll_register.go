@@ -18,9 +18,7 @@
 package netpoll
 
 // registerPoll is the func of openning Poller
-var registerPoll pollRegister = openDefaultPoll
-
-type pollRegister func() Poll
+var registerPoll = openDefaultPoll
 
 // RegisterEpoll implement Epoll
 func RegisterEpoll() {
@@ -28,6 +26,6 @@ func RegisterEpoll() {
 }
 
 // RegisterURingPoll implement URing Poller
-func RegisterURingPoll() {
-	registerPoll = openURingPoll
-}
+// func RegisterURingPoll() {
+// 	registerPoll = openURingPoll
+// }
