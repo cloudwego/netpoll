@@ -20,8 +20,8 @@ import (
 
 // Submission Queue Entry, IO submission data structure
 type URingSQE struct {
-	OpFlag     OpFlag // type of operation for this sqe
-	Flags      OpFlag // IOSQE_ flags
+	OpCode     uint8  // type of operation for this sqe
+	Flags      uint8  // IOSQE_ flags
 	IOPrio     uint16 // ioprio for the request
 	Fd         int32  // file descriptor to do IO on
 	Off        uint64 // offset into file
@@ -34,8 +34,8 @@ type URingSQE struct {
 }
 
 // PrepRW implements SQE
-func (s *URingSQE) PrepRW(op OpFlag, fd int32, addr uintptr, len uint32, offset uint64) {
-	s.OpFlag = op
+func (s *URingSQE) PrepRW(op uint8, fd int32, addr uintptr, len uint32, offset uint64) {
+	s.OpCode = op
 	s.Flags = 0
 	s.IOPrio = 0
 	s.Fd = fd
@@ -79,7 +79,7 @@ func (s *URingSQE) setUserData(ud uint64) {
 }
 
 // setFlags sets the flags field of the SQE instance passed in.
-func (s *URingSQE) setFlags(flags OpFlag) {
+func (s *URingSQE) setFlags(flags uint8) {
 	s.Flags = flags
 }
 
@@ -127,17 +127,17 @@ const (
 // Flags of SQE
 const (
 	// IOSQE_FIXED_FILE means use fixed fileset
-	IOSQE_FIXED_FILE OpFlag = 1 << IOSQE_FIXED_FILE_BIT
+	IOSQE_FIXED_FILE uint8 = 1 << IOSQE_FIXED_FILE_BIT
 	// IOSQE_IO_DRAIN means issue after inflight IO
-	IOSQE_IO_DRAIN OpFlag = 1 << IOSQE_IO_DRAIN_BIT
+	IOSQE_IO_DRAIN uint8 = 1 << IOSQE_IO_DRAIN_BIT
 	// IOSQE_IO_LINK means links next sqe
-	IOSQE_IO_LINK OpFlag = 1 << IOSQE_IO_LINK_BIT
+	IOSQE_IO_LINK uint8 = 1 << IOSQE_IO_LINK_BIT
 	// IOSQE_IO_HARDLINK means like LINK, but stronger
-	IOSQE_IO_HARDLINK OpFlag = 1 << IOSQE_IO_HARDLINK_BIT
+	IOSQE_IO_HARDLINK uint8 = 1 << IOSQE_IO_HARDLINK_BIT
 	// IOSQE_ASYNC means always go async
-	IOSQE_ASYNC OpFlag = 1 << IOSQE_ASYNC_BIT
+	IOSQE_ASYNC uint8 = 1 << IOSQE_ASYNC_BIT
 	// IOSQE_BUFFER_SELECT means select buffer from sqe->buf_group
-	IOSQE_BUFFER_SELECT OpFlag = 1 << IOSQE_BUFFER_SELECT_BIT
+	IOSQE_BUFFER_SELECT uint8 = 1 << IOSQE_BUFFER_SELECT_BIT
 	// IOSQE_CQE_SKIP_SUCCESS means don't post CQE if request succeeded
-	IOSQE_CQE_SKIP_SUCCESS OpFlag = 1 << IOSQE_CQE_SKIP_SUCCESS_BIT
+	IOSQE_CQE_SKIP_SUCCESS uint8 = 1 << IOSQE_CQE_SKIP_SUCCESS_BIT
 )

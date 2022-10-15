@@ -90,7 +90,12 @@ func (u *URing) UnRegisterFiles() error {
 	return err
 }
 
-func (u *URing) REGISTER_EVENTFD(fd uintptr) error {
-	err := SysRegister(u.fd, IORING_REGISTER_EVENTFD, unsafe.Pointer(fd), 1)
+func (u *URing) RegisterEventFd(fd int) error {
+	err := SysRegister(u.fd, IORING_REGISTER_EVENTFD, unsafe.Pointer(uintptr(fd)), 1)
+	return err
+}
+
+func (u *URing) UnRegisterEventFd() error {
+	err := SysRegister(u.fd, IORING_UNREGISTER_EVENTFD, unsafe.Pointer(nil), 0)
 	return err
 }

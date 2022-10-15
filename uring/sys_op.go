@@ -22,18 +22,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// OpFlag defines the type of OpFlags
-type OpFlag uint8
-
 // Op supports operations for SQE
 type Op interface {
 	Prep(*URingSQE)
-	getFlag() OpFlag
+	getFlag() uint8
 }
 
 // Flags of URing Operation
 const (
-	IORING_OP_NOP OpFlag = iota
+	IORING_OP_NOP uint8 = iota
 	IORING_OP_READV
 	IORING_OP_WRITEV
 	IORING_OP_FSYNC
@@ -89,7 +86,7 @@ const (
 
 // timeoutFlags of SQE
 const (
-	IORING_TIMEOUT_ABS OpFlag = 1 << iota
+	IORING_TIMEOUT_ABS uint8 = 1 << iota
 	IORING_TIMEOUT_UPDATE
 	IORING_TIMEOUT_BOOTTIME
 	IORING_TIMEOUT_REALTIME
@@ -114,7 +111,7 @@ const SPLICE_F_FD_IN_FIXED uint32 = 1 << 31 // the last bit of __u32
 
 // IORING_POLL_LEVEL		Level triggered poll.
 const (
-	IORING_POLL_ADD_MULTI OpFlag = 1 << iota
+	IORING_POLL_ADD_MULTI uint8 = 1 << iota
 	IORING_POLL_UPDATE_EVENTS
 	IORING_POLL_UPDATE_USER_DATA
 	IORING_POLL_ADD_LEVEL
@@ -128,7 +125,7 @@ const (
 // IORING_ASYNC_CANCEL_ANY	Match any request
 // IORING_ASYNC_CANCEL_FD_FIXED	'fd' passed in is a fixed descriptor
 const (
-	IORING_ASYNC_CANCEL_ALL OpFlag = 1 << iota
+	IORING_ASYNC_CANCEL_ALL uint8 = 1 << iota
 	IORING_ASYNC_CANCEL_FD
 	IORING_ASYNC_CANCEL_ANY
 	IORING_ASYNC_CANCEL_FD_FIXED
@@ -152,25 +149,25 @@ const (
 //				successful. Only for zerocopy sends.
 
 const (
-	IORING_RECVSEND_POLL_FIRST OpFlag = 1 << iota
+	IORING_RECVSEND_POLL_FIRST uint8 = 1 << iota
 	IORING_RECV_MULTISHOT
 	IORING_RECVSEND_FIXED_BUF
 	IORING_RECVSEND_NOTIF_FLUSH
 )
 
 // accept flags stored in sqe->ioprio
-const IORING_ACCEPT_MULTISHOT OpFlag = 1 << iota
+const IORING_ACCEPT_MULTISHOT uint8 = 1 << iota
 
 // IORING_OP_RSRC_UPDATE flags
 const (
-	IORING_RSRC_UPDATE_FILES OpFlag = iota
+	IORING_RSRC_UPDATE_FILES uint8 = iota
 	IORING_RSRC_UPDATE_NOTIF
 )
 
 // IORING_OP_MSG_RING command types, stored in sqe->addr
 const (
-	IORING_MSG_DATA    OpFlag = iota // pass sqe->len as 'res' and off as user_data */
-	IORING_MSG_SEND_FD               // send a registered fd to another ring */
+	IORING_MSG_DATA    uint8 = iota // pass sqe->len as 'res' and off as user_data */
+	IORING_MSG_SEND_FD              // send a registered fd to another ring */
 )
 
 // IORING_OP_MSG_RING flags (sqe->msg_ring_flags)
@@ -178,7 +175,7 @@ const (
 // IORING_MSG_RING_CQE_SKIP	Don't post a CQE to the target ring. Not
 //				applicable for IORING_MSG_DATA, obviously.
 
-const IORING_MSG_RING_CQE_SKIP OpFlag = iota
+const IORING_MSG_RING_CQE_SKIP uint8 = iota
 
 // ------------------------------------------ implement Nop ------------------------------------------
 
@@ -192,7 +189,7 @@ func (op *NopOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), -1, uintptr(unsafe.Pointer(nil)), 0, 0)
 }
 
-func (op *NopOp) getFlag() OpFlag {
+func (op *NopOp) getFlag() uint8 {
 	return IORING_OP_NOP
 }
 
@@ -216,7 +213,7 @@ func (op *ReadOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.nbytes[0])), uint32(len(op.nbytes)), op.offset)
 }
 
-func (op *ReadOp) getFlag() OpFlag {
+func (op *ReadOp) getFlag() uint8 {
 	return IORING_OP_READ
 }
 
@@ -240,7 +237,7 @@ func (op *WriteOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.nbytes[0])), uint32(len(op.nbytes)), op.offset)
 }
 
-func (op *WriteOp) getFlag() OpFlag {
+func (op *WriteOp) getFlag() uint8 {
 	return IORING_OP_WRITE
 }
 
@@ -271,7 +268,7 @@ func (op *ReadVOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.ioVecs[0])), op.nrVecs, op.offset)
 }
 
-func (op *ReadVOp) getFlag() OpFlag {
+func (op *ReadVOp) getFlag() uint8 {
 	return IORING_OP_READV
 }
 
@@ -300,7 +297,7 @@ func (op *WriteVOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.ioVecs[0])), uint32(len(op.ioVecs)), op.offset)
 }
 
-func (op *WriteVOp) getFlag() OpFlag {
+func (op *WriteVOp) getFlag() uint8 {
 	return IORING_OP_WRITEV
 }
 
@@ -320,7 +317,7 @@ func (op *CloseOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), 0, 0, 0)
 }
 
-func (op *CloseOp) getFlag() OpFlag {
+func (op *CloseOp) getFlag() uint8 {
 	return IORING_OP_CLOSE
 }
 
@@ -342,10 +339,10 @@ type RecvMsgOp struct {
 
 func (op *RecvMsgOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(op.msg)), 1, 0)
-	sqe.Flags = OpFlag(op.flags)
+	sqe.Flags = uint8(op.flags)
 }
 
-func (op *RecvMsgOp) getFlag() OpFlag {
+func (op *RecvMsgOp) getFlag() uint8 {
 	return IORING_OP_RECVMSG
 }
 
@@ -367,10 +364,10 @@ type SendMsgOp struct {
 
 func (op *SendMsgOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(op.msg)), 1, 0)
-	sqe.setFlags(OpFlag(op.flags))
+	sqe.setFlags(uint8(op.flags))
 }
 
-func (op *SendMsgOp) getFlag() OpFlag {
+func (op *SendMsgOp) getFlag() uint8 {
 	return IORING_OP_SENDMSG
 }
 
@@ -397,7 +394,7 @@ func (op *AcceptOp) Prep(sqe *URingSQE) {
 	sqe.UnionFlags = op.flags
 }
 
-func (op *AcceptOp) getFlag() OpFlag {
+func (op *AcceptOp) getFlag() uint8 {
 	return IORING_OP_ACCEPT
 }
 
@@ -423,10 +420,10 @@ type RecvOp struct {
 
 func (op *RecvOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.buf[0])), uint32(len(op.buf)), 0)
-	sqe.setFlags(OpFlag(op.flags))
+	sqe.setFlags(uint8(op.flags))
 }
 
-func (op *RecvOp) getFlag() OpFlag {
+func (op *RecvOp) getFlag() uint8 {
 	return IORING_OP_RECV
 }
 
@@ -456,10 +453,10 @@ type SendOp struct {
 
 func (op *SendOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(&op.buf[0])), uint32(len(op.buf)), 0)
-	sqe.setFlags(OpFlag(op.flags))
+	sqe.setFlags(uint8(op.flags))
 }
 
-func (op *SendOp) getFlag() OpFlag {
+func (op *SendOp) getFlag() uint8 {
 	return IORING_OP_SEND
 }
 
@@ -488,6 +485,6 @@ func (op *TimeoutOp) Prep(sqe *URingSQE) {
 	sqe.PrepRW(op.getFlag(), -1, uintptr(unsafe.Pointer(&spec)), 1, 0)
 }
 
-func (op *TimeoutOp) getFlag() OpFlag {
+func (op *TimeoutOp) getFlag() uint8 {
 	return IORING_OP_TIMEOUT
 }

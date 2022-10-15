@@ -16,8 +16,8 @@ package uring
 
 // Probe means Probing supported capabilities
 type Probe struct {
-	lastOp OpFlag // last opcode supported
-	opsLen uint8  // length of ops[] array below
+	lastOp uint8 // last opcode supported
+	opsLen uint8 // length of ops[] array below
 	resv   uint16
 	resv2  [3]uint32
 	ops    [256]probeOp
@@ -25,7 +25,7 @@ type Probe struct {
 
 // probeOp is params of Probe
 type probeOp struct {
-	op    OpFlag
+	op    uint8
 	resv  uint8
 	flags uint16 // IO_URING_OP_* flags
 	resv2 uint32
@@ -37,11 +37,11 @@ func (p Probe) Op(idx int) *probeOp {
 }
 
 // OpFlagSupported implements Probe
-func (p Probe) OpFlagSupported(op OpFlag) uint16 {
+func (p Probe) OpFlagSupported(op uint8) uint16 {
 	if op > p.lastOp {
 		return 0
 	}
-	return uint16(p.ops[op].flags) & IO_URING_OP_SUPPORTED
+	return p.ops[op].flags & IO_URING_OP_SUPPORTED
 }
 
 // IO_URING_OP_SUPPORTED means OpFlags whether io_uring supported or not

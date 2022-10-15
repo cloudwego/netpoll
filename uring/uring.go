@@ -48,7 +48,7 @@ func (u *URing) SQE() *URingSQE {
 }
 
 // Queue add an operation to SQ queue
-func (u *URing) Queue(op Op, flags OpFlag, userData uint64) error {
+func (u *URing) Queue(op Op, flags uint8, userData uint64) error {
 	sqe, err := u.nextSQE()
 	if err != nil {
 		return err
