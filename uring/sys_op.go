@@ -488,3 +488,47 @@ func (op *TimeoutOp) Prep(sqe *URingSQE) {
 func (op *TimeoutOp) getFlag() uint8 {
 	return IORING_OP_TIMEOUT
 }
+
+// ------------------------------------------ implement PollAdd ------------------------------------------
+
+func PollAdd(fd uintptr, mask uint32) *PollAddOp {
+	return &PollAddOp{
+		fd:       fd,
+		pollMask: mask,
+	}
+}
+
+type PollAddOp struct {
+	fd       uintptr
+	pollMask uint32
+}
+
+func (op *PollAddOp) Prep(sqe *URingSQE) {
+	sqe.PrepRW(op.getFlag(), int32(op.fd), uintptr(unsafe.Pointer(nil)), 0, 0)
+	sqe.UnionFlags = op.pollMask
+}
+
+func (op *PollAddOp) getFlag() uint8 {
+	return IORING_OP_POLL_ADD
+}
+
+// ------------------------------------------ implement PollRemove ------------------------------------------
+
+func PollRemove(data uint64) *PollRemoveOp {
+	return &PollRemoveOp{
+		userData: data,
+	}
+}
+
+type PollRemoveOp struct {
+	userData uint64
+}
+
+func (op *PollRemoveOp) Prep(sqe *URingSQE) {
+	sqe.PrepRW(op.getFlag(), -1, uintptr(unsafe.Pointer(nil)), 0, 0)
+	sqe.setAddr(uintptr(op.userData))
+}
+
+func (op *PollRemoveOp) getFlag() uint8 {
+	return IORING_OP_POLL_REMOVE
+}
