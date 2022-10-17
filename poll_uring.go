@@ -145,10 +145,6 @@ func (p *uringPoll) handler(cqes []*URingCQE) (closed bool) {
 		var epoll = *(**epollEvent)(unsafe.Pointer(&cqes[i].UserData))
 		var operator = epoll.userdata
 
-		if !operator.do() {
-			continue
-		}
-
 		// trigger or exit gracefully
 		if operator.FD == p.uring.Fd() {
 			// must clean trigger first
@@ -159,6 +155,10 @@ func (p *uringPoll) handler(cqes []*URingCQE) (closed bool) {
 				return true
 			}
 			operator.done()
+			continue
+		}
+
+		if !operator.do() {
 			continue
 		}
 
