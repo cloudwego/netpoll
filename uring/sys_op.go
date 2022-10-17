@@ -532,3 +532,30 @@ func (op *PollRemoveOp) Prep(sqe *URingSQE) {
 func (op *PollRemoveOp) getFlag() uint8 {
 	return IORING_OP_POLL_REMOVE
 }
+
+// ------------------------------------------ implement EpollCtl ------------------------------------------
+
+// named URingEpollCtl in case it has the same name as EpollCtl
+func URingEpollCtl(epfd, fd uintptr, opCode uint32, epollEvent unsafe.Pointer) *EpollCtlOp {
+	return &EpollCtlOp{
+		epfd:       epfd,
+		fd:         fd,
+		opCode:     opCode,
+		epollEvent: epollEvent,
+	}
+}
+
+type EpollCtlOp struct {
+	epfd       uintptr
+	fd         uintptr
+	opCode     uint32
+	epollEvent unsafe.Pointer
+}
+
+func (op *EpollCtlOp) Prep(sqe *URingSQE) {
+	sqe.PrepRW(op.getFlag(), int32(op.epfd), uintptr(op.epollEvent), op.opCode, uint64(op.fd))
+}
+
+func (op *EpollCtlOp) getFlag() uint8 {
+	return IORING_OP_EPOLL_CTL
+}
