@@ -47,11 +47,6 @@ type uringPoll struct {
 	hups     []func(p Poll) error
 }
 
-type epollEvent struct {
-	events   uint32
-	userdata *FDOperator
-}
-
 // Wait implements Poll.
 func (p *uringPoll) Wait() error {
 	// init
@@ -62,7 +57,7 @@ func (p *uringPoll) Wait() error {
 		if n == p.size && p.size < 128*1024 {
 			p.reset(p.size<<1, caps)
 		}
-		n := p.uring.PeekBatchCQE(p.cqes)
+		n = p.uring.PeekBatchCQE(p.cqes)
 		if n == 0 {
 			continue
 		}
@@ -76,7 +71,7 @@ func (p *uringPoll) Wait() error {
 // Close implements Poll.
 func (p *uringPoll) Close() error {
 	var userData uint64
-	*(**epollEvent)(unsafe.Pointer(&userData)) = &epollEvent{userdata: &FDOperator{FD: p.uring.Fd(), state: -1}}
+	*(**FDOperator)(unsafe.Pointer(&userData)) = &FDOperator{FD: p.uring.Fd(), state: -1}
 	err := p.trig(userData)
 	return err
 }
@@ -87,46 +82,58 @@ func (p *uringPoll) Trigger() error {
 		return nil
 	}
 	var userData uint64
-	*(**epollEvent)(unsafe.Pointer(&userData)) = &epollEvent{userdata: &FDOperator{FD: p.uring.Fd()}}
+	*(**FDOperator)(unsafe.Pointer(&userData)) = &FDOperator{FD: p.uring.Fd()}
 	err := p.trig(userData)
 	return err
 }
 
 // Control implements Poll.
-func (p *uringPoll) Control(operator *FDOperator, event PollEvent) error {
-	var op Op
+func (p *uringPoll) Control(operator *FDOperator, event PollEvent) (err error) {
+	var ctlOp, pollOp Op
 	var userData uint64
-	evt := &epollEvent{}
+	var evt epollevent
+	*(**FDOperator)(unsafe.Pointer(&evt.data)) = operator
 	switch event {
 	case PollReadable:
 		operator.inuse()
-		evt.userdata, evt.events = operator, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-		op = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_ADD, unsafe.Pointer(&evt))
+		evt.events = syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR
+		ctlOp = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_ADD, unsafe.Pointer(&evt))
+		pollOp = PollAdd(uintptr(operator.FD), evt.events)
 	case PollModReadable:
 		operator.inuse()
-		evt.userdata, evt.events = operator, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-		op = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_MOD, unsafe.Pointer(&evt))
+		evt.events = syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR
+		ctlOp = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_MOD, unsafe.Pointer(&evt))
+		pollOp = PollAdd(uintptr(operator.FD), evt.events)
 	case PollDetach:
-		evt.userdata, evt.events = operator, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-		op = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_DEL, unsafe.Pointer(&evt))
+		evt.events = syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR
+		ctlOp = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_DEL, unsafe.Pointer(&evt))
+		pollOp = PollAdd(uintptr(operator.FD), evt.events)
 	case PollWritable:
 		operator.inuse()
-		evt.userdata, evt.events = operator, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-		op = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_ADD, unsafe.Pointer(&evt))
+		evt.events = EPOLLET | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR
+		ctlOp = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_ADD, unsafe.Pointer(&evt))
+		pollOp = PollAdd(uintptr(operator.FD), evt.events)
 	case PollR2RW:
-		evt.userdata, evt.events = operator, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-		op = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_MOD, unsafe.Pointer(&evt))
+		evt.events = syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR
+		ctlOp = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_MOD, unsafe.Pointer(&evt))
+		pollOp = PollAdd(uintptr(operator.FD), evt.events)
 	case PollRW2R:
-		evt.userdata, evt.events = operator, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-		op = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_MOD, unsafe.Pointer(&evt))
+		evt.events = syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR
+		ctlOp = URingEpollCtl(uintptr(operator.FD), uintptr(p.uring.Fd()), syscall.EPOLL_CTL_MOD, unsafe.Pointer(&evt))
+		pollOp = PollAdd(uintptr(operator.FD), evt.events)
 	}
 
-	*(**epollEvent)(unsafe.Pointer(&userData)) = evt
+	*(**FDOperator)(unsafe.Pointer(&userData)) = operator
 
-	err := p.uring.Queue(op, 0, userData)
+	err = p.uring.Queue(pollOp, 0, userData)
 	if err != nil {
 		panic(err)
 	}
+	err = p.uring.Queue(ctlOp, 0, userData)
+	if err != nil {
+		panic(err)
+	}
+
 	_, err = p.uring.Submit()
 	return err
 }
@@ -142,9 +149,7 @@ func (p *uringPoll) reset(size, caps int) {
 
 func (p *uringPoll) handler(cqes []*URingCQE) (closed bool) {
 	for i := range cqes {
-		var epoll = *(**epollEvent)(unsafe.Pointer(&cqes[i].UserData))
-		var operator = epoll.userdata
-
+		var operator = *(**FDOperator)(unsafe.Pointer(&cqes[i].UserData))
 		// trigger or exit gracefully
 		if operator.FD == p.uring.Fd() {
 			// must clean trigger first
@@ -162,7 +167,7 @@ func (p *uringPoll) handler(cqes []*URingCQE) (closed bool) {
 			continue
 		}
 
-		var events = epoll.events
+		var events = cqes[i].Res
 		// check poll in
 		if events&syscall.EPOLLIN != 0 {
 			if operator.OnRead != nil {
