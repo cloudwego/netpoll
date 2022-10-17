@@ -18,7 +18,6 @@
 package netpoll
 
 import (
-	"fmt"
 	"log"
 	"sync/atomic"
 	"syscall"
@@ -69,7 +68,6 @@ func (p *uringPoll) Wait() error {
 		if n == 0 {
 			continue
 		}
-		fmt.Println(n)
 		if p.handler(p.cqes[:n]) {
 			return nil
 		}
