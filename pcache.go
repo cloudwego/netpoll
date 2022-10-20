@@ -26,21 +26,21 @@ func Free(buf []byte) {
 }
 
 const (
-	debug                          = false
-	defaultPCacheMaxSize           = 42 // 2^42=4 TB
-	defaultPCacheActiveLimitPerP   = 1024 * 1024 * 32
-	defaultPCacheInactiveLimitPerP = 1024 * 1024 * 16
-	defaultPCacheCleanCycles       = 3
+	debug                    = false
+	defaultPCacheMaxSize     = 42 // 2^42=4 TB
+	defaultPCacheBlockSize   = 1024 * 1024 * 16
+	defaultPCacheCleanCycles = 3
 )
 
 type pcache struct {
-	arena      []byte
-	arenaStart uintptr                          // arena address start
-	arenaEnd   uintptr                          // arena address end
-	blocks     [][]byte                         // [pid][]byte, pid=(addr-addr_start)/block_size
-	active     [][defaultPCacheMaxSize][][]byte // [pid][cap_idx][idx]stack
-	inactive   [][defaultPCacheMaxSize][][]byte // [pid][cap_idx][idx]stack
-	ref        *pcacheRef
+	arena          []byte                           // fixed size continuous memory
+	arenaStart     uintptr                          // arena address start
+	arenaEnd       uintptr                          // arena address end
+	activeBlocks   [][]byte                         // [pid][]byte
+	inactiveBlocks [][]byte                         // [pid][]byte
+	active         [][defaultPCacheMaxSize][][]byte // [pid][cap_idx][idx]stack
+	inactive       [][defaultPCacheMaxSize][][]byte // [pid][cap_idx][idx]stack
+	ref            *pcacheRef                       // for gc trigger
 }
 
 type pcacheRef struct {
@@ -58,15 +58,6 @@ func gcRefHandler(ref *pcacheRef) {
 
 	// trigger handler
 	pid := procPin()
-	var cached int
-	for i := 0; i < defaultPCacheMaxSize; i++ {
-		cached += (1 << i) * len(ref.pc.inactive[pid][i])
-	}
-	if cached == 0 || cached < defaultPCacheInactiveLimitPerP {
-		procUnpin()
-		return
-	}
-
 	var buf [][]byte
 	var l, c, released int
 	for i := 0; i < defaultPCacheMaxSize; i++ {
@@ -87,23 +78,25 @@ func gcRefHandler(ref *pcacheRef) {
 }
 
 func newPCache() *pcache {
-	return newLimitedPCache(defaultPCacheActiveLimitPerP)
+	return newLimitedPCache(defaultPCacheBlockSize * runtime.GOMAXPROCS(0))
 }
 
-func newLimitedPCache(limitPerP int) *pcache {
+func newLimitedPCache(size int) *pcache {
 	procs := runtime.GOMAXPROCS(0)
+	sizePerP := size / procs
 	pc := &pcache{
-		blocks:   make([][]byte, procs),
-		active:   make([][defaultPCacheMaxSize][][]byte, procs),
-		inactive: make([][defaultPCacheMaxSize][][]byte, procs),
+		activeBlocks:   make([][]byte, procs),
+		inactiveBlocks: make([][]byte, procs),
+		active:         make([][defaultPCacheMaxSize][][]byte, procs),
+		inactive:       make([][defaultPCacheMaxSize][][]byte, procs),
 	}
 
 	// init arena
-	pc.arena = NewArena(limitPerP * procs)
+	pc.arena = make([]byte, size)
 	pc.arenaStart = uintptr(unsafe.Pointer(&pc.arena[0]))
 	pc.arenaEnd = uintptr(unsafe.Pointer(&pc.arena[len(pc.arena)-1]))
 	for i := 0; i < procs; i++ {
-		pc.blocks[i] = pc.arena[i*limitPerP : (i+1)*limitPerP]
+		pc.activeBlocks[i] = pc.arena[i*sizePerP : (i+1)*sizePerP]
 	}
 
 	pc.ref = &pcacheRef{pc: pc}
@@ -143,21 +136,28 @@ func (p *pcache) Malloc(size int, _capacity ...int) (data []byte) {
 		return data
 	}
 
-	if clen <= len(p.blocks[pid]) {
-		data = p.blocks[pid][:size:capacity]
-		p.blocks[pid] = p.blocks[pid][clen:] // need occupy full clen not only capacity
+	if clen <= len(p.activeBlocks[pid]) {
+		data = p.activeBlocks[pid][:size:capacity]
+		p.activeBlocks[pid] = p.activeBlocks[pid][clen:]
 		procUnpin()
 		if debug {
-			log.Printf("PCACHE: P[%d] reuse arena %d bytes, addr %d", pid, clen, uintptr(unsafe.Pointer(&data[:1][0])))
+			log.Printf("PCACHE: P[%d] malloc from activeBlock %d bytes, addr %d", pid, clen, uintptr(unsafe.Pointer(&data[:1][0])))
 		}
 		return data
 	}
 
+	if clen > len(p.inactiveBlocks[pid]) {
+		if clen < defaultPCacheBlockSize {
+			p.inactiveBlocks[pid] = make([]byte, defaultPCacheBlockSize)
+		} else {
+			p.inactiveBlocks[pid] = make([]byte, clen)
+		}
+	}
+	data = p.inactiveBlocks[pid][:size:capacity]
+	p.inactiveBlocks[pid] = p.inactiveBlocks[pid][clen:]
 	procUnpin()
-	// malloc full clen buffer but only use capacity size
-	data = make([]byte, size, clen)[:size:capacity]
 	if debug {
-		log.Printf("PCACHE: P[%d] malloc %d bytes, addr %d", pid, clen, uintptr(unsafe.Pointer(&data[:1][0])))
+		log.Printf("PCACHE: P[%d] malloc from inactiveBlock %d bytes, addr %d", pid, clen, uintptr(unsafe.Pointer(&data[:1][0])))
 	}
 	return data
 }
