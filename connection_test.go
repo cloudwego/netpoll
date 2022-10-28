@@ -263,7 +263,6 @@ func TestLargeBufferWrite(t *testing.T) {
 func TestWriteTimeout(t *testing.T) {
 	ln, err := CreateListener("tcp", ":1234")
 	MustNil(t, err)
-	defer ln.Close()
 
 	interval := time.Millisecond * 100
 	go func() {
@@ -272,13 +271,17 @@ func TestWriteTimeout(t *testing.T) {
 			if conn == nil && err == nil {
 				continue
 			}
+			if err != nil {
+				return
+			}
 			go func() {
 				buf := make([]byte, 1024)
 				// slow read
 				for {
 					_, err := conn.Read(buf)
 					if err != nil {
-						conn.Close()
+						err = conn.Close()
+						MustNil(t, err)
 						return
 					}
 					time.Sleep(interval)
@@ -303,6 +306,9 @@ func TestWriteTimeout(t *testing.T) {
 
 	// close success
 	err = conn.Close()
+	MustNil(t, err)
+
+	err = ln.Close()
 	MustNil(t, err)
 }
 
