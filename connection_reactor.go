@@ -60,13 +60,16 @@ func (c *connection) onClose() error {
 func (c *connection) closeBuffer() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	// if client close the connection, we cannot ensure that the poller is not process the buffer,
+	// so we need to check the buffer length, and if it's an "unclean" close operation, let's give up to reuse the buffer
 	if c.inputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
 		c.inputBuffer.Close()
 		barrierPool.Put(c.inputBarrier)
 	}
-
-	c.outputBuffer.Close()
-	barrierPool.Put(c.outputBarrier)
+	if c.outputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		c.outputBuffer.Close()
+		barrierPool.Put(c.outputBarrier)
+	}
 }
 
 // inputs implements FDOperator.

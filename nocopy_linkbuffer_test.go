@@ -367,6 +367,36 @@ func TestWriteBuffer(t *testing.T) {
 	MustTrue(t, bytes.Equal(buf1.Bytes(), []byte{2, 3}))
 }
 
+func TestWriteMultiFlush(t *testing.T) {
+	buf := NewLinkBuffer()
+	b1, _ := buf.Malloc(4)
+	b1[0] = 1
+	b1[2] = 2
+	err := buf.Flush()
+	MustNil(t, err)
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 1)
+	MustTrue(t, len(buf.Bytes()) == 4)
+
+	err = buf.Skip(2)
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, len(buf.Bytes()) == 2)
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, len(buf.Bytes()) == 2)
+
+	b2, _ := buf.Malloc(2)
+	b2[0] = 3
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, buf.Bytes()[2] == 3)
+	MustTrue(t, len(buf.Bytes()) == 4)
+}
+
 func TestWriteBinary(t *testing.T) {
 	// clean & new
 	LinkBufferCap = 8
