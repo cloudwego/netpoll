@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ type connection struct {
 	readTimer       *time.Timer
 	readTrigger     chan struct{}
 	waitReadSize    int64
+	writeTimeout    time.Duration
+	writeTimer      *time.Timer
 	writeTrigger    chan error
 	inputBuffer     *LinkBuffer
 	outputBuffer    *LinkBuffer
@@ -79,6 +81,14 @@ func (c *connection) SetIdleTimeout(timeout time.Duration) error {
 func (c *connection) SetReadTimeout(timeout time.Duration) error {
 	if timeout >= 0 {
 		c.readTimeout = timeout
+	}
+	return nil
+}
+
+// SetWriteTimeout implements Connection.
+func (c *connection) SetWriteTimeout(timeout time.Duration) error {
+	if timeout >= 0 {
+		c.writeTimeout = timeout
 	}
 	return nil
 }
@@ -473,4 +483,69 @@ func (c *connection) eofError(n int, err error) error {
 		return Exception(ErrEOF, "")
 	}
 	return err
+}
+
+// flush write data directly.
+func (c *connection) flush() error {
+	if c.outputBuffer.IsEmpty() {
+		return nil
+	}
+	// TODO: Let the upper layer pass in whether to use ZeroCopy.
+	var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
+	var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
+	if err != nil && err != syscall.EAGAIN {
+		return Exception(err, "when flush")
+	}
+	if n > 0 {
+		err = c.outputBuffer.Skip(n)
+		c.outputBuffer.Release()
+		if err != nil {
+			return Exception(err, "when flush")
+		}
+	}
+	// return if write all buffer.
+	if c.outputBuffer.IsEmpty() {
+		return nil
+	}
+	err = c.operator.Control(PollR2RW)
+	if err != nil {
+		return Exception(err, "when flush")
+	}
+
+	return c.waitFlush()
+}
+
+func (c *connection) waitFlush() (err error) {
+	if c.writeTimeout == 0 {
+		select {
+		case err = <-c.writeTrigger:
+		}
+		return err
+	}
+
+	// set write timeout
+	if c.writeTimer == nil {
+		c.writeTimer = time.NewTimer(c.writeTimeout)
+	} else {
+		c.writeTimer.Reset(c.writeTimeout)
+	}
+
+	select {
+	case err = <-c.writeTrigger:
+		if !c.writeTimer.Stop() { // clean timer
+			<-c.writeTimer.C
+		}
+		return err
+	case <-c.writeTimer.C:
+		select {
+		// try fetch writeTrigger if both cases fires
+		case err = <-c.writeTrigger:
+			return err
+		default:
+		}
+		// if timeout, remove write event from poller
+		// we cannot flush it again, since we don't if the poller is still process outputBuffer
+		c.operator.Control(PollRW2R)
+		return Exception(ErrWriteTimeout, c.remoteAddr.String())
+	}
 }

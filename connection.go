@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,6 +44,10 @@ type Connection interface {
 	// SetReadTimeout sets the timeout for future Read calls wait.
 	// A zero value for timeout means Reader will not timeout.
 	SetReadTimeout(timeout time.Duration) error
+
+	// SetWriteTimeout sets the timeout for future Write calls wait.
+	// A zero value for timeout means Writer will not timeout.
+	SetWriteTimeout(timeout time.Duration) error
 
 	// SetIdleTimeout sets the idle timeout of connections.
 	// Idle connections that exceed the set timeout are no longer guaranteed to be active,

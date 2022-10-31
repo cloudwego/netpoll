@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package netpoll
 
 import (
 	"sync/atomic"
-	"syscall"
 )
 
 // ------------------------------------------ implement FDOperator ------------------------------------------
@@ -61,13 +60,16 @@ func (c *connection) onClose() error {
 func (c *connection) closeBuffer() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	// if client close the connection, we cannot ensure that the poller is not process the buffer,
+	// so we need to check the buffer length, and if it's an "unclean" close operation, let's give up to reuse the buffer
 	if c.inputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
 		c.inputBuffer.Close()
 		barrierPool.Put(c.inputBarrier)
 	}
-
-	c.outputBuffer.Close()
-	barrierPool.Put(c.outputBarrier)
+	if c.outputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		c.outputBuffer.Close()
+		barrierPool.Put(c.outputBarrier)
+	}
 }
 
 // inputs implements FDOperator.
@@ -132,37 +134,4 @@ func (c *connection) outputAck(n int) (err error) {
 func (c *connection) rw2r() {
 	c.operator.Control(PollRW2R)
 	c.triggerWrite(nil)
-}
-
-// flush write data directly.
-func (c *connection) flush() error {
-	if c.outputBuffer.IsEmpty() {
-		return nil
-	}
-	// TODO: Let the upper layer pass in whether to use ZeroCopy.
-	var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
-	var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
-	if err != nil && err != syscall.EAGAIN {
-		return Exception(err, "when flush")
-	}
-	if n > 0 {
-		err = c.outputBuffer.Skip(n)
-		c.outputBuffer.Release()
-		if err != nil {
-			return Exception(err, "when flush")
-		}
-	}
-	// return if write all buffer.
-	if c.outputBuffer.IsEmpty() {
-		return nil
-	}
-	err = c.operator.Control(PollR2RW)
-	if err != nil {
-		return Exception(err, "when flush")
-	}
-	err = <-c.writeTrigger
-	if err != nil {
-		return Exception(err, "when flush")
-	}
-	return nil
 }

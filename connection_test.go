@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -258,6 +258,58 @@ func TestLargeBufferWrite(t *testing.T) {
 	err = conn.Close()
 	MustNil(t, err)
 	wg.Wait()
+}
+
+func TestWriteTimeout(t *testing.T) {
+	ln, err := CreateListener("tcp", ":1234")
+	MustNil(t, err)
+
+	interval := time.Millisecond * 100
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if conn == nil && err == nil {
+				continue
+			}
+			if err != nil {
+				return
+			}
+			go func() {
+				buf := make([]byte, 1024)
+				// slow read
+				for {
+					_, err := conn.Read(buf)
+					if err != nil {
+						err = conn.Close()
+						MustNil(t, err)
+						return
+					}
+					time.Sleep(interval)
+				}
+			}()
+		}
+	}()
+
+	conn, err := DialConnection("tcp", ":1234", time.Second)
+	MustNil(t, err)
+
+	_, err = conn.Writer().Malloc(1024)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+
+	_ = conn.SetWriteTimeout(time.Millisecond * 10)
+	_, err = conn.Writer().Malloc(1024 * 1024 * 512)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustTrue(t, errors.Is(err, ErrWriteTimeout))
+
+	// close success
+	err = conn.Close()
+	MustNil(t, err)
+
+	err = ln.Close()
+	MustNil(t, err)
 }
 
 // TestConnectionLargeMemory is used to verify the memory usage in the large package scenario.
