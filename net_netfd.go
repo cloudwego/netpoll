@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 //
 // This file may have been modified by CloudWeGo authors. (“CloudWeGo Modifications”).
-// All CloudWeGo Modifications are Copyright 2021 CloudWeGo authors.
+// All CloudWeGo Modifications are Copyright 2022 CloudWeGo authors.
 
 //go:build aix || darwin || dragonfly || freebsd || linux || nacl || netbsd || openbsd || solaris
 // +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris

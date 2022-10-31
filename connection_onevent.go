@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -98,6 +98,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 		c.SetOnConnect(opts.onConnect)
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
+		c.SetWriteTimeout(opts.writeTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
 
 		// calling prepare first and then register.
@@ -212,7 +213,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 		return nil
 	}
 	// If Close is called during OnPrepare, poll is not registered.
-	if c.closeBy(user) && c.operator.poll != nil {
+	if c.isCloseBy(user) && c.operator.poll != nil {
 		c.operator.Control(PollDetach)
 	}
 	var latest = c.closeCallbacks.Load()

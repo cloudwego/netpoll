@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -159,10 +159,11 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			// So here we need to check this error, if it is EAGAIN then do nothing, otherwise still mark as hup.
 			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
 				p.appendHup(operator)
-				continue
+			} else {
+				operator.done()
 			}
+			continue
 		}
-
 		// check poll out
 		if evt&syscall.EPOLLOUT != 0 {
 			if operator.OnWrite != nil {
