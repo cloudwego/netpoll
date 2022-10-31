@@ -96,4 +96,5 @@ var errnos = [...]string{
 	ErrnoMask & ErrDialNoDeadline: "dial no deadline",
 	ErrnoMask & ErrUnsupported:    "netpoll dose not support",
 	ErrnoMask & ErrEOF:            "EOF",
+	ErrnoMask & ErrWriteTimeout:   "connection write timeout",
 }
