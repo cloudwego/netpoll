@@ -461,26 +461,27 @@ func (c *connection) fill(need int) (err error) {
 	defer c.unlock(finalizing)
 
 	var n int
+	var bs [][]byte
 	for {
-		n, err = readv(c.fd, c.inputs(c.inputBarrier.bs), c.inputBarrier.ivs)
-		c.inputAck(n)
-		err = c.eofError(n, err)
+		bs = c.inputs(c.inputBarrier.bs)
+	TryRead:
+		n, err = readv(c.fd, bs, c.inputBarrier.ivs)
 		if err != nil {
+			if err == syscall.EINTR {
+				// if err == EINTR, we must reuse bs that has been booked
+				// otherwise will mess the input buffer
+				goto TryRead
+			}
 			break
 		}
+		if n == 0 {
+			err = Exception(ErrEOF, "")
+			break
+		}
+		c.inputAck(n)
 	}
 	if c.inputBuffer.Len() >= need {
 		return nil
-	}
-	return err
-}
-
-func (c *connection) eofError(n int, err error) error {
-	if err == syscall.EINTR {
-		return nil
-	}
-	if n == 0 && err == nil {
-		return Exception(ErrEOF, "")
 	}
 	return err
 }
