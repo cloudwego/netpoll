@@ -840,7 +840,7 @@ func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
 		return true
 	}
 	l := b.read.Len()
-	for l == 0 {
+	for l == 0 && b.read != b.flush {
 		b.read = b.read.next
 		l = b.read.Len()
 	}

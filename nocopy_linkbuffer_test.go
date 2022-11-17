@@ -367,6 +367,27 @@ func TestWriteBuffer(t *testing.T) {
 	MustTrue(t, bytes.Equal(buf1.Bytes(), []byte{2, 3}))
 }
 
+func TestLinkBufferCheckSingleNode(t *testing.T) {
+	buf := NewLinkBuffer(block4k)
+	_, err := buf.Malloc(block8k)
+	MustNil(t, err)
+	buf.Flush()
+	MustTrue(t, buf.read.Len() == 0)
+	is := buf.isSingleNode(block8k)
+	MustTrue(t, is)
+	MustTrue(t, buf.read.Len() == block8k)
+	is = buf.isSingleNode(block8k + 1)
+	MustTrue(t, !is)
+
+	// cross node malloc, but b.read.Len() still == 0
+	buf = NewLinkBuffer(block4k)
+	_, err = buf.Malloc(block8k)
+	MustNil(t, err)
+	// not malloc ack yet
+	// read function will call isSingleNode inside
+	buf.isSingleNode(1)
+}
+
 func TestWriteMultiFlush(t *testing.T) {
 	buf := NewLinkBuffer()
 	b1, _ := buf.Malloc(4)
