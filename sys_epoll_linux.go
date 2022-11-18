@@ -18,7 +18,9 @@
 package netpoll
 
 import (
+	"fmt"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -40,12 +42,16 @@ func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
 
 // EpollWait implements epoll_wait.
 func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
+	start := time.Now()
 	var r0 uintptr
 	var _p0 = unsafe.Pointer(&events[0])
 	if msec == 0 {
 		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
 	} else {
 		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
+	}
+	if cost := time.Since(start); cost > 10*time.Millisecond {
+		fmt.Printf("[netpoll-debug] epoll wait cost=%v, events=%d, msec=%d\n", cost, len(events), msec)
 	}
 	if err == syscall.Errno(0) {
 		err = nil
