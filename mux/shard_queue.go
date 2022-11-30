@@ -108,7 +108,8 @@ func (q *ShardQueue) Close() error {
 	if !atomic.CompareAndSwapInt32(&q.state, active, closing) {
 		return fmt.Errorf("shardQueue has been closed")
 	}
-	for atomic.LoadInt32(&q.state) != closed { // wait for all tasks finished
+	// wait for all tasks finished
+	for atomic.LoadInt32(&q.state) != closed && atomic.LoadInt32(&q.trigger) > 0 {
 		runtime.Gosched()
 	}
 	return nil
