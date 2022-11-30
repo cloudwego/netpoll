@@ -109,7 +109,11 @@ func (q *ShardQueue) Close() error {
 		return fmt.Errorf("shardQueue has been closed")
 	}
 	// wait for all tasks finished
-	for atomic.LoadInt32(&q.state) != closed && atomic.LoadInt32(&q.trigger) > 0 {
+	for atomic.LoadInt32(&q.state) != closed {
+		if atomic.LoadInt32(&q.trigger) == 0 {
+			atomic.StoreInt32(&q.trigger, closed)
+			return nil
+		}
 		runtime.Gosched()
 	}
 	return nil
