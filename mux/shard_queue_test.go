@@ -67,6 +67,8 @@ func TestShardQueue(t *testing.T) {
 		queue.Add(getter)
 	}
 
+	err = queue.Close()
+	MustNil(t, err)
 	total := count * pkgsize
 	recv := make([]byte, total)
 	rn, err := svrConn.Read(recv)
