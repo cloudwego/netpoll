@@ -35,7 +35,8 @@ func setLoadBalance(lb LoadBalance) error {
 var pollmanager *manager
 
 func init() {
-	var loops = runtime.GOMAXPROCS(0)/20 + 1
+	//var loops = runtime.GOMAXPROCS(0)/20 + 1
+	var loops = runtime.GOMAXPROCS(0)
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
 	pollmanager.SetNumLoops(loops)

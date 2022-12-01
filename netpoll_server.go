@@ -26,6 +26,14 @@ import (
 	"time"
 )
 
+// mainpoll just used for server
+var mainpoll Poll
+
+func init() {
+	mainpoll = openPoll()
+	go mainpoll.Wait()
+}
+
 // newServer wrap listener into server, quit will be invoked when server exit.
 func newServer(ln Listener, opts *options, onQuit func(err error)) *server {
 	return &server{
@@ -50,7 +58,7 @@ func (s *server) Run() (err error) {
 		OnRead: s.OnRead,
 		OnHup:  s.OnHup,
 	}
-	s.operator.poll = pollmanager.Pick()
+	s.operator.poll = mainpoll
 	err = s.operator.Control(PollReadable)
 	if err != nil {
 		s.onQuit(err)
