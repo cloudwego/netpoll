@@ -135,9 +135,15 @@ func (c *connection) Release() (err error) {
 		}
 		// Double check length to reset tail node
 		if c.inputBuffer.Len() == 0 {
+			if Trace {
+				trace(c, "connection inputBuffer reset tail to: %d", c.maxSize)
+			}
 			c.inputBuffer.resetTail(c.maxSize)
 		}
 		c.operator.done()
+	}
+	if Trace {
+		trace(c, "connection inputBuffer released")
 	}
 	return c.inputBuffer.Release()
 }
@@ -203,6 +209,9 @@ func (c *connection) ReadByte() (b byte, err error) {
 
 // Malloc implements Connection.
 func (c *connection) Malloc(n int) (buf []byte, err error) {
+	if Trace {
+		trace(c, "connection Malloc: %d", n)
+	}
 	return c.outputBuffer.Malloc(n)
 }
 
@@ -221,6 +230,9 @@ func (c *connection) Flush() error {
 	if !c.IsActive() || !c.lock(flushing) {
 		return Exception(ErrConnClosed, "when flush")
 	}
+	if Trace {
+		trace(c, "connection Flush")
+	}
 	defer c.unlock(flushing)
 	c.outputBuffer.Flush()
 	return c.flush()
@@ -228,11 +240,17 @@ func (c *connection) Flush() error {
 
 // MallocAck implements Connection.
 func (c *connection) MallocAck(n int) (err error) {
+	if Trace {
+		trace(c, "connection Flush: %d", n)
+	}
 	return c.outputBuffer.MallocAck(n)
 }
 
 // Append implements Connection.
 func (c *connection) Append(w Writer) (err error) {
+	if Trace {
+		trace(c, "connection Append: %d", w.MallocLen())
+	}
 	return c.outputBuffer.Append(w)
 }
 
@@ -294,6 +312,9 @@ func (c *connection) Write(p []byte) (n int, err error) {
 
 // Close implements Connection.
 func (c *connection) Close() error {
+	if Trace {
+		trace(c, "connection Close")
+	}
 	return c.onClose()
 }
 
@@ -466,6 +487,9 @@ func (c *connection) fill(need int) (err error) {
 		bs = c.inputs(c.inputBarrier.bs)
 	TryRead:
 		n, err = readv(c.fd, bs, c.inputBarrier.ivs)
+		if Trace {
+			trace(c, "fill read[%d], err=%v", n, err)
+		}
 		if err != nil {
 			if err == syscall.EINTR {
 				// if err == EINTR, we must reuse bs that has been booked

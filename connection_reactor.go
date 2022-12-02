@@ -63,10 +63,16 @@ func (c *connection) closeBuffer() {
 	// if client close the connection, we cannot ensure that the poller is not process the buffer,
 	// so we need to check the buffer length, and if it's an "unclean" close operation, let's give up to reuse the buffer
 	if c.inputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		if Trace {
+			trace(c, "close inputBuffer")
+		}
 		c.inputBuffer.Close()
 		barrierPool.Put(c.inputBarrier)
 	}
 	if c.outputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		if Trace {
+			trace(c, "close outputBuffer")
+		}
 		c.outputBuffer.Close()
 		barrierPool.Put(c.outputBarrier)
 	}

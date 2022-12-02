@@ -212,6 +212,9 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
 	}
+	if Trace {
+		trace(c, "run closeCallback[%v]", needLock)
+	}
 	// If Close is called during OnPrepare, poll is not registered.
 	if c.isCloseBy(user) && c.operator.poll != nil {
 		c.operator.Control(PollDetach)
