@@ -23,6 +23,11 @@ import (
 	"runtime"
 )
 
+// Includes defaultPoll/multiPoll/uringPoll...
+func openPoll() Poll {
+	return pollRegister()
+}
+
 func setNumLoops(numLoops int) error {
 	return pollmanager.SetNumLoops(numLoops)
 }

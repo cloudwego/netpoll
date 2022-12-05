@@ -25,11 +25,7 @@ import (
 	"unsafe"
 )
 
-func openPoll() Poll {
-	return openDefaultPoll()
-}
-
-func openDefaultPoll() *defaultPoll {
+func openDefaultPoll() Poll {
 	l := new(defaultPoll)
 	p, err := syscall.Kqueue()
 	if err != nil {
