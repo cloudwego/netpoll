@@ -72,7 +72,7 @@ func (m *manager) SetNumLoops(numLoops int) error {
 				polls[idx] = m.polls[idx]
 			} else {
 				if err := m.polls[idx].Close(); err != nil {
-					logger.Printf("poller close failed: %v\n", err)
+					logger.Printf("NETPOLL: poller close failed: %v\n", err)
 				}
 			}
 		}

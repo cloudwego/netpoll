@@ -349,26 +349,31 @@ func (c *connection) initNetFD(conn Conn) {
 }
 
 func (c *connection) initFDOperator() {
-	op := allocop()
+	var op *FDOperator
+	if c.pd != nil && c.pd.operator != nil {
+		// reuse operator created at connect step
+		op = c.pd.operator
+	} else {
+		poll := pollmanager.Pick()
+		op = poll.Alloc()
+	}
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck
 	op.Outputs, op.OutputAck = c.outputs, c.outputAck
 
-	// if connection has been registered, must reuse poll here.
-	if c.pd != nil && c.pd.operator != nil {
-		op.poll = c.pd.operator.poll
-	}
 	c.operator = op
 }
 
 func (c *connection) initFinalizer() {
-	c.AddCloseCallback(func(connection Connection) error {
+	c.AddCloseCallback(func(connection Connection) (err error) {
 		c.stop(flushing)
 		// stop the finalizing state to prevent conn.fill function to be performed
 		c.stop(finalizing)
-		freeop(c.operator)
-		c.netFD.Close()
+		c.operator.Free()
+		if err = c.netFD.Close(); err != nil {
+			logger.Printf("NETPOLL: netFD close failed: %v", err)
+		}
 		c.closeBuffer()
 		return nil
 	})

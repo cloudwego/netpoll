@@ -52,6 +52,7 @@ func TestListenerDialer(t *testing.T) {
 			if conn == nil && err == nil {
 				continue
 			}
+			MustNil(t, err)
 			go func(conn net.Conn) {
 				<-trigger
 				buf := make([]byte, 10)

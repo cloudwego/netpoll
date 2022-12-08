@@ -45,10 +45,15 @@ type FDOperator struct {
 	// private, used by operatorCache
 	next  *FDOperator
 	state int32 // CAS: 0(unused) 1(inuse) 2(do-done)
+	index int32 // index in operatorCache
 }
 
 func (op *FDOperator) Control(event PollEvent) error {
 	return op.poll.Control(op, event)
+}
+
+func (op *FDOperator) Free() {
+	op.poll.Free(op)
 }
 
 func (op *FDOperator) do() (can bool) {
