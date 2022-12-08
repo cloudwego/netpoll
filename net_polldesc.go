@@ -19,12 +19,11 @@ package netpoll
 
 import (
 	"context"
-	"sync"
 )
 
 // TODO: recycle *pollDesc
 func newPollDesc(fd int) *pollDesc {
-	pd, op := &pollDesc{}, &FDOperator{}
+	pd, op := &pollDesc{}, allocop()
 	op.FD = fd
 	op.OnWrite = pd.onwrite
 	op.OnHup = pd.onhup
@@ -36,35 +35,27 @@ func newPollDesc(fd int) *pollDesc {
 }
 
 type pollDesc struct {
-	once     sync.Once
 	operator *FDOperator
-
 	// The write event is OneShot, then mark the writable to skip duplicate calling.
 	writeTrigger chan struct{}
 	closeTrigger chan struct{}
 }
 
 // WaitWrite .
-// TODO: implement - poll support timeout hung up.
-func (pd *pollDesc) WaitWrite(ctx context.Context) error {
-	var err error
-	pd.once.Do(func() {
-		// add ET|Write|Hup
+func (pd *pollDesc) WaitWrite(ctx context.Context) (err error) {
+	if pd.operator.poll == nil {
 		pd.operator.poll = pollmanager.Pick()
-		err = pd.operator.Control(PollWritable)
-		if err != nil {
-			pd.detach()
+		// add ET|Write|Hup
+		if err = pd.operator.Control(PollWritable); err != nil {
+			return err
 		}
-	})
-	if err != nil {
-		return err
 	}
 
 	select {
 	case <-ctx.Done():
-		pd.detach()
 		return mapErr(ctx.Err())
 	case <-pd.closeTrigger:
+		// no need to detach, since poller has done it in OnHup.
 		return Exception(ErrConnClosed, "by peer")
 	case <-pd.writeTrigger:
 		// if writable, check hup by select
@@ -93,5 +84,5 @@ func (pd *pollDesc) onhup(p Poll) error {
 
 func (pd *pollDesc) detach() {
 	pd.operator.Control(PollDetach)
-	pd.operator.unused()
+	freeop(pd.operator)
 }

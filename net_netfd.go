@@ -134,46 +134,17 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 		return nil, os.NewSyscallError("connect", err)
 	}
 
-	// TODO: can't support interrupter now.
-	// Start the "interrupter" goroutine, if this context might be canceled.
-	// (The background context cannot)
-	//
-	// The interrupter goroutine waits for the context to be done and
-	// interrupts the dial (by altering the c's write deadline, which
-	// wakes up waitWrite).
-	if ctx != context.Background() {
-		// Wait for the interrupter goroutine to exit before returning
-		// from connect.
-		done := make(chan struct{})
-		interruptRes := make(chan error)
+	c.pd = newPollDesc(c.fd)
+	if ctx.Done() != nil {
 		defer func() {
-			close(done)
-			if ctxErr := <-interruptRes; ctxErr != nil && ret == nil {
-				// The interrupter goroutine called SetWriteDeadline,
-				// but the connect code below had returned from
-				// waitWrite already and did a successful connect (ret
-				// == nil). Because we've now poisoned the connection
-				// by making it unwritable, don't return a successful
-				// dial. This was issue 16523.
+			if ctxErr := ctx.Err(); ctxErr != nil && ret == nil {
 				ret = mapErr(ctxErr)
 				c.Close() // prevent a leak
 			}
-		}()
-		go func() {
-			select {
-			case <-ctx.Done():
-				// Force the runtime's poller to immediately give up
-				// waiting for writability, unblocking waitWrite
-				// below.
-				c.SetWriteDeadline(aLongTimeAgo)
-				interruptRes <- ctx.Err()
-			case <-done:
-				interruptRes <- nil
-			}
+			c.pd.detach()
 		}()
 	}
 
-	c.pd = newPollDesc(c.fd)
 	for {
 		// Performing multiple connect system calls on a
 		// non-blocking socket under Unix variants does not
