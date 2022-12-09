@@ -19,7 +19,6 @@ package mux
 
 import (
 	"net"
-	"runtime"
 	"testing"
 	"time"
 
@@ -28,6 +27,7 @@ import (
 
 func TestShardQueue(t *testing.T) {
 	var svrConn net.Conn
+	accepted := make(chan struct{})
 
 	network, address := "tcp", ":18888"
 	ln, err := net.Listen("tcp", ":18888")
@@ -46,14 +46,13 @@ func TestShardQueue(t *testing.T) {
 			}
 			svrConn, err = ln.Accept()
 			MustNil(t, err)
+			accepted <- struct{}{}
 		}
 	}()
 
 	conn, err := netpoll.DialConnection(network, address, time.Second)
 	MustNil(t, err)
-	for svrConn == nil {
-		runtime.Gosched()
-	}
+	<-accepted
 
 	// test
 	queue := NewShardQueue(4, conn)
