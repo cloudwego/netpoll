@@ -20,7 +20,6 @@ package netpoll
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -100,7 +99,7 @@ func (s *server) OnRead(p Poll) error {
 			s.onQuit(err)
 			return err
 		}
-		log.Println("accept conn failed:", err.Error())
+		logger.Println("accept conn failed:", err.Error())
 		return err
 	}
 	if conn == nil {

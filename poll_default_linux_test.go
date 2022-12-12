@@ -158,3 +158,75 @@ func TestEpollWait(t *testing.T) {
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event)
 	MustNil(t, err)
 }
+
+func TestEpollETClose(t *testing.T) {
+	var epollfd, err = EpollCreate(0)
+	MustNil(t, err)
+	defer syscall.Close(epollfd)
+	rfd, wfd := GetSysFdPairs()
+	events := make([]epollevent, 128)
+	eventdata := [8]byte{0, 0, 0, 0, 0, 0, 0, 1}
+	event := &epollevent{
+		events: EPOLLET | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR,
+		data:   eventdata,
+	}
+
+	// EPOLL: init state
+	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	_, err = EpollWait(epollfd, events, -1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
+	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+
+	// EPOLL: close current fd
+	// nothing will happen
+	err = syscall.Close(rfd)
+	MustNil(t, err)
+	n, err := EpollWait(epollfd, events, 100)
+	MustNil(t, err)
+	Assert(t, n == 0, n)
+	err = syscall.Close(wfd)
+	MustNil(t, err)
+
+	// EPOLL: close peer fd
+	// EPOLLOUT
+	rfd, wfd = GetSysFdPairs()
+	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	err = syscall.Close(wfd)
+	MustNil(t, err)
+	n, err = EpollWait(epollfd, events, 100)
+	MustNil(t, err)
+	Assert(t, n == 1, n)
+	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
+	Assert(t, events[0].events&syscall.EPOLLRDHUP != 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+}
+
+func TestEpollETDel(t *testing.T) {
+	var epollfd, err = EpollCreate(0)
+	MustNil(t, err)
+	defer syscall.Close(epollfd)
+	rfd, wfd := GetSysFdPairs()
+	send := []byte("hello")
+	events := make([]epollevent, 128)
+	eventdata := [8]byte{0, 0, 0, 0, 0, 0, 0, 1}
+	event := &epollevent{
+		events: EPOLLET | syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR,
+		data:   eventdata,
+	}
+
+	// EPOLL: del partly
+	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	MustNil(t, err)
+	event.events = syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR
+	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event)
+	MustNil(t, err)
+	_, err = syscall.Write(wfd, send)
+	MustNil(t, err)
+	_, err = EpollWait(epollfd, events, 100)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN == 0)
+	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+}

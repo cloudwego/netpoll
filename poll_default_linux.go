@@ -18,7 +18,6 @@
 package netpoll
 
 import (
-	"log"
 	"runtime"
 	"sync/atomic"
 	"syscall"
@@ -141,7 +140,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
 					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+						logger.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
 					}
@@ -177,7 +176,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
 					if err != nil && err != syscall.EAGAIN {
-						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+						logger.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
 					}
