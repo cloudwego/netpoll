@@ -99,7 +99,7 @@ func (s *server) OnRead(p Poll) error {
 			s.onQuit(err)
 			return err
 		}
-		logger.Println("accept conn failed:", err.Error())
+		logger.Println("NETPOLL: accept conn failed:", err.Error())
 		return err
 	}
 	if conn == nil {

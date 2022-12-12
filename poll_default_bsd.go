@@ -95,7 +95,7 @@ func (p *defaultPoll) Wait() error {
 						var n, err = readv(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-							logger.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+							logger.Printf("NETPOLL: readv(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
 						}
@@ -122,7 +122,7 @@ func (p *defaultPoll) Wait() error {
 						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
 						if err != nil && err != syscall.EAGAIN {
-							logger.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+							logger.Printf("NETPOLL: sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
 						}

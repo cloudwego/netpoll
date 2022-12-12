@@ -359,12 +359,14 @@ func (c *connection) initFDOperator() {
 }
 
 func (c *connection) initFinalizer() {
-	c.AddCloseCallback(func(connection Connection) error {
+	c.AddCloseCallback(func(connection Connection) (err error) {
 		c.stop(flushing)
 		// stop the finalizing state to prevent conn.fill function to be performed
 		c.stop(finalizing)
 		freeop(c.operator)
-		c.netFD.Close()
+		if err = c.netFD.Close(); err != nil {
+			logger.Printf("NETPOLL: netFD close failed: %v", err)
+		}
 		c.closeBuffer()
 		return nil
 	})

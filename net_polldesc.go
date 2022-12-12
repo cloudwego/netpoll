@@ -83,6 +83,8 @@ func (pd *pollDesc) onhup(p Poll) error {
 }
 
 func (pd *pollDesc) detach() {
-	pd.operator.Control(PollDetach)
+	if err := pd.operator.Control(PollDetach); err != nil {
+		logger.Printf("NETPOLL: detach operator failed: %v", err)
+	}
 	freeop(pd.operator)
 }
