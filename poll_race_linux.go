@@ -130,7 +130,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			if operator.OnRead != nil {
 				// for non-connection
 				operator.OnRead(p)
-			} else {
+			} else if operator.Inputs != nil {
 				// for connection
 				var bs = operator.Inputs(p.barriers[i].bs)
 				if len(bs) > 0 {
@@ -142,6 +142,8 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 						continue
 					}
 				}
+			} else {
+				logger.Printf("NETPOLL: operator has critical problem! %v", operator)
 			}
 		}
 
@@ -166,7 +168,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			if operator.OnWrite != nil {
 				// for non-connection
 				operator.OnWrite(p)
-			} else {
+			} else if operator.Outputs != nil {
 				// for connection
 				var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
 				if len(bs) > 0 {
@@ -179,6 +181,8 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 						continue
 					}
 				}
+			} else {
+				logger.Printf("NETPOLL: operator has critical problem! %v", operator)
 			}
 		}
 		operator.done()
