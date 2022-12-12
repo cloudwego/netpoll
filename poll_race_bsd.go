@@ -176,21 +176,21 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	var evs = make([]syscall.Kevent_t, 1)
 	evs[0].Ident = uint64(operator.FD)
 	switch event {
-	case PollReadable, PollModReadable:
+	case PollReadable:
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollDetach:
-		p.m.Delete(operator.FD)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
-	case PollR2RW:
+	case Poll2RW:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollRW2R:
+	case Poll2R:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE|syscall.EV_ONESHOT
+	case PollDetach:
+		p.m.Delete(operator.FD)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err

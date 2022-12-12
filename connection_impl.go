@@ -354,7 +354,6 @@ func (c *connection) initFDOperator() {
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck
 	op.Outputs, op.OutputAck = c.outputs, c.outputAck
-
 	c.operator = op
 }
 
@@ -504,7 +503,7 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	err = c.operator.Control(PollR2RW)
+	err = c.operator.Control(Poll2RW)
 	if err != nil {
 		return Exception(err, "when flush")
 	}
@@ -542,7 +541,7 @@ func (c *connection) waitFlush() (err error) {
 		}
 		// if timeout, remove write event from poller
 		// we cannot flush it again, since we don't if the poller is still process outputBuffer
-		c.operator.Control(PollRW2R)
+		c.operator.Control(Poll2R)
 		return Exception(ErrWriteTimeout, c.remoteAddr.String())
 	}
 }

@@ -214,32 +214,30 @@ func (p *defaultPoll) Trigger() error {
 }
 
 // Control implements Poll.
-func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
+func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) (err error) {
 	var op int
-	var evt syscall.EpollEvent
+	var evt = new(syscall.EpollEvent)
 	evt.Fd = int32(operator.FD)
 	switch event {
 	case PollReadable:
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollModReadable:
-		operator.inuse()
-		p.m.Store(operator.FD, operator)
-		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollDetach:
-		p.m.Delete(operator.FD)
-		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable:
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollR2RW:
+	case Poll2RW:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollRW2R:
+	case Poll2R:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollDetach:
+		p.m.Delete(operator.FD)
+		op, evt = syscall.EPOLL_CTL_DEL, nil
 	}
-	return syscall.EpollCtl(p.fd, op, operator.FD, &evt)
+	err = syscall.EpollCtl(p.fd, op, operator.FD, evt)
+	runtime.KeepAlive(evt)
+	return err
 }
 
 func (p *defaultPoll) appendHup(operator *FDOperator) {

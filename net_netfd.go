@@ -107,7 +107,7 @@ func (c *netFD) dial(ctx context.Context, laddr, raddr sockaddr) (err error) {
 	return nil
 }
 
-func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa syscall.Sockaddr, ret error) {
+func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa syscall.Sockaddr, retErr error) {
 	// Do not need to call c.writing here,
 	// because c is not yet accessible to user,
 	// so no concurrent operations are possible.
@@ -137,11 +137,13 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 	c.pd = newPollDesc(c.fd)
 	if ctx.Done() != nil {
 		defer func() {
-			if ctxErr := ctx.Err(); ctxErr != nil && ret == nil {
-				ret = mapErr(ctxErr)
+			if ctxErr := ctx.Err(); ctxErr != nil && retErr == nil {
+				retErr = mapErr(ctxErr)
 				c.Close() // prevent a leak
 			}
-			c.pd.detach()
+			if retErr != nil {
+				c.pd.detach()
+			}
 		}()
 	}
 
@@ -161,7 +163,7 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 		if err != nil {
 			return nil, os.NewSyscallError("getsockopt", err)
 		}
-		switch err := syscall.Errno(nerr); err {
+		switch err = syscall.Errno(nerr); err {
 		case syscall.EINPROGRESS, syscall.EALREADY, syscall.EINTR:
 		case syscall.EISCONN:
 			return nil, nil
@@ -169,7 +171,7 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 			// The runtime poller can wake us up spuriously;
 			// see issues 14548 and 19289. Check that we are
 			// really connected; if not, wait again.
-			if rsa, err := syscall.Getpeername(c.fd); err == nil {
+			if rsa, err = syscall.Getpeername(c.fd); err == nil {
 				return rsa, nil
 			}
 		default:

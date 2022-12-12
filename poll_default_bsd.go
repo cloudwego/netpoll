@@ -20,6 +20,7 @@ package netpoll
 
 import (
 	"log"
+	"runtime"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -162,20 +163,21 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	evs[0].Ident = uint64(operator.FD)
 	*(**FDOperator)(unsafe.Pointer(&evs[0].Udata)) = operator
 	switch event {
-	case PollReadable, PollModReadable:
+	case PollReadable:
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollDetach:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
-	case PollR2RW:
+	case Poll2RW:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollRW2R:
+	case Poll2R:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE|syscall.EV_ONESHOT
+	case PollDetach:
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
+	runtime.KeepAlive(evs)
 	return err
 }
 

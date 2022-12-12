@@ -229,7 +229,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
 	if c.operator.poll != nil {
-		err = c.operator.Control(PollModReadable)
+		err = c.operator.Control(Poll2R)
 	} else {
 		c.operator.poll = pollmanager.Pick()
 		err = c.operator.Control(PollReadable)
