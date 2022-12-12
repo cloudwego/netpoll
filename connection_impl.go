@@ -349,7 +349,13 @@ func (c *connection) initNetFD(conn Conn) {
 }
 
 func (c *connection) initFDOperator() {
-	op := allocop()
+	var op *FDOperator
+	if c.pd != nil && c.pd.operator != nil {
+		// reuse operator created at connect step
+		op = c.pd.operator
+	} else {
+		op = allocop()
+	}
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck

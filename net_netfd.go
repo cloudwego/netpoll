@@ -107,7 +107,7 @@ func (c *netFD) dial(ctx context.Context, laddr, raddr sockaddr) (err error) {
 	return nil
 }
 
-func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa syscall.Sockaddr, ret error) {
+func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa syscall.Sockaddr, retErr error) {
 	// Do not need to call c.writing here,
 	// because c is not yet accessible to user,
 	// so no concurrent operations are possible.
@@ -135,15 +135,12 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 	}
 
 	c.pd = newPollDesc(c.fd)
-	if ctx.Done() != nil {
-		defer func() {
-			if ctxErr := ctx.Err(); ctxErr != nil && ret == nil {
-				ret = mapErr(ctxErr)
-				c.Close() // prevent a leak
-			}
+	defer func() {
+		if retErr != nil {
+			// deregister from poller, upper caller function will close fd if retErr != nil
 			c.pd.detach()
-		}()
-	}
+		}
+	}()
 
 	for {
 		// Performing multiple connect system calls on a

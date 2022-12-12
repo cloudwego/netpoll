@@ -214,7 +214,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	// If Close is called during OnPrepare, poll is not registered.
 	if c.isCloseBy(user) && c.operator.poll != nil {
 		if err = c.operator.Control(PollDetach); err != nil {
-			logger.Printf("NETPOLL: detach operator failed: ", err)
+			logger.Printf("NETPOLL: detach operator failed: %v", err)
 		}
 	}
 	var latest = c.closeCallbacks.Load()
@@ -230,6 +230,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
 	if c.operator.poll != nil {
+		// operator already registered
 		err = c.operator.Control(PollModReadable)
 	} else {
 		c.operator.poll = pollmanager.Pick()

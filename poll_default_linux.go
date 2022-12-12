@@ -216,7 +216,6 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollModReadable:
-		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
 		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
