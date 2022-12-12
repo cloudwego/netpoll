@@ -33,7 +33,7 @@ func openPoll() Poll {
 func openDefaultPoll() *defaultPoll {
 	var poll = defaultPoll{}
 	poll.buf = make([]byte, 8)
-	var p, err = syscall.EpollCreate1(0)
+	var p, err = EpollCreate(0)
 	if err != nil {
 		panic(err)
 	}
