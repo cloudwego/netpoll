@@ -135,13 +135,6 @@ func (c *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysca
 	}
 
 	c.pd = newPollDesc(c.fd)
-	defer func() {
-		if retErr != nil {
-			// deregister from poller, upper caller function will close fd if retErr != nil
-			c.pd.detach()
-		}
-	}()
-
 	for {
 		// Performing multiple connect system calls on a
 		// non-blocking socket under Unix variants does not

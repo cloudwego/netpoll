@@ -48,15 +48,17 @@ func openDefaultPoll() *defaultPoll {
 
 	poll.wop = &FDOperator{FD: int(r0)}
 	poll.Control(poll.wop, PollReadable)
+	poll.opcache = newOperatorCache()
 	return &poll
 }
 
 type defaultPoll struct {
 	pollArgs
-	fd      int         // epoll fd
-	wop     *FDOperator // eventfd, wake epoll_wait
-	buf     []byte      // read wfd trigger msg
-	trigger uint32      // trigger flag
+	fd      int            // epoll fd
+	wop     *FDOperator    // eventfd, wake epoll_wait
+	buf     []byte         // read wfd trigger msg
+	trigger uint32         // trigger flag
+	opcache *operatorCache // operator cache
 	// fns for handle events
 	Reset   func(size, caps int)
 	Handler func(events []epollevent) (closed bool)
@@ -102,6 +104,8 @@ func (p *defaultPoll) Wait() (err error) {
 		if p.Handler(p.events[:n]) {
 			return nil
 		}
+		// we can make sure that there is no op remaining if Handler finished
+		p.opcache.free()
 	}
 }
 
@@ -146,7 +150,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					}
 				}
 			} else {
-				logger.Printf("NETPOLL: operator has critical problem! %v", operator)
+				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
 			}
 		}
 
@@ -184,7 +188,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 					}
 				}
 			} else {
-				logger.Printf("NETPOLL: operator has critical problem! %v", operator)
+				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
 			}
 		}
 		operator.done()
@@ -216,28 +220,38 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	var evt epollevent
 	*(**FDOperator)(unsafe.Pointer(&evt.data)) = operator
 	switch event {
-	case PollReadable:
+	case PollReadable: // server accept a new connection and wait read
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollModReadable:
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollDetach:
-		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollWritable:
+	case PollWritable: // client create a new connection and wait connect finished
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollR2RW:
+	case PollModReadable: // client wait read/write
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollDetach: // deregister
+		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollR2RW: // connection wait read/write
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollRW2R:
+	case PollRW2R: // connection wait read
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return EpollCtl(p.fd, op, operator.FD, &evt)
 }
 
+func (p *defaultPoll) Alloc() (operator *FDOperator) {
+	op := p.opcache.alloc()
+	op.poll = p
+	return op
+}
+
+func (p *defaultPoll) Free(operator *FDOperator) {
+	p.opcache.freeable(operator)
+}
+
 func (p *defaultPoll) appendHup(operator *FDOperator) {
 	p.hups = append(p.hups, operator.OnHup)
 	if err := operator.Control(PollDetach); err != nil {
-		logger.Printf("NETPOLL: detach operator failed: %v", err)
+		logger.Printf("NETPOLL: poller detach operator failed: %v", err)
 	}
 	operator.done()
 }

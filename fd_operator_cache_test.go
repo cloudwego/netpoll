@@ -24,14 +24,16 @@ import (
 
 // go test -v -gcflags=-d=checkptr -run=TestPersistFDOperator
 func TestPersistFDOperator(t *testing.T) {
+	opcache := newOperatorCache()
 	// init
-	size := 1000
+	size := 2048
 	var ops = make([]*FDOperator, size)
 	for i := 0; i < size; i++ {
-		op := allocop()
+		op := opcache.alloc()
 		op.FD = i
 		ops[i] = op
 	}
+	Equal(t, len(opcache.freelist), 0)
 	// gc
 	for i := 0; i < 4; i++ {
 		runtime.GC()
@@ -39,16 +41,23 @@ func TestPersistFDOperator(t *testing.T) {
 	// check alloc
 	for i := range ops {
 		Equal(t, ops[i].FD, i)
-		freeop(ops[i])
+		opcache.freeable(ops[i])
+		Equal(t, len(opcache.freelist), i+1)
 	}
+	Equal(t, len(opcache.freelist), size)
+	opcache.free()
+	Equal(t, len(opcache.freelist), 0)
+	Assert(t, len(opcache.cache) >= size)
 }
 
 func BenchmarkPersistFDOperator1(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
+	opcache := newOperatorCache()
 	for i := 0; i < b.N; i++ {
-		op := allocop()
-		freeop(op)
+		op := opcache.alloc()
+		opcache.freeable(op)
+		opcache.free()
 	}
 }
 
@@ -57,10 +66,12 @@ func BenchmarkPersistFDOperator2(b *testing.B) {
 	b.ReportAllocs()
 	b.SetParallelism(128)
 	b.ResetTimer()
+	opcache := newOperatorCache()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			op := allocop()
-			freeop(op)
+			op := opcache.alloc()
+			opcache.freeable(op)
+			opcache.free()
 		}
 	})
 }

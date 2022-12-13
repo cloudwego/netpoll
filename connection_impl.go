@@ -354,7 +354,8 @@ func (c *connection) initFDOperator() {
 		// reuse operator created at connect step
 		op = c.pd.operator
 	} else {
-		op = allocop()
+		poll := pollmanager.Pick()
+		op = poll.Alloc()
 	}
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
@@ -369,7 +370,7 @@ func (c *connection) initFinalizer() {
 		c.stop(flushing)
 		// stop the finalizing state to prevent conn.fill function to be performed
 		c.stop(finalizing)
-		freeop(c.operator)
+		c.operator.Free()
 		if err = c.netFD.Close(); err != nil {
 			logger.Printf("NETPOLL: netFD close failed: %v", err)
 		}
