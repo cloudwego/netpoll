@@ -19,7 +19,6 @@ package netpoll
 
 import (
 	"context"
-	"sync/atomic"
 )
 
 // TODO: recycle *pollDesc
@@ -39,7 +38,6 @@ func newPollDesc(fd int) *pollDesc {
 
 type pollDesc struct {
 	operator *FDOperator
-	closed   int32
 	// The write event is OneShot, then mark the writable to skip duplicate calling.
 	writeTrigger chan struct{}
 	closeTrigger chan struct{}
@@ -47,6 +45,12 @@ type pollDesc struct {
 
 // WaitWrite .
 func (pd *pollDesc) WaitWrite(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			pd.operator.Free()
+		}
+	}()
+
 	if pd.operator.isUnused() {
 		// add ET|Write|Hup
 		if err = pd.operator.Control(PollWritable); err != nil {
@@ -84,29 +88,17 @@ func (pd *pollDesc) onwrite(p Poll) error {
 	return nil
 }
 
-// onhup and detach is mutually-exclusive
 func (pd *pollDesc) onhup(p Poll) error {
 	select {
 	case <-pd.closeTrigger:
 	default:
 		close(pd.closeTrigger)
 	}
-	if atomic.CompareAndSwapInt32(&pd.closed, 0, 1) {
-		pd.operator.Free()
-	}
 	return nil
 }
 
 func (pd *pollDesc) detach() {
-	if !atomic.CompareAndSwapInt32(&pd.closed, 0, 1) {
-		// onhup has been triggered, and not need to detach or freeop
-		return
-	}
 	if err := pd.operator.Control(PollDetach); err != nil {
 		logger.Printf("NETPOLL: pollDesc detach operator failed: %v", err)
-		// if detach failed, we cannot free operator here.
-		// otherwise, it could make operator reuse incorrect.
-		return
 	}
-	pd.operator.Free()
 }
