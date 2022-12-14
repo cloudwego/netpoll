@@ -28,11 +28,13 @@ func newOperatorCache() *operatorCache {
 }
 
 type operatorCache struct {
-	locked     int32
-	first      *FDOperator
-	cache      []*FDOperator
-	freelocked int32
+	locked int32
+	first  *FDOperator
+	cache  []*FDOperator
+	// freelist store the freeable operator
+	// to reduce GC pressure, we only store op index here
 	freelist   []int32
+	freelocked int32
 }
 
 func (c *operatorCache) alloc() *FDOperator {
@@ -43,8 +45,6 @@ func (c *operatorCache) alloc() *FDOperator {
 		if n == 0 {
 			n = 1
 		}
-		// Must be in non-GC memory because can be referenced
-		// only from epoll/kqueue internals.
 		index := int32(len(c.cache))
 		for i := uintptr(0); i < n; i++ {
 			pd := &FDOperator{index: index}
@@ -63,6 +63,7 @@ func (c *operatorCache) alloc() *FDOperator {
 // freeable mark the operator that could be freed
 // only poller could do the real free action
 func (c *operatorCache) freeable(op *FDOperator) {
+	// reset all state
 	op.unused()
 	op.reset()
 	lock(&c.freelocked)

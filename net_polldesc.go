@@ -46,6 +46,7 @@ type pollDesc struct {
 // WaitWrite .
 func (pd *pollDesc) WaitWrite(ctx context.Context) (err error) {
 	defer func() {
+		// if return err != nil, upper caller function will close the connection
 		if err != nil {
 			pd.operator.Free()
 		}
