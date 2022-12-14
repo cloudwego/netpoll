@@ -19,7 +19,9 @@ package netpoll
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"runtime"
 )
 
@@ -31,14 +33,21 @@ func setLoadBalance(lb LoadBalance) error {
 	return pollmanager.SetLoadBalance(lb)
 }
 
+func setLoggerOutput(w io.Writer) {
+	logger = log.New(w, "", log.LstdFlags)
+}
+
 // manage all pollers
 var pollmanager *manager
+var logger *log.Logger
 
 func init() {
 	var loops = runtime.GOMAXPROCS(0)/20 + 1
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
 	pollmanager.SetNumLoops(loops)
+
+	setLoggerOutput(os.Stderr)
 }
 
 // LoadBalance is used to do load balancing among multiple pollers.
@@ -63,7 +72,7 @@ func (m *manager) SetNumLoops(numLoops int) error {
 				polls[idx] = m.polls[idx]
 			} else {
 				if err := m.polls[idx].Close(); err != nil {
-					log.Printf("poller close failed: %v\n", err)
+					logger.Printf("poller close failed: %v\n", err)
 				}
 			}
 		}

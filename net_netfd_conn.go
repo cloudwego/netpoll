@@ -18,7 +18,6 @@
 package netpoll
 
 import (
-	"log"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -63,7 +62,7 @@ func (c *netFD) Close() (err error) {
 	if c.fd > 0 {
 		err = syscall.Close(c.fd)
 		if err != nil {
-			log.Printf("netFD[%d] close error: %s", c.fd, err.Error())
+			logger.Printf("netFD[%d] close error: %s", c.fd, err.Error())
 		}
 	}
 	return err

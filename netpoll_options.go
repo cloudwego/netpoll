@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"io"
 	"time"
 )
 
@@ -40,6 +41,10 @@ func SetNumLoops(numLoops int) error {
 // This option only works when NumLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
+}
+
+func SetLoggerOutput(w io.Writer) {
+	setLoggerOutput(w)
 }
 
 // DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
