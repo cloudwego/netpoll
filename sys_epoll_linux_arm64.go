@@ -27,6 +27,16 @@ type epollevent struct {
 	data   [8]byte // unaligned uintptr
 }
 
+// EpollCreate implements epoll_create1.
+func EpollCreate(flag int) (fd int, err error) {
+	var r0 uintptr
+	r0, _, err = syscall.RawSyscall(syscall.SYS_EPOLL_CREATE1, uintptr(flag), 0, 0)
+	if err == syscall.Errno(0) {
+		err = nil
+	}
+	return int(r0), err
+}
+
 // EpollCtl implements epoll_ctl.
 func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
 	_, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_CTL, uintptr(epfd), uintptr(op), uintptr(fd), uintptr(unsafe.Pointer(event)), 0, 0)
