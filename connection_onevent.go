@@ -19,7 +19,6 @@ package netpoll
 
 import (
 	"context"
-	"log"
 	"sync/atomic"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -235,7 +234,7 @@ func (c *connection) register() (err error) {
 		err = c.operator.Control(PollReadable)
 	}
 	if err != nil {
-		log.Println("connection register failed:", err.Error())
+		logger.Println("connection register failed:", err.Error())
 		c.Close()
 		return Exception(ErrConnClosed, err.Error())
 	}
