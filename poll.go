@@ -34,6 +34,12 @@ type Poll interface {
 
 	// Control the event of file descriptor and the operations is defined by PollEvent.
 	Control(operator *FDOperator, event PollEvent) error
+
+	// Alloc the operator from cache.
+	Alloc() (operator *FDOperator)
+
+	// Free the operator from cache.
+	Free(operator *FDOperator)
 }
 
 // PollEvent defines the operation of poll.Control.

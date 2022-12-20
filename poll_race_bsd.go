@@ -44,6 +44,7 @@ func openDefaultPoll() *defaultPoll {
 	if err != nil {
 		panic(err)
 	}
+	l.opcache = newOperatorCache()
 	return l
 }
 
@@ -51,6 +52,7 @@ type defaultPoll struct {
 	fd      int
 	trigger uint32
 	m       sync.Map
+	opcache *operatorCache // operator cache
 	hups    []func(p Poll) error
 }
 
@@ -102,7 +104,7 @@ func (p *defaultPoll) Wait() error {
 						var n, err = readv(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-							logger.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+							logger.Printf("NETPOLL: readv(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
 						}
@@ -129,7 +131,7 @@ func (p *defaultPoll) Wait() error {
 						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
 						if err != nil && err != syscall.EAGAIN {
-							logger.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+							logger.Printf("NETPOLL: sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
 						}
@@ -140,6 +142,7 @@ func (p *defaultPoll) Wait() error {
 		}
 		// hup conns together to avoid blocking the poll.
 		p.detaches()
+		p.opcache.free()
 	}
 }
 
@@ -195,9 +198,21 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	return err
 }
 
+func (p *defaultPoll) Alloc() (operator *FDOperator) {
+	op := p.opcache.alloc()
+	op.poll = p
+	return op
+}
+
+func (p *defaultPoll) Free(operator *FDOperator) {
+	p.opcache.freeable(operator)
+}
+
 func (p *defaultPoll) appendHup(operator *FDOperator) {
 	p.hups = append(p.hups, operator.OnHup)
-	operator.Control(PollDetach)
+	if err := operator.Control(PollDetach); err != nil {
+		logger.Printf("NETPOLL: poller detach operator failed: %v", err)
+	}
 	operator.done()
 }
 

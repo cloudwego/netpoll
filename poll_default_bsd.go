@@ -43,12 +43,14 @@ func openDefaultPoll() *defaultPoll {
 	if err != nil {
 		panic(err)
 	}
+	l.opcache = newOperatorCache()
 	return l
 }
 
 type defaultPoll struct {
 	fd      int
 	trigger uint32
+	opcache *operatorCache // operator cache
 	hups    []func(p Poll) error
 }
 
@@ -95,7 +97,7 @@ func (p *defaultPoll) Wait() error {
 						var n, err = readv(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
 						if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-							logger.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+							logger.Printf("NETPOLL: readv(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
 						}
@@ -122,7 +124,7 @@ func (p *defaultPoll) Wait() error {
 						var n, err = sendmsg(operator.FD, bs, barriers[i].ivs, false && supportZeroCopy)
 						operator.OutputAck(n)
 						if err != nil && err != syscall.EAGAIN {
-							logger.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+							logger.Printf("NETPOLL: sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 							p.appendHup(operator)
 							continue
 						}
@@ -133,6 +135,7 @@ func (p *defaultPoll) Wait() error {
 		}
 		// hup conns together to avoid blocking the poll.
 		p.detaches()
+		p.opcache.free()
 	}
 }
 
@@ -164,11 +167,11 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollReadable, PollModReadable:
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollDetach:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollWritable:
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
+	case PollDetach:
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollR2RW:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollRW2R:
@@ -176,6 +179,16 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err
+}
+
+func (p *defaultPoll) Alloc() (operator *FDOperator) {
+	op := p.opcache.alloc()
+	op.poll = p
+	return op
+}
+
+func (p *defaultPoll) Free(operator *FDOperator) {
+	p.opcache.freeable(operator)
 }
 
 func (p *defaultPoll) appendHup(operator *FDOperator) {
