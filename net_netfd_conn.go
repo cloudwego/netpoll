@@ -62,7 +62,7 @@ func (c *netFD) Close() (err error) {
 	if c.fd > 0 {
 		err = syscall.Close(c.fd)
 		if err != nil {
-			logger.Printf("netFD[%d] close error: %s", c.fd, err.Error())
+			logger.Printf("NETPOLL: netFD[%d] close error: %s", c.fd, err.Error())
 		}
 	}
 	return err
