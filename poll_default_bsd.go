@@ -65,6 +65,7 @@ func (p *defaultPoll) Wait() error {
 		barriers[i].ivs = make([]syscall.Iovec, caps)
 	}
 	// wait
+	var triggerRead, triggerWrite, triggerHup bool
 	for {
 		n, err := syscall.Kevent(p.fd, nil, events, nil)
 		if err != nil && err != syscall.EINTR {
@@ -87,8 +88,12 @@ func (p *defaultPoll) Wait() error {
 				continue
 			}
 
-			// check poll in
-			if events[i].Filter == syscall.EVFILT_READ && events[i].Flags&syscall.EV_ENABLE != 0 {
+			evt := events[i]
+			triggerRead = evt.Filter == syscall.EVFILT_READ && evt.Flags&syscall.EV_ENABLE != 0
+			triggerWrite = evt.Filter == syscall.EVFILT_WRITE && evt.Flags&syscall.EV_ENABLE != 0
+			triggerHup = evt.Flags&syscall.EV_EOF != 0
+
+			if triggerRead {
 				if operator.OnRead != nil {
 					// for non-connection
 					operator.OnRead(p)
@@ -105,15 +110,16 @@ func (p *defaultPoll) Wait() error {
 					}
 				}
 			}
-
-			// check hup
-			if events[i].Flags&syscall.EV_EOF != 0 {
+			if triggerHup && triggerRead && operator.Inputs != nil { // read all left data if peer send and close
+				if err = readall(operator, barriers[i]); err != nil {
+					logger.Printf("NETPOLL: readall(fd=%d) before close: %s", operator.FD, err.Error())
+				}
+			}
+			if triggerHup {
 				p.appendHup(operator)
 				continue
 			}
-
-			// check poll out
-			if events[i].Filter == syscall.EVFILT_WRITE && events[i].Flags&syscall.EV_ENABLE != 0 {
+			if triggerWrite {
 				if operator.OnWrite != nil {
 					// for non-connection
 					operator.OnWrite(p)

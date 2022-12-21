@@ -50,3 +50,26 @@ func (p *defaultPoll) onhups() {
 		}
 	}(hups)
 }
+
+// readall read all left data before close connection
+func readall(op *FDOperator, br barrier) (err error) {
+	var bs = br.bs
+	var ivs = br.ivs
+	var n int
+	for {
+		bs = op.Inputs(br.bs)
+		if len(bs) == 0 {
+			return nil
+		}
+
+	TryRead:
+		n, err = ioread(op.FD, bs, ivs)
+		op.InputAck(n)
+		if err != nil {
+			return err
+		}
+		if n == 0 && err == nil {
+			goto TryRead
+		}
+	}
+}

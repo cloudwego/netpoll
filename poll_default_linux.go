@@ -22,7 +22,6 @@ import (
 	"unsafe"
 )
 
-// Includes defaultPoll/multiPoll/uringPoll...
 func openPoll() Poll {
 	return openDefaultPoll()
 }
@@ -109,11 +108,19 @@ func (p *defaultPoll) Wait() (err error) {
 }
 
 func (p *defaultPoll) handler(events []epollevent) (closed bool) {
+	var triggerRead, triggerWrite, triggerHup, triggerError bool
 	for i := range events {
 		operator := p.getOperator(0, unsafe.Pointer(&events[i].data))
 		if operator == nil || !operator.do() {
 			continue
 		}
+
+		evt := events[i].events
+		triggerRead = evt&syscall.EPOLLIN != 0
+		triggerWrite = evt&syscall.EPOLLOUT != 0
+		triggerHup = evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0
+		triggerError = evt&syscall.EPOLLERR != 0
+
 		// trigger or exit gracefully
 		if operator.FD == p.wop.FD {
 			// must clean trigger first
@@ -130,9 +137,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			continue
 		}
 
-		evt := events[i].events
-		// check poll in
-		if evt&syscall.EPOLLIN != 0 {
+		if triggerRead {
 			if operator.OnRead != nil {
 				// for non-connection
 				operator.OnRead(p)
@@ -151,13 +156,16 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
 			}
 		}
-
-		// check hup
-		if evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0 {
+		if triggerHup && triggerRead && operator.Inputs != nil { // read all left data if peer send and close
+			if err := readall(operator, p.barriers[i]); err != nil {
+				logger.Printf("NETPOLL: readall(fd=%d) before close: %s", operator.FD, err.Error())
+			}
+		}
+		if triggerHup {
 			p.appendHup(operator)
 			continue
 		}
-		if evt&syscall.EPOLLERR != 0 {
+		if triggerError {
 			// Under block-zerocopy, the kernel may give an error callback, which is not a real error, just an EAGAIN.
 			// So here we need to check this error, if it is EAGAIN then do nothing, otherwise still mark as hup.
 			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
@@ -167,8 +175,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			}
 			continue
 		}
-		// check poll out
-		if evt&syscall.EPOLLOUT != 0 {
+		if triggerWrite {
 			if operator.OnWrite != nil {
 				// for non-connection
 				operator.OnWrite(p)
