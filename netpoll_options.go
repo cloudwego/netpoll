@@ -56,6 +56,10 @@ func DisableGopool() error {
 	return disableGopool()
 }
 
+func EnableConcurrencyLimit(limit int) {
+	enableConcurrencyLimit(limit)
+}
+
 // WithOnPrepare registers the OnPrepare method to EventLoop.
 func WithOnPrepare(onPrepare OnPrepare) Option {
 	return Option{func(op *options) {
