@@ -137,10 +137,9 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 				// for connection
 				var bs = operator.Inputs(p.barriers[i].bs)
 				if len(bs) > 0 {
-					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
+					var n, err = ioread(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
-					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-						logger.Printf("NETPOLL: readv(fd=%d) failed: %s", operator.FD, err.Error())
+					if err != nil {
 						p.appendHup(operator)
 						continue
 					}
@@ -176,10 +175,9 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 				var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
 				if len(bs) > 0 {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
-					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
+					var n, err = iosend(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
-					if err != nil && err != syscall.EAGAIN {
-						logger.Printf("NETPOLL: sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+					if err != nil {
 						p.appendHup(operator)
 						continue
 					}
