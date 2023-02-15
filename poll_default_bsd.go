@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build (darwin || netbsd || freebsd || openbsd || dragonfly) && !race
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly
 // +build darwin netbsd freebsd openbsd dragonfly
-// +build !race
 
 package netpoll
 
 import (
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
@@ -50,6 +50,7 @@ func openDefaultPoll() *defaultPoll {
 type defaultPoll struct {
 	fd      int
 	trigger uint32
+	m       sync.Map
 	opcache *operatorCache // operator cache
 	hups    []func(p Poll) error
 }
@@ -74,14 +75,15 @@ func (p *defaultPoll) Wait() error {
 			return err
 		}
 		for i := 0; i < n; i++ {
+			var fd = int(events[i].Ident)
 			// trigger
-			if events[i].Ident == 0 {
+			if fd == 0 {
 				// clean trigger
 				atomic.StoreUint32(&p.trigger, 0)
 				continue
 			}
-			var operator = *(**FDOperator)(unsafe.Pointer(&events[i].Udata))
-			if !operator.do() {
+			var operator = p.getOperator(fd, unsafe.Pointer(&events[i].Udata))
+			if operator == nil || !operator.do() {
 				continue
 			}
 
@@ -132,7 +134,7 @@ func (p *defaultPoll) Wait() error {
 			operator.done()
 		}
 		// hup conns together to avoid blocking the poll.
-		p.detaches()
+		p.onhups()
 		p.opcache.free()
 	}
 }
@@ -160,7 +162,7 @@ func (p *defaultPoll) Trigger() error {
 func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	var evs = make([]syscall.Kevent_t, 1)
 	evs[0].Ident = uint64(operator.FD)
-	*(**FDOperator)(unsafe.Pointer(&evs[0].Udata)) = operator
+	p.setOperator(unsafe.Pointer(&evs[0].Udata), operator)
 	switch event {
 	case PollReadable, PollModReadable:
 		operator.inuse()
@@ -169,6 +171,7 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
 	case PollDetach:
+		p.delOperator(operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollR2RW:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
@@ -177,35 +180,4 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err
-}
-
-func (p *defaultPoll) Alloc() (operator *FDOperator) {
-	op := p.opcache.alloc()
-	op.poll = p
-	return op
-}
-
-func (p *defaultPoll) Free(operator *FDOperator) {
-	p.opcache.freeable(operator)
-}
-
-func (p *defaultPoll) appendHup(operator *FDOperator) {
-	p.hups = append(p.hups, operator.OnHup)
-	operator.Control(PollDetach)
-	operator.done()
-}
-
-func (p *defaultPoll) detaches() {
-	if len(p.hups) == 0 {
-		return
-	}
-	hups := p.hups
-	p.hups = nil
-	go func(onhups []func(p Poll) error) {
-		for i := range onhups {
-			if onhups[i] != nil {
-				onhups[i](p)
-			}
-		}
-	}(hups)
 }
