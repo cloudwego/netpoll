@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"errors"
 	"syscall"
 	"testing"
 
@@ -167,7 +168,7 @@ func TestEpollETClose(t *testing.T) {
 	events := make([]epollevent, 128)
 	eventdata := [8]byte{0, 0, 0, 0, 0, 0, 0, 1}
 	event := &epollevent{
-		events: EPOLLET | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR,
+		events: EPOLLET | syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR,
 		data:   eventdata,
 	}
 
@@ -175,6 +176,7 @@ func TestEpollETClose(t *testing.T) {
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
 	_, err = EpollWait(epollfd, events, -1)
 	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN == 0)
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
 	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
@@ -190,7 +192,7 @@ func TestEpollETClose(t *testing.T) {
 	MustNil(t, err)
 
 	// EPOLL: close peer fd
-	// EPOLLOUT
+	// EPOLLIN and EPOLLOUT
 	rfd, wfd = GetSysFdPairs()
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
 	err = syscall.Close(wfd)
@@ -198,9 +200,14 @@ func TestEpollETClose(t *testing.T) {
 	n, err = EpollWait(epollfd, events, 100)
 	MustNil(t, err)
 	Assert(t, n == 1, n)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
 	Assert(t, events[0].events&syscall.EPOLLRDHUP != 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+	buf := make([]byte, 1024)
+	ivs := make([]syscall.Iovec, 1)
+	n, err = ioread(rfd, [][]byte{buf}, ivs) // EOF
+	Assert(t, n == 0 && errors.Is(err, ErrEOF), n, err)
 }
 
 func TestEpollETDel(t *testing.T) {
