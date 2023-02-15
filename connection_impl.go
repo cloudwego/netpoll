@@ -476,7 +476,7 @@ func (c *connection) fill(need int) (err error) {
 		if err != nil {
 			break
 		}
-		if n < 0 {
+		if n == 0 {
 			// we must reuse bs that has been booked, otherwise will mess the input buffer
 			goto TryRead
 		}
