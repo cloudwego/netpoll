@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ package netpoll
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -100,7 +99,7 @@ func (s *server) OnRead(p Poll) error {
 			s.onQuit(err)
 			return err
 		}
-		log.Println("accept conn failed:", err.Error())
+		logger.Println("NETPOLL: accept conn failed:", err.Error())
 		return err
 	}
 	if conn == nil {

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"io"
 	"time"
 )
 
@@ -40,6 +41,10 @@ func SetNumLoops(numLoops int) error {
 // This option only works when NumLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
+}
+
+func SetLoggerOutput(w io.Writer) {
+	setLoggerOutput(w)
 }
 
 // DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
@@ -72,6 +77,13 @@ func WithReadTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithWriteTimeout sets the write timeout of connections.
+func WithWriteTimeout(timeout time.Duration) Option {
+	return Option{func(op *options) {
+		op.writeTimeout = timeout
+	}}
+}
+
 // WithIdleTimeout sets the idle timeout of connections.
 func WithIdleTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
@@ -85,9 +97,10 @@ type Option struct {
 }
 
 type options struct {
-	onPrepare   OnPrepare
-	onConnect   OnConnect
-	onRequest   OnRequest
-	readTimeout time.Duration
-	idleTimeout time.Duration
+	onPrepare    OnPrepare
+	onConnect    OnConnect
+	onRequest    OnRequest
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
 }

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,27 +30,18 @@ func TestListenerDialer(t *testing.T) {
 	addr := ":1234"
 	ln, err := CreateListener(network, addr)
 	MustNil(t, err)
-	defer time.Sleep(10 * time.Millisecond)
 	defer ln.Close()
-
-	stop := make(chan int)
 	trigger := make(chan int)
-	defer close(stop)
-	defer close(trigger)
 	msg := []byte("0123456789")
 
 	go func() {
 		for {
-			select {
-			case <-stop:
-				err := ln.Close()
-				MustNil(t, err)
-				return
-			default:
-			}
 			conn, err := ln.Accept()
 			if conn == nil && err == nil {
 				continue
+			}
+			if err != nil {
+				return
 			}
 			go func(conn net.Conn) {
 				<-trigger

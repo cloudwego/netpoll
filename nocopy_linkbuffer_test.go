@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -365,6 +365,57 @@ func TestWriteBuffer(t *testing.T) {
 	buf1.WriteBuffer(buf3)
 	buf1.Flush()
 	MustTrue(t, bytes.Equal(buf1.Bytes(), []byte{2, 3}))
+}
+
+func TestLinkBufferCheckSingleNode(t *testing.T) {
+	buf := NewLinkBuffer(block4k)
+	_, err := buf.Malloc(block8k)
+	MustNil(t, err)
+	buf.Flush()
+	MustTrue(t, buf.read.Len() == 0)
+	is := buf.isSingleNode(block8k)
+	MustTrue(t, is)
+	MustTrue(t, buf.read.Len() == block8k)
+	is = buf.isSingleNode(block8k + 1)
+	MustTrue(t, !is)
+
+	// cross node malloc, but b.read.Len() still == 0
+	buf = NewLinkBuffer(block4k)
+	_, err = buf.Malloc(block8k)
+	MustNil(t, err)
+	// not malloc ack yet
+	// read function will call isSingleNode inside
+	buf.isSingleNode(1)
+}
+
+func TestWriteMultiFlush(t *testing.T) {
+	buf := NewLinkBuffer()
+	b1, _ := buf.Malloc(4)
+	b1[0] = 1
+	b1[2] = 2
+	err := buf.Flush()
+	MustNil(t, err)
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 1)
+	MustTrue(t, len(buf.Bytes()) == 4)
+
+	err = buf.Skip(2)
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, len(buf.Bytes()) == 2)
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, len(buf.Bytes()) == 2)
+
+	b2, _ := buf.Malloc(2)
+	b2[0] = 3
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, buf.Bytes()[2] == 3)
+	MustTrue(t, len(buf.Bytes()) == 4)
 }
 
 func TestWriteBinary(t *testing.T) {

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 package netpoll
 
 import (
-	"log"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -63,7 +62,7 @@ func (c *netFD) Close() (err error) {
 	if c.fd > 0 {
 		err = syscall.Close(c.fd)
 		if err != nil {
-			log.Printf("netFD[%d] close error: %s", c.fd, err.Error())
+			logger.Printf("NETPOLL: netFD[%d] close error: %s", c.fd, err.Error())
 		}
 	}
 	return err

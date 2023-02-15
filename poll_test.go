@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -83,22 +84,28 @@ func TestPollMod(t *testing.T) {
 
 	err = p.Control(wop, PollWritable) // trigger one shot
 	MustNil(t, err)
-	time.Sleep(50 * time.Millisecond)
+	for atomic.LoadInt32(&wn) == 0 {
+		runtime.Gosched()
+	}
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w == 1 && h == 0, r, w, h)
 
 	err = p.Control(rop, PollR2RW) // trigger write
 	MustNil(t, err)
-	time.Sleep(time.Millisecond)
+	for atomic.LoadInt32(&wn) <= 1 {
+		runtime.Gosched()
+	}
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w >= 2 && h == 0, r, w, h)
 
 	// close wfd, then trigger hup rfd
 	err = syscall.Close(wfd) // trigger hup
 	MustNil(t, err)
-	time.Sleep(time.Millisecond)
-	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
-	Assert(t, r == 1 && w >= 2 && h >= 1, r, w, h)
+	for atomic.LoadInt32(&hn) == 0 {
+		runtime.Gosched()
+	}
+	w, h = atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
+	Assert(t, w >= 2 && h >= 1, r, w, h)
 
 	p.Close()
 	err = <-stop

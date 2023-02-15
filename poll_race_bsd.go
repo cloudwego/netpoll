@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ func openDefaultPoll() *defaultPoll {
 	if err != nil {
 		panic(err)
 	}
+	l.opcache = newOperatorCache()
 	return l
 }
 
@@ -51,6 +52,7 @@ type defaultPoll struct {
 	fd      int
 	trigger uint32
 	m       sync.Map
+	opcache *operatorCache // operator cache
 	hups    []func(p Poll) error
 }
 
@@ -138,6 +140,7 @@ func (p *defaultPoll) Wait() error {
 		}
 		// hup conns together to avoid blocking the poll.
 		p.detaches()
+		p.opcache.free()
 	}
 }
 
@@ -193,9 +196,21 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	return err
 }
 
+func (p *defaultPoll) Alloc() (operator *FDOperator) {
+	op := p.opcache.alloc()
+	op.poll = p
+	return op
+}
+
+func (p *defaultPoll) Free(operator *FDOperator) {
+	p.opcache.freeable(operator)
+}
+
 func (p *defaultPoll) appendHup(operator *FDOperator) {
 	p.hups = append(p.hups, operator.OnHup)
-	operator.Control(PollDetach)
+	if err := operator.Control(PollDetach); err != nil {
+		logger.Printf("NETPOLL: poller detach operator failed: %v", err)
+	}
 	operator.done()
 }
 
