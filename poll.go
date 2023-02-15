@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,6 +34,12 @@ type Poll interface {
 
 	// Control the event of file descriptor and the operations is defined by PollEvent.
 	Control(operator *FDOperator, event PollEvent) error
+
+	// Alloc the operator from cache.
+	Alloc() (operator *FDOperator)
+
+	// Free the operator from cache.
+	Free(operator *FDOperator)
 }
 
 // PollEvent defines the operation of poll.Control.

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
 	"context"
-	"log"
 	"sync/atomic"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -54,32 +56,37 @@ type callbackNode struct {
 }
 
 // SetOnConnect set the OnConnect callback.
-func (on *onEvent) SetOnConnect(onConnect OnConnect) error {
+func (c *connection) SetOnConnect(onConnect OnConnect) error {
 	if onConnect != nil {
-		on.onConnectCallback.Store(onConnect)
+		c.onConnectCallback.Store(onConnect)
 	}
 	return nil
 }
 
 // SetOnRequest initialize ctx when setting OnRequest.
-func (on *onEvent) SetOnRequest(onRequest OnRequest) error {
-	if onRequest != nil {
-		on.onRequestCallback.Store(onRequest)
+func (c *connection) SetOnRequest(onRequest OnRequest) error {
+	if onRequest == nil {
+		return nil
+	}
+	c.onRequestCallback.Store(onRequest)
+	// fix: trigger OnRequest if there is already input data.
+	if !c.inputBuffer.IsEmpty() {
+		c.onRequest()
 	}
 	return nil
 }
 
 // AddCloseCallback adds a CloseCallback to this connection.
-func (on *onEvent) AddCloseCallback(callback CloseCallback) error {
+func (c *connection) AddCloseCallback(callback CloseCallback) error {
 	if callback == nil {
 		return nil
 	}
 	var cb = &callbackNode{}
 	cb.fn = callback
-	if pre := on.closeCallbacks.Load(); pre != nil {
+	if pre := c.closeCallbacks.Load(); pre != nil {
 		cb.pre = pre.(*callbackNode)
 	}
-	on.closeCallbacks.Store(cb)
+	c.closeCallbacks.Store(cb)
 	return nil
 }
 
@@ -90,6 +97,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 		c.SetOnConnect(opts.onConnect)
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
+		c.SetWriteTimeout(opts.writeTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
 
 		// calling prepare first and then register.
@@ -203,6 +211,12 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
 	}
+	// If Close is called during OnPrepare, poll is not registered.
+	if c.isCloseBy(user) && c.operator.poll != nil {
+		if err = c.operator.Control(PollDetach); err != nil {
+			logger.Printf("NETPOLL: closeCallback detach operator failed: %v", err)
+		}
+	}
 	var latest = c.closeCallbacks.Load()
 	if latest == nil {
 		return nil
@@ -215,14 +229,16 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
-	if c.operator.poll != nil {
-		err = c.operator.Control(PollModReadable)
-	} else {
-		c.operator.poll = pollmanager.Pick()
+	if c.operator.isUnused() {
+		// operator is not registered
 		err = c.operator.Control(PollReadable)
+	} else {
+		// operator is already registered
+		// change event to wait read new data
+		err = c.operator.Control(PollModReadable)
 	}
 	if err != nil {
-		log.Println("connection register failed:", err.Error())
+		logger.Printf("NETPOLL: connection register failed: %v", err)
 		c.Close()
 		return Exception(ErrConnClosed, err.Error())
 	}

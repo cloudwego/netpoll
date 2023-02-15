@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 package netpoll
 
 import (
-	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -33,7 +32,7 @@ func openPoll() Poll {
 func openDefaultPoll() *defaultPoll {
 	var poll = defaultPoll{}
 	poll.buf = make([]byte, 8)
-	var p, err = syscall.EpollCreate1(0)
+	var p, err = EpollCreate(0)
 	if err != nil {
 		panic(err)
 	}
@@ -45,6 +44,7 @@ func openDefaultPoll() *defaultPoll {
 	}
 	poll.wfd = int(r0)
 	poll.Control(&FDOperator{FD: poll.wfd}, PollReadable)
+	poll.opcache = newOperatorCache()
 	return &poll
 }
 
@@ -55,6 +55,7 @@ type defaultPoll struct {
 	buf     []byte // read wfd trigger msg
 	trigger uint32 // trigger flag
 	m       sync.Map
+	opcache *operatorCache // operator cache
 }
 
 type pollArgs struct {
@@ -97,19 +98,15 @@ func (p *defaultPoll) Wait() (err error) {
 		if p.handler(p.events[:n]) {
 			return nil
 		}
+		p.opcache.free()
 	}
 }
 
 func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 	for i := range events {
-		var operator *FDOperator
-		if tmp, ok := p.m.Load(int(events[i].Fd)); ok {
-			operator = tmp.(*FDOperator)
-		} else {
-			continue
-		}
+		var fd = int(events[i].Fd)
 		// trigger or exit gracefully
-		if operator.FD == p.wfd {
+		if fd == p.wfd {
 			// must clean trigger first
 			syscall.Read(p.wfd, p.buf)
 			atomic.StoreUint32(&p.trigger, 0)
@@ -121,6 +118,11 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			}
 			continue
 		}
+		tmp, ok := p.m.Load(fd)
+		if !ok {
+			continue
+		}
+		operator := tmp.(*FDOperator)
 		if !operator.do() {
 			continue
 		}
@@ -131,18 +133,20 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			if operator.OnRead != nil {
 				// for non-connection
 				operator.OnRead(p)
-			} else {
+			} else if operator.Inputs != nil {
 				// for connection
 				var bs = operator.Inputs(p.barriers[i].bs)
 				if len(bs) > 0 {
 					var n, err = readv(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
 					if err != nil && err != syscall.EAGAIN && err != syscall.EINTR {
-						log.Printf("readv(fd=%d) failed: %s", operator.FD, err.Error())
+						logger.Printf("NETPOLL: readv(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
 					}
 				}
+			} else {
+				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
 			}
 		}
 
@@ -156,8 +160,10 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			// So here we need to check this error, if it is EAGAIN then do nothing, otherwise still mark as hup.
 			if _, _, _, _, err := syscall.Recvmsg(operator.FD, nil, nil, syscall.MSG_ERRQUEUE); err != syscall.EAGAIN {
 				p.appendHup(operator)
-				continue
+			} else {
+				operator.done()
 			}
+			continue
 		}
 
 		// check poll out
@@ -165,7 +171,7 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 			if operator.OnWrite != nil {
 				// for non-connection
 				operator.OnWrite(p)
-			} else {
+			} else if operator.Outputs != nil {
 				// for connection
 				var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
 				if len(bs) > 0 {
@@ -173,11 +179,13 @@ func (p *defaultPoll) handler(events []syscall.EpollEvent) (closed bool) {
 					var n, err = sendmsg(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
 					if err != nil && err != syscall.EAGAIN {
-						log.Printf("sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
+						logger.Printf("NETPOLL: sendmsg(fd=%d) failed: %s", operator.FD, err.Error())
 						p.appendHup(operator)
 						continue
 					}
 				}
+			} else {
+				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
 			}
 		}
 		operator.done()
@@ -221,23 +229,32 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		operator.inuse()
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollModReadable:
+	case PollWritable:
 		operator.inuse()
+		p.m.Store(operator.FD, operator)
+		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollModReadable:
 		p.m.Store(operator.FD, operator)
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach:
 		p.m.Delete(operator.FD)
 		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollWritable:
-		operator.inuse()
-		p.m.Store(operator.FD, operator)
-		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R:
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return syscall.EpollCtl(p.fd, op, operator.FD, &evt)
+}
+
+func (p *defaultPoll) Alloc() (operator *FDOperator) {
+	op := p.opcache.alloc()
+	op.poll = p
+	return op
+}
+
+func (p *defaultPoll) Free(operator *FDOperator) {
+	p.opcache.freeable(operator)
 }
 
 func (p *defaultPoll) appendHup(operator *FDOperator) {

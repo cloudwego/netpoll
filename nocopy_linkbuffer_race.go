@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -840,7 +840,7 @@ func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
 		return true
 	}
 	l := b.read.Len()
-	for l == 0 {
+	for l == 0 && b.read != b.flush {
 		b.read = b.read.next
 		l = b.read.Len()
 	}

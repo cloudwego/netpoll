@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
@@ -22,14 +23,6 @@ import (
 	"os"
 	"syscall"
 )
-
-// Listener extends net.Listener, but supports getting the listener's fd.
-type Listener interface {
-	net.Listener
-
-	// Fd return listener's fd, used by poll.
-	Fd() (fd int)
-}
 
 // CreateListener return a new Listener.
 func CreateListener(network, addr string) (l Listener, err error) {

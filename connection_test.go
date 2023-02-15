@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+//go:build !windows
+// +build !windows
 
 package netpoll
 
@@ -56,6 +59,40 @@ func TestConnectionWrite(t *testing.T) {
 	}
 	wg.Wait()
 	Equal(t, atomic.LoadInt32(&count), expect)
+	rconn.Close()
+}
+
+func TestConnectionLargeWrite(t *testing.T) {
+	// ci machine don't have 4GB memory, so skip test
+	t.Skipf("skip large write test for ci job")
+	var totalSize = 1024 * 1024 * 1024 * 4
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var opts = &options{}
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if connection.Reader().Len() < totalSize {
+			return nil
+		}
+		_, err := connection.Reader().Next(totalSize)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		wg.Done()
+		return nil
+	}
+
+	r, w := GetSysFdPairs()
+	var rconn, wconn = &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+
+	msg := make([]byte, totalSize/4)
+	for i := 0; i < 4; i++ {
+		_, err := wconn.Writer().WriteBinary(msg)
+		MustNil(t, err)
+	}
+	wg.Wait()
+
 	rconn.Close()
 }
 
@@ -128,16 +165,16 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		var buf, err = rconn.Reader().Next(size)
-		Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(0))
+		Equal(t, atomic.LoadInt64(&rconn.waitReadSize), int64(0))
 		MustNil(t, err)
 		Equal(t, len(buf), size)
 	}()
 
 	// write left half packet
-	for atomic.LoadInt32(&rconn.waitReadSize) <= 0 {
+	for atomic.LoadInt64(&rconn.waitReadSize) <= 0 {
 		runtime.Gosched()
 	}
-	Equal(t, atomic.LoadInt32(&rconn.waitReadSize), int32(size))
+	Equal(t, atomic.LoadInt64(&rconn.waitReadSize), int64(size))
 	syscall.Write(w, msg[size/2:])
 	wg.Wait()
 }
@@ -221,6 +258,58 @@ func TestLargeBufferWrite(t *testing.T) {
 	err = conn.Close()
 	MustNil(t, err)
 	wg.Wait()
+}
+
+func TestWriteTimeout(t *testing.T) {
+	ln, err := CreateListener("tcp", ":1234")
+	MustNil(t, err)
+
+	interval := time.Millisecond * 100
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if conn == nil && err == nil {
+				continue
+			}
+			if err != nil {
+				return
+			}
+			go func() {
+				buf := make([]byte, 1024)
+				// slow read
+				for {
+					_, err := conn.Read(buf)
+					if err != nil {
+						err = conn.Close()
+						MustNil(t, err)
+						return
+					}
+					time.Sleep(interval)
+				}
+			}()
+		}
+	}()
+
+	conn, err := DialConnection("tcp", ":1234", time.Second)
+	MustNil(t, err)
+
+	_, err = conn.Writer().Malloc(1024)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+
+	_ = conn.SetWriteTimeout(time.Millisecond * 10)
+	_, err = conn.Writer().Malloc(1024 * 1024 * 512)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustTrue(t, errors.Is(err, ErrWriteTimeout))
+
+	// close success
+	err = conn.Close()
+	MustNil(t, err)
+
+	err = ln.Close()
+	MustNil(t, err)
 }
 
 // TestConnectionLargeMemory is used to verify the memory usage in the large package scenario.

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 
 // LinkBuffer implements ReadWriter.
 type LinkBuffer struct {
-	length     int32
+	length     int64
 	mallocSize int
 
 	head  *linkBufferNode // release head
@@ -66,7 +66,7 @@ var _ Writer = &LinkBuffer{}
 
 // Len implements Reader.
 func (b *LinkBuffer) Len() int {
-	l := atomic.LoadInt32(&b.length)
+	l := atomic.LoadInt64(&b.length)
 	return int(l)
 }
 
@@ -286,7 +286,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 
 	// just use for range
 	p := &LinkBuffer{
-		length: int32(n),
+		length: int64(n),
 	}
 	defer func() {
 		// set to read-only
@@ -518,7 +518,7 @@ func (b *LinkBuffer) WriteByte(p byte) (err error) {
 
 // Close will recycle all buffer.
 func (b *LinkBuffer) Close() (err error) {
-	atomic.StoreInt32(&b.length, 0)
+	atomic.StoreInt64(&b.length, 0)
 	b.mallocSize = 0
 	// just release all
 	b.Release()
@@ -658,7 +658,7 @@ func (b *LinkBuffer) resetTail(maxSize int) {
 
 // recalLen re-calculate the length
 func (b *LinkBuffer) recalLen(delta int) (length int) {
-	return int(atomic.AddInt32(&b.length, int32(delta)))
+	return int(atomic.AddInt64(&b.length, int64(delta)))
 }
 
 // ------------------------------------------ implement link node ------------------------------------------
@@ -790,7 +790,7 @@ func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
 		return true
 	}
 	l := b.read.Len()
-	for l == 0 {
+	for l == 0 && b.read != b.flush {
 		b.read = b.read.next
 		l = b.read.Len()
 	}

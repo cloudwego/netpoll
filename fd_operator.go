@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,10 +45,15 @@ type FDOperator struct {
 	// private, used by operatorCache
 	next  *FDOperator
 	state int32 // CAS: 0(unused) 1(inuse) 2(do-done)
+	index int32 // index in operatorCache
 }
 
 func (op *FDOperator) Control(event PollEvent) error {
 	return op.poll.Control(op, event)
+}
+
+func (op *FDOperator) Free() {
+	op.poll.Free(op)
 }
 
 func (op *FDOperator) do() (can bool) {
