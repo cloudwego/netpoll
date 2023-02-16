@@ -28,7 +28,7 @@ import (
 func TestListenerDialer(t *testing.T) {
 	network := "tcp"
 	addr := ":1234"
-	ln, err := CreateListener(network, addr)
+	ln, err := newTestListener(network, addr)
 	MustNil(t, err)
 	defer ln.Close()
 	trigger := make(chan int)

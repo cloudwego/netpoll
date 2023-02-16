@@ -104,6 +104,8 @@ func (c *connection) onPrepare(opts *options) (err error) {
 		if opts.onPrepare != nil {
 			c.ctx = opts.onPrepare(c)
 		}
+
+		c.readThreshold = opts.readThreshold
 	}
 
 	if c.ctx == nil {
@@ -235,7 +237,7 @@ func (c *connection) register() (err error) {
 	} else {
 		// operator is already registered
 		// change event to wait read new data
-		err = c.operator.Control(PollModReadable)
+		err = c.operator.Control(Poll2R)
 	}
 	if err != nil {
 		logger.Printf("NETPOLL: connection register failed: %v", err)

@@ -19,6 +19,14 @@ import (
 	"sync/atomic"
 )
 
+const (
+	opNone      = 0
+	opRead      = 1
+	opWrite     = 2
+	opReadWrite = 3
+	opError     = 4
+)
+
 // FDOperator is a collection of operations on file descriptors.
 type FDOperator struct {
 	// FD is file descriptor, poll will bind when register.
@@ -42,10 +50,10 @@ type FDOperator struct {
 	// poll is the registered location of the file descriptor.
 	poll Poll
 
-	// private, used by operatorCache
-	next  *FDOperator
-	state int32 // CAS: 0(unused) 1(inuse) 2(do-done)
-	index int32 // index in operatorCache
+	next  *FDOperator // private, used by operatorCache
+	state int32       // CAS: 0(unused) 1(inuse) 2(do-done)
+	index int32       // index in operatorCache
+	mode  int32       // operator mode
 }
 
 func (op *FDOperator) Control(event PollEvent) error {
@@ -84,6 +92,14 @@ func (op *FDOperator) unused() {
 
 func (op *FDOperator) isUnused() bool {
 	return atomic.LoadInt32(&op.state) == 0
+}
+
+func (op *FDOperator) setMode(mode int32) {
+	atomic.StoreInt32(&op.mode, mode)
+}
+
+func (op *FDOperator) getMode() int32 {
+	return atomic.LoadInt32(&op.mode)
 }
 
 func (op *FDOperator) reset() {

@@ -26,14 +26,10 @@ func (p *defaultPoll) Free(operator *FDOperator) {
 
 func (p *defaultPoll) appendHup(operator *FDOperator) {
 	p.hups = append(p.hups, operator.OnHup)
-	p.detach(operator)
-	operator.done()
-}
-
-func (p *defaultPoll) detach(operator *FDOperator) {
 	if err := operator.Control(PollDetach); err != nil {
 		logger.Printf("NETPOLL: poller detach operator failed: %v", err)
 	}
+	operator.done()
 }
 
 func (p *defaultPoll) onhups() {

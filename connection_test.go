@@ -195,6 +195,98 @@ func TestReadTrigger(t *testing.T) {
 	Equal(t, len(trigger), 1)
 }
 
+func TestConnectionReadOutOfThreshold(t *testing.T) {
+	var readThreshold = 1024 * 100
+	var readSize = readThreshold + 1
+	var opts = &options{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if connection.Reader().Len() < readThreshold {
+			return nil
+		}
+		defer wg.Done()
+		// read throttled data
+		_, err := connection.Reader().Next(readSize)
+		Assert(t, errors.Is(err, ErrReadOutOfThreshold), err)
+		connection.Close()
+		return nil
+	}
+
+	WithReadThreshold(int64(readThreshold)).f(opts)
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+
+	msg := make([]byte, readSize)
+	_, err := wconn.Writer().WriteBinary(msg)
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+
+	wg.Wait()
+}
+
+func TestConnectionReadThreshold(t *testing.T) {
+	var readThreshold int64 = 1024 * 100
+	var readSize = readThreshold + 1
+	var opts = &options{}
+	var wg sync.WaitGroup
+	var throttled int32
+	wg.Add(1)
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if int64(connection.Reader().Len()) < readThreshold {
+			t.Logf("onRequest read %d bytes, left %d bytes",
+				connection.Reader().Len(), readThreshold-int64(connection.Reader().Len()))
+			return nil
+		}
+		atomic.StoreInt32(&throttled, 1)
+		defer wg.Done()
+		// read non-throttled data
+		buf, err := connection.Reader().Next(connection.Reader().Len())
+		Assert(t, int64(len(buf)) == readThreshold, len(buf))
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+
+		// read throttled data
+		buf, err = connection.Reader().Next(int(readSize - readThreshold))
+		t.Logf("throttled data: [%s]", buf)
+		Assert(t, len(buf) == 1)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		Assert(t, connection.Reader().Len() == 0, connection.Reader().Len())
+		return nil
+	}
+
+	WithReadThreshold(readThreshold).f(opts)
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+	Assert(t, rconn.readThreshold == readThreshold)
+
+	msg := make([]byte, readThreshold)
+	for i := 0; i < len(msg); i++ {
+		msg[i] = 'a'
+	}
+	_, err := wconn.Writer().WriteBinary(msg)
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+	for atomic.LoadInt32(&throttled) == 0 {
+		runtime.Gosched()
+	}
+	err = wconn.Writer().WriteByte('x')
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+
+	wg.Wait()
+}
+
 func writeAll(fd int, buf []byte) error {
 	for len(buf) > 0 {
 		n, err := syscall.Write(fd, buf)
@@ -209,11 +301,10 @@ func writeAll(fd int, buf []byte) error {
 // Large packet write test. The socket buffer is 2MB by default, here to verify
 // whether Connection.Close can be executed normally after socket output buffer is full.
 func TestLargeBufferWrite(t *testing.T) {
-	ln, err := CreateListener("tcp", ":1234")
+	ln, err := newTestListener("tcp", ":12345")
 	MustNil(t, err)
 
 	trigger := make(chan int)
-	defer close(trigger)
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -228,7 +319,7 @@ func TestLargeBufferWrite(t *testing.T) {
 		}
 	}()
 
-	conn, err := DialConnection("tcp", ":1234", time.Second)
+	conn, err := DialConnection("tcp", ":12345", time.Second)
 	MustNil(t, err)
 	rfd := <-trigger
 
@@ -261,10 +352,12 @@ func TestLargeBufferWrite(t *testing.T) {
 }
 
 func TestWriteTimeout(t *testing.T) {
-	ln, err := CreateListener("tcp", ":1234")
+	ln, err := newTestListener("tcp", ":1234")
 	MustNil(t, err)
+	defer ln.Close()
 
 	interval := time.Millisecond * 100
+	var wg sync.WaitGroup
 	go func() {
 		for {
 			conn, err := ln.Accept()
@@ -274,16 +367,19 @@ func TestWriteTimeout(t *testing.T) {
 			if err != nil {
 				return
 			}
+			wg.Add(1)
 			go func() {
-				buf := make([]byte, 1024)
+				defer wg.Done()
+				buf := make([]byte, 128)
 				// slow read
 				for {
-					_, err := conn.Read(buf)
+					n, err := conn.Read(buf)
 					if err != nil {
 						err = conn.Close()
 						MustNil(t, err)
 						return
 					}
+					t.Logf("conn read: %d bytes", n)
 					time.Sleep(interval)
 				}
 			}()
@@ -299,17 +395,16 @@ func TestWriteTimeout(t *testing.T) {
 	MustNil(t, err)
 
 	_ = conn.SetWriteTimeout(time.Millisecond * 10)
-	_, err = conn.Writer().Malloc(1024 * 1024 * 512)
 	MustNil(t, err)
 	err = conn.Writer().Flush()
-	MustTrue(t, errors.Is(err, ErrWriteTimeout))
+	Assert(t, errors.Is(err, ErrWriteTimeout), err)
 
 	// close success
+	t.Logf("client closing connection")
 	err = conn.Close()
 	MustNil(t, err)
 
-	err = ln.Close()
-	MustNil(t, err)
+	wg.Wait()
 }
 
 // TestConnectionLargeMemory is used to verify the memory usage in the large package scenario.

@@ -46,8 +46,10 @@ type connection struct {
 	inputBarrier    *barrier
 	outputBarrier   *barrier
 	supportZeroCopy bool
-	maxSize         int // The maximum size of data between two Release().
-	bookSize        int // The size of data that can be read at once.
+	maxSize         int   // The maximum size of data between two Release().
+	bookSize        int   // The size of data that can be read at once.
+	readThreshold   int64 // The readThreshold of connection max read.
+	throttled       int64
 }
 
 var (
@@ -395,6 +397,16 @@ func (c *connection) triggerWrite(err error) {
 
 // waitRead will wait full n bytes.
 func (c *connection) waitRead(n int) (err error) {
+	// if the n >= readThreshold, resume read
+	if c.readThreshold > 0 && int64(n) > c.readThreshold {
+		return Exception(ErrReadOutOfThreshold, "wait read")
+	}
+	defer func() {
+		if c.readThreshold > 0 && n > 0 {
+			c.resumeRead()
+		}
+	}()
+
 	if n <= c.inputBuffer.Len() {
 		return nil
 	}
@@ -470,7 +482,7 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	err = c.operator.Control(PollR2RW)
+	err = c.operator.Control(Poll2RW)
 	if err != nil {
 		return Exception(err, "when flush")
 	}
@@ -508,7 +520,7 @@ func (c *connection) waitFlush() (err error) {
 		}
 		// if timeout, remove write event from poller
 		// we cannot flush it again, since we don't if the poller is still process outputBuffer
-		c.operator.Control(PollRW2R)
+		c.operator.Control(Poll2R)
 		return Exception(ErrWriteTimeout, c.remoteAddr.String())
 	}
 }

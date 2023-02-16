@@ -91,16 +91,24 @@ func WithIdleTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithReadThreshold sets the idle timeout of connections.
+func WithReadThreshold(readThreshold int64) Option {
+	return Option{func(op *options) {
+		op.readThreshold = readThreshold
+	}}
+}
+
 // Option .
 type Option struct {
 	f func(*options)
 }
 
 type options struct {
-	onPrepare    OnPrepare
-	onConnect    OnConnect
-	onRequest    OnRequest
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	idleTimeout  time.Duration
+	onPrepare     OnPrepare
+	onConnect     OnConnect
+	onRequest     OnRequest
+	readTimeout   time.Duration
+	writeTimeout  time.Duration
+	idleTimeout   time.Duration
+	readThreshold int64
 }

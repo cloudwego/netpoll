@@ -317,6 +317,7 @@ func TestClientWriteAndClose(t *testing.T) {
 				_, err = conn.Write(sendMsg)
 				MustNil(t, err)
 			}
+			time.Sleep(time.Millisecond * 100)
 			err = conn.Close()
 			MustNil(t, err)
 		}()
@@ -332,7 +333,7 @@ func TestClientWriteAndClose(t *testing.T) {
 }
 
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
-	ln, err := CreateListener(network, address)
+	ln, err := newTestListener(network, address)
 	if err != nil {
 		panic(err)
 	}
@@ -342,4 +343,16 @@ func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Opti
 	}
 	go elp.Serve(ln)
 	return elp
+}
+
+func newTestListener(network, address string) (ln Listener, err error) {
+	const maxTry = 6
+	for i := 0; i < maxTry; i++ {
+		ln, err = CreateListener(network, address)
+		if err == nil {
+			return ln, nil
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+	return
 }

@@ -123,7 +123,7 @@ func (p *defaultPoll) Wait() error {
 				if operator.OnWrite != nil {
 					// for non-connection
 					operator.OnWrite(p)
-				} else {
+				} else if operator.Outputs != nil {
 					// only for connection
 					var bs, supportZeroCopy = operator.Outputs(barriers[i].bs)
 					if len(bs) > 0 {
@@ -166,24 +166,44 @@ func (p *defaultPoll) Trigger() error {
 
 // Control implements Poll.
 func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
-	var evs = make([]syscall.Kevent_t, 1)
+	var mode int32
+	var evs = make([]syscall.Kevent_t, 2)
+	var n = 2
 	evs[0].Ident = uint64(operator.FD)
-	p.setOperator(unsafe.Pointer(&evs[0].Udata), operator)
+	evs[1].Ident = uint64(operator.FD)
 	switch event {
-	case PollReadable, PollModReadable:
+	case PollReadable:
+		mode = opRead
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
+		n = 1
 	case PollWritable:
+		mode = opWrite
 		operator.inuse()
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
+		n = 1
 	case PollDetach:
+		mode = opNone
 		p.delOperator(operator)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
-	case PollR2RW:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollRW2R:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE|syscall.EV_ONESHOT
+		n = 1
+	case Poll2R:
+		mode = opRead
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
+		evs[1].Filter, evs[1].Flags = syscall.EVFILT_WRITE, syscall.EV_DISABLE
+	case Poll2W:
+		mode = opWrite
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DISABLE
+		evs[1].Filter, evs[1].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
+	case Poll2RW:
+		mode = opReadWrite
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
+		evs[1].Filter, evs[1].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	}
-	_, err := syscall.Kevent(p.fd, evs, nil, nil)
+	for i := 0; i < n; i++ {
+		p.setOperator(unsafe.Pointer(&evs[i].Udata), operator)
+	}
+	operator.setMode(mode)
+	_, err := syscall.Kevent(p.fd, evs[:n], nil, nil)
 	return err
 }

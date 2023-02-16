@@ -27,7 +27,7 @@ func TestZeroTimer(t *testing.T) {
 }
 
 func TestRuntimePoll(t *testing.T) {
-	ln, err := CreateListener("tcp", ":1234")
+	ln, err := newTestListener("tcp", ":1234")
 	MustNil(t, err)
 
 	stop := make(chan int, 1)

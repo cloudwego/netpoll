@@ -43,8 +43,8 @@ func openDefaultPoll() *defaultPoll {
 	poll.Reset = poll.reset
 	poll.Handler = poll.handler
 
-	poll.wop = &FDOperator{FD: int(r0)}
-	poll.Control(poll.wop, PollReadable)
+	poll.wop = &FDOperator{FD: int(r0), poll: &poll}
+	poll.wop.Control(PollReadable)
 	poll.opcache = newOperatorCache()
 	return &poll
 }
@@ -221,24 +221,35 @@ func (p *defaultPoll) Trigger() error {
 // Control implements Poll.
 func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	var op int
+	var mode int32
 	var evt epollevent
 	p.setOperator(unsafe.Pointer(&evt.data), operator)
 	switch event {
 	case PollReadable: // server accept a new connection and wait read
+		mode = opRead
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable: // client create a new connection and wait connect finished
+		mode = opWrite
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollModReadable: // client wait read/write
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach: // deregister
+		mode = opNone
 		p.delOperator(operator)
 		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollR2RW: // connection wait read/write
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollRW2R: // connection wait read
+	case Poll2R: // connection wait read
+		mode = opRead
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case Poll2W: // connection wait write
+		mode = opWrite
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case Poll2RW: // connection wait read/write
+		mode = opReadWrite
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case Poll2Err: // connection wait error
+		mode = opError
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
+	operator.setMode(mode)
 	return EpollCtl(p.fd, op, operator.FD, &evt)
 }

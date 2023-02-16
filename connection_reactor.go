@@ -98,6 +98,12 @@ func (c *connection) inputAck(n int) (err error) {
 		c.maxSize = mallocMax
 	}
 
+	// trigger throttle
+	if c.readThreshold > 0 && int64(length) >= c.readThreshold {
+		c.pauseRead()
+	}
+
+	// trigger read
 	var needTrigger = true
 	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
@@ -105,6 +111,7 @@ func (c *connection) inputAck(n int) (err error) {
 	if needTrigger && length >= int(atomic.LoadInt64(&c.waitReadSize)) {
 		c.triggerRead()
 	}
+
 	return nil
 }
 
@@ -132,6 +139,30 @@ func (c *connection) outputAck(n int) (err error) {
 
 // rw2r removed the monitoring of write events.
 func (c *connection) rw2r() {
-	c.operator.Control(PollRW2R)
+	c.operator.Control(Poll2R)
 	c.triggerWrite(nil)
+}
+
+func (c *connection) pauseRead() {
+	if !atomic.CompareAndSwapInt64(&c.throttled, 0, 1) {
+		return
+	}
+	mode := c.operator.getMode()
+	if mode == opReadWrite {
+		c.operator.Control(Poll2W)
+	} else {
+		c.operator.Control(Poll2Err)
+	}
+}
+
+func (c *connection) resumeRead() {
+	if !atomic.CompareAndSwapInt64(&c.throttled, 1, 0) {
+		return
+	}
+	mode := c.operator.getMode()
+	if mode == opWrite {
+		c.operator.Control(Poll2RW)
+	} else {
+		c.operator.Control(Poll2R)
+	}
 }

@@ -32,14 +32,18 @@ import (
 func TestDialerTCP(t *testing.T) {
 	dialer := NewDialer()
 	conn, err := dialer.DialTimeout("tcp", ":1234", time.Second)
-	MustTrue(t, err != nil)
+	Assert(t, err != nil, err)
 	MustTrue(t, conn.(*TCPConnection) == nil)
 
-	ln, err := CreateListener("tcp", ":1234")
+	ln, err := newTestListener("tcp", ":1234")
 	MustNil(t, err)
 
 	stop := make(chan int, 1)
-	defer close(stop)
+	closed := make(chan int, 1)
+	defer func() {
+		close(stop)
+		<-closed
+	}()
 
 	go func() {
 		for {
@@ -47,6 +51,7 @@ func TestDialerTCP(t *testing.T) {
 			case <-stop:
 				err := ln.Close()
 				MustNil(t, err)
+				close(closed)
 				return
 			default:
 			}
@@ -69,14 +74,15 @@ func TestDialerUnix(t *testing.T) {
 	MustTrue(t, err != nil)
 	MustTrue(t, conn.(*UnixConnection) == nil)
 
-	ln, err := CreateListener("unix", "tmp.sock")
+	ln, err := newTestListener("unix", "tmp.sock")
 	MustNil(t, err)
 	defer ln.Close()
 
 	stop := make(chan int, 1)
+	closed := make(chan int, 1)
 	defer func() {
 		close(stop)
-		time.Sleep(time.Millisecond)
+		<-closed
 	}()
 
 	go func() {
@@ -85,6 +91,7 @@ func TestDialerUnix(t *testing.T) {
 			case <-stop:
 				err := ln.Close()
 				MustNil(t, err)
+				<-closed
 				return
 			default:
 			}
@@ -106,7 +113,7 @@ func TestDialerUnix(t *testing.T) {
 }
 
 func TestDialerFdAlloc(t *testing.T) {
-	ln, err := CreateListener("tcp", ":1234")
+	ln, err := newTestListener("tcp", ":1234")
 	MustNil(t, err)
 	defer ln.Close()
 	el1, _ := NewEventLoop(func(ctx context.Context, connection Connection) error {
@@ -134,7 +141,7 @@ func TestDialerFdAlloc(t *testing.T) {
 }
 
 func TestFDClose(t *testing.T) {
-	ln, err := CreateListener("tcp", ":1234")
+	ln, err := newTestListener("tcp", ":1234")
 	MustNil(t, err)
 	defer ln.Close()
 	el1, _ := NewEventLoop(func(ctx context.Context, connection Connection) error {
@@ -167,7 +174,7 @@ func TestFDClose(t *testing.T) {
 // fd data package race test, use two servers and two dialers.
 func TestDialerThenClose(t *testing.T) {
 	// server 1
-	ln1, _ := CreateListener("tcp", ":1231")
+	ln1, _ := newTestListener("tcp", ":1231")
 	el1 := mockDialerEventLoop(1)
 	go func() {
 		el1.Serve(ln1)
@@ -177,7 +184,7 @@ func TestDialerThenClose(t *testing.T) {
 	defer el1.Shutdown(ctx1)
 
 	// server 2
-	ln2, _ := CreateListener("tcp", ":1232")
+	ln2, _ := newTestListener("tcp", ":1232")
 	el2 := mockDialerEventLoop(2)
 	go func() {
 		el2.Serve(ln2)
