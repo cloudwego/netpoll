@@ -50,7 +50,7 @@ func openDefaultPoll() *defaultPoll {
 type defaultPoll struct {
 	fd      int
 	trigger uint32
-	m       sync.Map
+	m       sync.Map       // only used in go:race
 	opcache *operatorCache // operator cache
 	hups    []func(p Poll) error
 }

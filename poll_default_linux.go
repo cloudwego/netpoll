@@ -52,11 +52,11 @@ func openDefaultPoll() *defaultPoll {
 
 type defaultPoll struct {
 	pollArgs
-	fd      int         // epoll fd
-	wop     *FDOperator // eventfd, wake epoll_wait
-	buf     []byte      // read wfd trigger msg
-	trigger uint32      // trigger flag
-	m       sync.Map
+	fd      int            // epoll fd
+	wop     *FDOperator    // eventfd, wake epoll_wait
+	buf     []byte         // read wfd trigger msg
+	trigger uint32         // trigger flag
+	m       sync.Map       // only used in go:race
 	opcache *operatorCache // operator cache
 	// fns for handle events
 	Reset   func(size, caps int)
