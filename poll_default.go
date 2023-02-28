@@ -68,7 +68,7 @@ func readall(op *FDOperator, br barrier) (err error) {
 		if err != nil {
 			return err
 		}
-		if n == 0 && err == nil {
+		if n == 0 {
 			goto TryRead
 		}
 	}
