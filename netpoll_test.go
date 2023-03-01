@@ -297,7 +297,6 @@ func TestServerPanicAndClose(t *testing.T) {
 			MustNil(t, err)
 			atomic.StoreInt32(&paniced, 1)
 			panic("test")
-			return nil
 		},
 	)
 
