@@ -93,7 +93,6 @@ func smcListener(network, addr string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer unix.Close(fd)
 
 	err = unix.Bind(fd, sockaddr)
 	if err != nil {
