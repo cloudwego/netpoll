@@ -89,10 +89,12 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return ln.UDPAccept()
 	}
 	// tcp
+ACCEPT:
 	var fd, sa, err = syscall.Accept(ln.fd)
 	if err != nil {
-		if err == syscall.EAGAIN {
-			return nil, nil
+		switch err {
+		case syscall.EINTR, syscall.EAGAIN, syscall.ECONNABORTED:
+			goto ACCEPT
 		}
 		return nil, err
 	}
