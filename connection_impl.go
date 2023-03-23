@@ -50,9 +50,11 @@ type connection struct {
 	bookSize        int // The size of data that can be read at once.
 }
 
-var _ Connection = &connection{}
-var _ Reader = &connection{}
-var _ Writer = &connection{}
+var (
+	_ Connection = &connection{}
+	_ Reader     = &connection{}
+	_ Writer     = &connection{}
+)
 
 // Reader implements Connection.
 func (c *connection) Reader() Reader {
@@ -168,7 +170,7 @@ func (c *connection) Until(delim byte) (line []byte, err error) {
 		l = c.inputBuffer.Len()
 		i := c.inputBuffer.indexByte(delim, n)
 		if i < 0 {
-			n = l //skip all exists bytes
+			n = l // skip all exists bytes
 			continue
 		}
 		return c.Next(i + 1)
@@ -368,8 +370,6 @@ func (c *connection) initFDOperator() {
 func (c *connection) initFinalizer() {
 	c.AddCloseCallback(func(connection Connection) (err error) {
 		c.stop(flushing)
-		// stop the finalizing state to prevent conn.fill function to be performed
-		c.stop(finalizing)
 		c.operator.Free()
 		if err = c.netFD.Close(); err != nil {
 			logger.Printf("NETPOLL: netFD close failed: %v", err)
@@ -405,15 +405,10 @@ func (c *connection) waitRead(n int) (err error) {
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
-		if c.IsActive() {
-			<-c.readTrigger
-			continue
+		if !c.IsActive() {
+			return Exception(ErrConnClosed, "wait read")
 		}
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			return c.fill(n)
-		}
-		return Exception(ErrConnClosed, "wait read")
+		<-c.readTrigger
 	}
 	return nil
 }
@@ -430,12 +425,7 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	for c.inputBuffer.Len() < n {
 		if !c.IsActive() {
 			// cannot return directly, stop timer before !
-			// confirm that fd is still valid.
-			if atomic.LoadUint32(&c.netFD.closed) == 0 {
-				err = c.fill(n)
-			} else {
-				err = Exception(ErrConnClosed, "wait read")
-			}
+			err = Exception(ErrConnClosed, "wait read")
 			break
 		}
 
@@ -454,39 +444,6 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	// clean timer.C
 	if !c.readTimer.Stop() {
 		<-c.readTimer.C
-	}
-	return err
-}
-
-// fill data after connection is closed.
-func (c *connection) fill(need int) (err error) {
-	if !c.lock(finalizing) {
-		return ErrConnClosed
-	}
-	defer c.unlock(finalizing)
-
-	var n int
-	var bs [][]byte
-	for {
-		bs = c.inputs(c.inputBarrier.bs)
-	TryRead:
-		n, err = readv(c.fd, bs, c.inputBarrier.ivs)
-		if err != nil {
-			if err == syscall.EINTR {
-				// if err == EINTR, we must reuse bs that has been booked
-				// otherwise will mess the input buffer
-				goto TryRead
-			}
-			break
-		}
-		if n == 0 {
-			err = Exception(ErrEOF, "")
-			break
-		}
-		c.inputAck(n)
-	}
-	if c.inputBuffer.Len() >= need {
-		return nil
 	}
 	return err
 }

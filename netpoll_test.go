@@ -21,6 +21,9 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -248,9 +251,10 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 	MustNil(t, err)
 }
 
-func TestCloseAndWrite(t *testing.T) {
+func TestServerReadAndClose(t *testing.T) {
 	var network, address = "tcp", ":18888"
 	var sendMsg = []byte("hello")
+	var closed int32
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(len(sendMsg))
@@ -258,6 +262,7 @@ func TestCloseAndWrite(t *testing.T) {
 
 			err = connection.Close()
 			MustNil(t, err)
+			atomic.AddInt32(&closed, 1)
 			return nil
 		},
 	)
@@ -269,7 +274,10 @@ func TestCloseAndWrite(t *testing.T) {
 	err = conn.Writer().Flush()
 	MustNil(t, err)
 
-	time.Sleep(time.Millisecond * 100) // wait for poller close connection
+	for atomic.LoadInt32(&closed) == 0 {
+		runtime.Gosched() // wait for poller close connection
+	}
+	time.Sleep(time.Millisecond * 50)
 	_, err = conn.Writer().WriteBinary(sendMsg)
 	MustNil(t, err)
 	err = conn.Writer().Flush()
@@ -279,9 +287,59 @@ func TestCloseAndWrite(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestClientWriteAndClose(t *testing.T) {
+	var (
+		network, address            = "tcp", ":18889"
+		connnum                     = 10
+		packetsize, packetnum       = 1000 * 5, 1
+		recvbytes             int32 = 0
+	)
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			buf, err := connection.Reader().Next(connection.Reader().Len())
+			if errors.Is(err, ErrConnClosed) {
+				return err
+			}
+			MustNil(t, err)
+			atomic.AddInt32(&recvbytes, int32(len(buf)))
+			return nil
+		},
+	)
+	var wg sync.WaitGroup
+	for i := 0; i < connnum; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var conn, err = DialConnection(network, address, time.Second)
+			MustNil(t, err)
+			sendMsg := make([]byte, packetsize)
+			for j := 0; j < packetnum; j++ {
+				_, err = conn.Write(sendMsg)
+				MustNil(t, err)
+			}
+			err = conn.Close()
+			MustNil(t, err)
+		}()
+	}
+	wg.Wait()
+	exceptbytes := int32(packetsize * packetnum * connnum)
+	for atomic.LoadInt32(&recvbytes) != exceptbytes {
+		t.Logf("left %d bytes not received", exceptbytes-atomic.LoadInt32(&recvbytes))
+		runtime.Gosched()
+	}
+	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
-	var listener, _ = CreateListener(network, address)
-	var eventLoop, _ = NewEventLoop(onRequest, opts...)
-	go eventLoop.Serve(listener)
-	return eventLoop
+	ln, err := CreateListener(network, address)
+	if err != nil {
+		panic(err)
+	}
+	elp, err := NewEventLoop(onRequest, opts...)
+	if err != nil {
+		panic(err)
+	}
+	go elp.Serve(ln)
+	return elp
 }
