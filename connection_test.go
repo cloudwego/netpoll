@@ -395,7 +395,7 @@ func TestConnectionUntil(t *testing.T) {
 
 	buf, err := rconn.Reader().Until('\n')
 	Equal(t, len(buf), 100)
-	MustTrue(t, errors.Is(err, ErrEOF))
+	Assert(t, errors.Is(err, ErrConnClosed), err)
 }
 
 func TestBookSizeLargerThanMaxSize(t *testing.T) {
