@@ -7,7 +7,7 @@ jobs:
     strategy:
       matrix:
         go: [ 1.15, 1.19 ]
-        os: [ X64, ARM64 ]
+        os: [ X64, ARM ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
