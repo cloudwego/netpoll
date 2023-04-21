@@ -29,14 +29,15 @@ import (
 // Experience recommends assigning a poller every 20c.
 //
 // You can only use SetNumLoops before any connection is created. An example usage:
-// func init() {
-//     netpoll.SetNumLoops(...)
-// }
+//
+//	func init() {
+//	    netpoll.SetNumLoops(...)
+//	}
 func SetNumLoops(numLoops int) error {
 	return setNumLoops(numLoops)
 }
 
-// LoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
+// SetLoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
 // to distribute the incoming connections between multiple polls.
 // This option only works when NumLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
