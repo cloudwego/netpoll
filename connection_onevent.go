@@ -212,7 +212,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 		return nil
 	}
 	// If Close is called during OnPrepare, poll is not registered.
-	if (c.isCloseBy(user) || c.isCloseBy(rpal)) && c.operator.poll != nil {
+	if c.isCloseBy(user) && c.operator.poll != nil {
 		if err = c.operator.Control(PollDetach); err != nil {
 			logger.Printf("NETPOLL: closeCallback detach operator failed: %v", err)
 		}

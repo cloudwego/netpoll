@@ -59,26 +59,12 @@ func (c *netFD) Close() (err error) {
 	if atomic.AddUint32(&c.closed, 1) != 1 {
 		return nil
 	}
-	if c.fd > 2 {
+	if !c.detaching && c.fd > 2 {
 		err = syscall.Close(c.fd)
 		if err != nil {
 			logger.Printf("NETPOLL: netFD[%d] close error: %s", c.fd, err.Error())
 		}
 	}
-	return err
-}
-
-// DummyClose will be executed only once.
-func (c *netFD) DummyClose() (err error) {
-	if atomic.AddUint32(&c.closed, 1) != 1 {
-		return nil
-	}
-	//if c.fd > 0 {
-	//	err = syscall.Close(c.fd)
-	//	if err != nil {
-	//		log.Printf("netFD[%d] close error: %s", c.fd, err.Error())
-	//	}
-	//}
 	return err
 }
 

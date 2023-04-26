@@ -56,22 +56,6 @@ func (c *connection) onClose() error {
 	return nil
 }
 
-// onDetach means detach by rpal.
-func (c *connection) onDetach() error {
-	if c.closeBy(rpal) {
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
-		c.closeCallback(true)
-		return nil
-	}
-	if c.isCloseBy(poller) {
-		// Connection with OnRequest of nil
-		// relies on the user to actively close the connection to recycle resources.
-		c.closeCallback(true)
-	}
-	return nil
-}
-
 // closeBuffer recycle input & output LinkBuffer.
 func (c *connection) closeBuffer() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
