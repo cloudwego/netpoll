@@ -454,9 +454,11 @@ func TestWriteDirect(t *testing.T) {
 	buf.WriteDirect([]byte("nopqrst"), 28)
 	bt[4] = 'u'
 	buf.WriteDirect([]byte("vwxyz"), 27)
+	copy(bt[5:], "abcdefghijklmnopqrstuvwxyza")
+	buf.WriteDirect([]byte("abcdefghijklmnopqrstuvwxyz"), 0)
 	buf.Flush()
 	bs := buf.Bytes()
-	str := "abcdefghijklmnopqrstuvwxyz"
+	str := "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzaabcdefghijklmnopqrstuvwxyz"
 	for i := 0; i < len(str); i++ {
 		if bs[i] != str[i] {
 			t.Error("not equal!")
