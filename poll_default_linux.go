@@ -37,7 +37,7 @@ func openDefaultPoll() *defaultPoll {
 	var r0, _, e0 = syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
 	if e0 != 0 {
 		syscall.Close(p)
-		panic(err)
+		panic(e0)
 	}
 
 	poll.Reset = poll.reset
