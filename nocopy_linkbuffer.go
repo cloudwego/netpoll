@@ -475,7 +475,7 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	// find origin
 	origin := b.flush
 	malloc := b.mallocSize - remainLen // calculate the remaining malloc length
-	for t := origin.malloc - len(origin.buf); t <= malloc; t = origin.malloc - len(origin.buf) {
+	for t := origin.malloc - len(origin.buf); t < malloc; t = origin.malloc - len(origin.buf) {
 		malloc -= t
 		origin = origin.next
 	}
@@ -486,18 +486,24 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	dataNode := newLinkBufferNode(0)
 	dataNode.buf, dataNode.malloc = p[:0], n
 
-	newNode := newLinkBufferNode(0)
-	newNode.off = malloc
-	newNode.buf = origin.buf[:malloc]
-	newNode.malloc = origin.malloc
-	newNode.readonly = false
-	origin.malloc = malloc
-	origin.readonly = true
+	if remainLen > 0 {
+		newNode := newLinkBufferNode(0)
+		newNode.off = malloc
+		newNode.buf = origin.buf[:malloc]
+		newNode.malloc = origin.malloc
+		newNode.readonly = false
+		origin.malloc = malloc
+		origin.readonly = true
 
-	// link nodes
-	dataNode.next = newNode
-	newNode.next = origin.next
-	origin.next = dataNode
+		// link nodes
+		dataNode.next = newNode
+		newNode.next = origin.next
+		origin.next = dataNode
+	} else {
+		// link nodes
+		dataNode.next = origin.next
+		origin.next = dataNode
+	}
 
 	// adjust b.write
 	for b.write.next != nil {

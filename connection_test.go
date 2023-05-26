@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -431,4 +433,61 @@ func TestBookSizeLargerThanMaxSize(t *testing.T) {
 	}
 	wg.Wait()
 	rconn.Close()
+}
+
+func TestConnDetach(t *testing.T) {
+	ln, err := CreateListener("tcp", ":1234")
+	MustNil(t, err)
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			if conn == nil {
+				continue
+			}
+			go func() {
+				buf := make([]byte, 1024)
+				// slow read
+				for {
+					_, err := conn.Read(buf)
+					if err != nil {
+						return
+					}
+					time.Sleep(100 * time.Millisecond)
+					_, err = conn.Write(buf)
+					if err != nil {
+						return
+					}
+				}
+			}()
+		}
+	}()
+
+	c, err := DialConnection("tcp", ":1234", time.Second)
+	MustNil(t, err)
+
+	conn := c.(*TCPConnection)
+
+	err = conn.Detach()
+	MustNil(t, err)
+
+	f := os.NewFile(uintptr(conn.fd), "netpoll-connection")
+	defer f.Close()
+
+	gonetconn, err := net.FileConn(f)
+	MustNil(t, err)
+	buf := make([]byte, 1024)
+	_, err = gonetconn.Write(buf)
+	MustNil(t, err)
+	_, err = gonetconn.Read(buf)
+	MustNil(t, err)
+
+	err = gonetconn.Close()
+	MustNil(t, err)
+
+	err = ln.Close()
+	MustNil(t, err)
 }

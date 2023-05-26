@@ -299,6 +299,12 @@ func (c *connection) Close() error {
 	return c.onClose()
 }
 
+// Detach detaches the connection from poller but doesn't close it.
+func (c *connection) Detach() error {
+	c.detaching = true
+	return c.onClose()
+}
+
 // ------------------------------------------ private ------------------------------------------
 
 var barrierPool = sync.Pool{
