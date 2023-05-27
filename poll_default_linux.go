@@ -22,31 +22,38 @@ import (
 	"unsafe"
 )
 
-func openPoll() Poll {
+func openPoll() (Poll, error) {
 	return openDefaultPoll()
 }
 
-func openDefaultPoll() *defaultPoll {
-	var poll = defaultPoll{}
+func openDefaultPoll() (*defaultPoll, error) {
+	var poll = new(defaultPoll)
+
 	poll.buf = make([]byte, 8)
 	var p, err = EpollCreate(0)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	poll.fd = p
+
 	var r0, _, e0 = syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
 	if e0 != 0 {
-		syscall.Close(p)
-		panic(e0)
+		_ = syscall.Close(poll.fd)
+		return nil, e0
 	}
 
 	poll.Reset = poll.reset
 	poll.Handler = poll.handler
-
 	poll.wop = &FDOperator{FD: int(r0)}
-	poll.Control(poll.wop, PollReadable)
+
+	if err = poll.Control(poll.wop, PollReadable); err != nil {
+		_ = syscall.Close(poll.wop.FD)
+		_ = syscall.Close(poll.fd)
+		return nil, err
+	}
+
 	poll.opcache = newOperatorCache()
-	return &poll
+	return poll, nil
 }
 
 type defaultPoll struct {
