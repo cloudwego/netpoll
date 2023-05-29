@@ -24,15 +24,15 @@ import (
 	"unsafe"
 )
 
-func openPoll() Poll {
+func openPoll() (Poll, error) {
 	return openDefaultPoll()
 }
 
-func openDefaultPoll() *defaultPoll {
+func openDefaultPoll() (*defaultPoll, error) {
 	l := new(defaultPoll)
 	p, err := syscall.Kqueue()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	l.fd = p
 	_, err = syscall.Kevent(l.fd, []syscall.Kevent_t{{
@@ -41,10 +41,11 @@ func openDefaultPoll() *defaultPoll {
 		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
 	}}, nil, nil)
 	if err != nil {
-		panic(err)
+		syscall.Close(l.fd)
+		return nil, err
 	}
 	l.opcache = newOperatorCache()
-	return l
+	return l, nil
 }
 
 type defaultPoll struct {
