@@ -50,6 +50,8 @@ type netFD struct {
 	network       string // tcp tcp4 tcp6, udp, udp4, udp6, ip, ip4, ip6, unix, unixgram, unixpacket
 	localAddr     net.Addr
 	remoteAddr    net.Addr
+	// for detaching conn from poller
+	detaching bool
 }
 
 func newNetFD(fd, family, sotype int, net string) *netFD {

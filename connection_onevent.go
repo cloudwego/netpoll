@@ -90,7 +90,7 @@ func (c *connection) AddCloseCallback(callback CloseCallback) error {
 	return nil
 }
 
-// OnPrepare supports close connection, but not read/write data.
+// onPrepare supports close connection, but not read/write data.
 // connection will be registered by this call after preparing.
 func (c *connection) onPrepare(opts *options) (err error) {
 	if opts != nil {
