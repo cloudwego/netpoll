@@ -106,27 +106,18 @@ func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 			continue
 		}
 		ivs[iovLen].Base = &chunk[0]
-		ivs[iovLen].SetLen(l)
 		totalLen += l
-		iovLen++
-	}
-	// iovecs limit length to 2GB(2^31)
-	if totalLen <= math.MaxInt32 {
-		return iovLen
-	}
-	// reset here
-	totalLen = math.MaxInt32
-	for i := 0; i < iovLen; i++ {
-		l := int(ivs[i].Len)
-		if l < totalLen {
-			totalLen -= l
-			continue
+		if totalLen < math.MaxInt32 {
+			ivs[iovLen].SetLen(l)
+			iovLen++
+		} else {
+			newLen := math.MaxInt32 - totalLen + l
+			ivs[iovLen].SetLen(newLen)
+			iovLen++
+			return iovLen
 		}
-		ivs[i].SetLen(totalLen)
-		iovLen = i + 1
-		resetIovecs(nil, ivs[iovLen:])
-		return iovLen
 	}
+
 	return iovLen
 }
 
