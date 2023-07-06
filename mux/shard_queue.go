@@ -16,11 +16,13 @@ package mux
 
 import (
 	"fmt"
+	"github.com/bytedance/gopkg/lang/fastrand"
+	"github.com/bytedance/gopkg/util/gopool"
+	"golang.org/x/sys/cpu"
 	"runtime"
 	"sync"
 	"sync/atomic"
-
-	"github.com/bytedance/gopkg/util/gopool"
+	"unsafe"
 
 	"github.com/cloudwego/netpoll"
 )
@@ -34,6 +36,12 @@ import (
  * NewShardQueue: create a queue with netpoll.Connection.
  * ShardSize: the recommended number of shards is 32.
  */
+
+const (
+	cacheLineSize = unsafe.Sizeof(cpu.CacheLinePad{})
+	maxBackOff    = 64
+)
+
 var ShardSize int
 
 func init() {
@@ -47,7 +55,7 @@ func NewShardQueue(size int, conn netpoll.Connection) (queue *ShardQueue) {
 		size:    int32(size),
 		getters: make([][]WriterGetter, size),
 		swap:    make([]WriterGetter, 0, 64),
-		locks:   make([]int32, size),
+		locks:   make([]lockShard, size),
 	}
 	for i := range queue.getters {
 		queue.getters[i] = make([]WriterGetter, 0, 64)
@@ -59,6 +67,11 @@ func NewShardQueue(size int, conn netpoll.Connection) (queue *ShardQueue) {
 // WriterGetter is used to get a netpoll.Writer.
 type WriterGetter func() (buf netpoll.Writer, isNil bool)
 
+type lockShard struct {
+	lock int32
+	_    [cacheLineSize - unsafe.Sizeof(int32(0))]byte
+}
+
 // ShardQueue uses the netpoll's nocopy API to merge and send data.
 // The Data Flush is passively triggered by ShardQueue.Add and does not require user operations.
 // If there is an error in the data transmission, the connection will be closed.
@@ -68,7 +81,7 @@ type ShardQueue struct {
 	idx, size int32
 	getters   [][]WriterGetter // len(getters) = size
 	swap      []WriterGetter   // use for swap
-	locks     []int32          // len(locks) = size
+	locks     []lockShard      // len(locks) = size
 	queueTrigger
 }
 
@@ -197,12 +210,15 @@ func (q *ShardQueue) flush() {
 
 // lock shard.
 func (q *ShardQueue) lock(shard int32) {
-	for !atomic.CompareAndSwapInt32(&q.locks[shard], 0, 1) {
-		runtime.Gosched()
+	for !atomic.CompareAndSwapInt32(&q.locks[shard].lock, 0, 1) {
+		backoff := int(fastrand.Int31n(maxBackOff))
+		for i := 0; i < backoff; i++ {
+			runtime.Gosched()
+		}
 	}
 }
 
 // unlock shard.
 func (q *ShardQueue) unlock(shard int32) {
-	atomic.StoreInt32(&q.locks[shard], 0)
+	atomic.StoreInt32(&q.locks[shard].lock, 0)
 }

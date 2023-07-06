@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"github.com/bytedance/gopkg/lang/fastrand"
 	"runtime"
 	"sync/atomic"
 )
@@ -69,7 +70,10 @@ func (op *FDOperator) inuse() {
 		if atomic.LoadInt32(&op.state) == 1 {
 			return
 		}
-		runtime.Gosched()
+		backoff := int(fastrand.Uint32n(maxBackOff)) + 1
+		for i := 0; i < backoff; i++ {
+			runtime.Gosched()
+		}
 	}
 }
 
@@ -78,7 +82,10 @@ func (op *FDOperator) unused() {
 		if atomic.LoadInt32(&op.state) == 0 {
 			return
 		}
-		runtime.Gosched()
+		backoff := int(fastrand.Uint32n(maxBackOff)) + 1
+		for i := 0; i < backoff; i++ {
+			runtime.Gosched()
+		}
 	}
 }
 

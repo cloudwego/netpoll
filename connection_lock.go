@@ -15,8 +15,11 @@
 package netpoll
 
 import (
+	"github.com/bytedance/gopkg/lang/fastrand"
+	"golang.org/x/sys/cpu"
 	"runtime"
 	"sync/atomic"
+	"unsafe"
 )
 
 type who int32
@@ -51,34 +54,46 @@ const (
 	total
 )
 
+const (
+	cacheLineSize = unsafe.Sizeof(cpu.CacheLinePad{})
+)
+
+type padKey struct {
+	key int32
+	_   [cacheLineSize - unsafe.Sizeof(int32(0))]byte
+}
+
 type locker struct {
 	// keychain use for lock/unlock/stop operation by who.
 	// 0 means unlock, 1 means locked, 2 means stop.
-	keychain [total]int32
+	keychain [total]padKey
 }
 
 func (l *locker) closeBy(w who) (success bool) {
-	return atomic.CompareAndSwapInt32(&l.keychain[closing], 0, int32(w))
+	return atomic.CompareAndSwapInt32(&l.keychain[closing].key, 0, int32(w))
 }
 
 func (l *locker) isCloseBy(w who) (yes bool) {
-	return atomic.LoadInt32(&l.keychain[closing]) == int32(w)
+	return atomic.LoadInt32(&l.keychain[closing].key) == int32(w)
 }
 
 func (l *locker) lock(k key) (success bool) {
-	return atomic.CompareAndSwapInt32(&l.keychain[k], 0, 1)
+	return atomic.CompareAndSwapInt32(&l.keychain[k].key, 0, 1)
 }
 
 func (l *locker) unlock(k key) {
-	atomic.StoreInt32(&l.keychain[k], 0)
+	atomic.StoreInt32(&l.keychain[k].key, 0)
 }
 
 func (l *locker) stop(k key) {
-	for !atomic.CompareAndSwapInt32(&l.keychain[k], 0, 2) && atomic.LoadInt32(&l.keychain[k]) != 2 {
-		runtime.Gosched()
+	for !atomic.CompareAndSwapInt32(&l.keychain[k].key, 0, 2) && atomic.LoadInt32(&l.keychain[k].key) != 2 {
+		backoff := int(fastrand.Int31n(maxBackOff)) + 1
+		for i := 0; i < backoff; i++ {
+			runtime.Gosched()
+		}
 	}
 }
 
 func (l *locker) isUnlock(k key) bool {
-	return atomic.LoadInt32(&l.keychain[k]) == 0
+	return atomic.LoadInt32(&l.keychain[k].key) == 0
 }

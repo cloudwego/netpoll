@@ -491,3 +491,29 @@ func TestConnDetach(t *testing.T) {
 	err = ln.Close()
 	MustNil(t, err)
 }
+
+func BenchmarkConnectionLock(b *testing.B) {
+	b.ReportAllocs()
+	l := &locker{}
+	for i := 0; i < b.N; i++ {
+		shard := key(int32(i) & (int32(total) - 1))
+		l.stop(shard)
+		l.unlock(shard)
+	}
+}
+
+func BenchmarkConnectionLockParallel(b *testing.B) {
+	b.ReportAllocs()
+	l := &locker{}
+	b.SetParallelism(1)
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			shard := key(int32(i) & (int32(total) - 1))
+			l.stop(shard)
+			l.unlock(shard)
+			i++
+		}
+	})
+}
+

@@ -79,3 +79,27 @@ func TestShardQueue(t *testing.T) {
 func BenchmarkShardQueue(b *testing.B) {
 	b.Skip()
 }
+
+func BenchmarkShareQueueSpin(b *testing.B) {
+	b.ReportAllocs()
+	q := NewShardQueue(ShardSize, nil)
+	for i := 0; i < b.N; i++ {
+		shard := int32(i & (ShardSize - 1))
+		q.lock(shard)
+		q.unlock(shard)
+	}
+}
+
+func BenchmarkShareQueueParallel(b *testing.B) {
+	b.ReportAllocs()
+	q := NewShardQueue(ShardSize, nil)
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			shard := int32(i & (ShardSize - 1))
+			q.lock(shard)
+			q.unlock(shard)
+			i++
+		}
+	})
+}
