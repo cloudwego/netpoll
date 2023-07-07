@@ -91,6 +91,9 @@ func (p *defaultPoll) Wait() (err error) {
 	// init
 	var caps, msec, n = barriercap, -1, 0
 	p.Reset(128, caps)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	// wait
 	for {
 		if n == p.size && p.size < 128*1024 {
@@ -101,7 +104,11 @@ func (p *defaultPoll) Wait() (err error) {
 			return err
 		}
 		if n <= 0 {
-			msec = -1
+			if msec <= 0 {
+				msec = 16
+			} else if msec < 1024 {
+				msec *= 2
+			}
 			runtime.Gosched()
 			continue
 		}
