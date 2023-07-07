@@ -24,10 +24,15 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
-var runTask = gopool.CtxGo
+var runner = gopool.CtxGo
+
+func setRunner(runnerFunc func(ctx context.Context, f func())) error {
+	runner = runnerFunc
+	return nil
+}
 
 func disableGopool() error {
-	runTask = func(ctx context.Context, f func()) {
+	runner = func(ctx context.Context, f func()) {
 		go f()
 	}
 	return nil
@@ -200,7 +205,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		return
 	}
 
-	runTask(c.ctx, task)
+	runner(c.ctx, task)
 	return true
 }
 

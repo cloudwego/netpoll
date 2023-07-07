@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -46,6 +47,10 @@ func SetLoadBalance(lb LoadBalance) error {
 
 func SetLoggerOutput(w io.Writer) {
 	setLoggerOutput(w)
+}
+
+func SetRunner(runnerFunc func(ctx context.Context, f func())) error {
+	return setRunner(runnerFunc)
 }
 
 // DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
