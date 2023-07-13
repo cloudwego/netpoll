@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -164,7 +165,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			}
 		}
 		if triggerHup && triggerRead && operator.Inputs != nil { // read all left data if peer send and close
-			if err := readall(operator, p.barriers[i]); err != nil {
+			if err := readall(operator, p.barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
 				logger.Printf("NETPOLL: readall(fd=%d) before close: %s", operator.FD, err.Error())
 			}
 		}
