@@ -177,6 +177,18 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 	}
 	// add new task
 	var task = func() {
+		panicked := true
+		defer func() {
+			// cannot use recover() here, since we don't want to break the panic stack
+			if panicked {
+				c.unlock(processing)
+				if c.IsActive() {
+					c.Close()
+				} else {
+					c.closeCallback(false)
+				}
+			}
+		}()
 	START:
 		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
 		// Then the loop processing must ensure that the connection `IsActive`.
@@ -189,6 +201,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		// Handling callback if connection has been closed.
 		if !c.IsActive() {
 			c.closeCallback(false)
+			panicked = false
 			return
 		}
 		c.unlock(processing)
@@ -197,6 +210,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			goto START
 		}
 		// task exits
+		panicked = false
 		return
 	}
 

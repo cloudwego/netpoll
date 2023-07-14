@@ -287,6 +287,37 @@ func TestServerReadAndClose(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestServerPanicAndClose(t *testing.T) {
+	var network, address = "tcp", ":18888"
+	var sendMsg = []byte("hello")
+	var paniced int32
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			_, err := connection.Reader().Next(len(sendMsg))
+			MustNil(t, err)
+			atomic.StoreInt32(&paniced, 1)
+			panic("test")
+		},
+	)
+
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	_, err = conn.Writer().WriteBinary(sendMsg)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+
+	for atomic.LoadInt32(&paniced) == 0 {
+		runtime.Gosched() // wait for poller close connection
+	}
+	for conn.IsActive() {
+		runtime.Gosched() // wait for poller close connection
+	}
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func TestClientWriteAndClose(t *testing.T) {
 	var (
 		network, address            = "tcp", ":18889"
