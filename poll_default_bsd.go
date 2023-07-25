@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"syscall"
