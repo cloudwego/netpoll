@@ -491,3 +491,49 @@ func TestConnDetach(t *testing.T) {
 	err = ln.Close()
 	MustNil(t, err)
 }
+
+func TestParallelShortConnection(t *testing.T) {
+	ln, err := CreateListener("tcp", ":1234")
+	MustNil(t, err)
+	defer ln.Close()
+
+	var received int64
+	el, err := NewEventLoop(func(ctx context.Context, connection Connection) error {
+		data, err := connection.Reader().Next(connection.Reader().Len())
+		if err != nil {
+			return err
+		}
+		atomic.AddInt64(&received, int64(len(data)))
+		//t.Logf("conn[%s] received: %d, active: %v", connection.RemoteAddr(), len(data), connection.IsActive())
+		return nil
+	})
+	go func() {
+		el.Serve(ln)
+	}()
+
+	conns := 100
+	sizePerConn := 1024 * 100
+	totalSize := conns * sizePerConn
+	var wg sync.WaitGroup
+	for i := 0; i < conns; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conn, err := DialConnection("tcp", ":1234", time.Second)
+			MustNil(t, err)
+			n, err := conn.Writer().WriteBinary(make([]byte, sizePerConn))
+			MustNil(t, err)
+			MustTrue(t, n == sizePerConn)
+			err = conn.Writer().Flush()
+			MustNil(t, err)
+			err = conn.Close()
+			MustNil(t, err)
+		}()
+	}
+	wg.Wait()
+
+	for atomic.LoadInt64(&received) < int64(totalSize) {
+		t.Logf("received: %d, except: %d", atomic.LoadInt64(&received), totalSize)
+		time.Sleep(time.Millisecond * 100)
+	}
+}

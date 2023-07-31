@@ -195,7 +195,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		if isProcessable(c) {
 			process(c)
 		}
-		for c.IsActive() && isProcessable(c) {
+		for !c.isCloseBy(user) && isProcessable(c) {
 			process(c)
 		}
 		// Handling callback if connection has been closed.

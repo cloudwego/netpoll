@@ -90,6 +90,7 @@ func (p *defaultPoll) Wait() error {
 				continue
 			}
 
+			var totalRead int
 			evt := events[i]
 			triggerRead = evt.Filter == syscall.EVFILT_READ && evt.Flags&syscall.EV_ENABLE != 0
 			triggerWrite = evt.Filter == syscall.EVFILT_WRITE && evt.Flags&syscall.EV_ENABLE != 0
@@ -105,6 +106,7 @@ func (p *defaultPoll) Wait() error {
 					if len(bs) > 0 {
 						var n, err = ioread(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
+						totalRead += n
 						if err != nil {
 							p.appendHup(operator)
 							continue
@@ -112,14 +114,20 @@ func (p *defaultPoll) Wait() error {
 					}
 				}
 			}
-			if triggerHup && triggerRead && operator.Inputs != nil { // read all left data if peer send and close
-				if err = readall(operator, barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
-					logger.Printf("NETPOLL: readall(fd=%d) before close: %s", operator.FD, err.Error())
-				}
-			}
 			if triggerHup {
-				p.appendHup(operator)
-				continue
+				if triggerRead && operator.Inputs != nil {
+					var leftRead int
+					// read all left data if peer send and close
+					if leftRead, err = readall(operator, barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
+						logger.Printf("NETPOLL: readall(fd=%d)=%d before close: %s", operator.FD, total, err.Error())
+					}
+					totalRead += leftRead
+				}
+				// only close connection if no further read bytes
+				if totalRead == 0 {
+					p.appendHup(operator)
+					continue
+				}
 			}
 			if triggerWrite {
 				if operator.OnWrite != nil {

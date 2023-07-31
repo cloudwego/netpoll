@@ -25,17 +25,18 @@ import (
 
 // onHup means close by poller.
 func (c *connection) onHup(p Poll) error {
-	if c.closeBy(poller) {
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
-		// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
-		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
-		// and it is safe to close the buffer at this time.
-		var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
-		var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-		if onConnect != nil || onRequest != nil {
-			c.closeCallback(true)
-		}
+	if !c.closeBy(poller) {
+		return nil
+	}
+	c.triggerRead()
+	c.triggerWrite(ErrConnClosed)
+	// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
+	// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
+	// and it is safe to close the buffer at this time.
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	if onConnect != nil || onRequest != nil {
+		c.closeCallback(true)
 	}
 	return nil
 }
@@ -48,9 +49,12 @@ func (c *connection) onClose() error {
 		c.closeCallback(true)
 		return nil
 	}
-	if c.isCloseBy(poller) {
-		// Connection with OnRequest of nil
-		// relies on the user to actively close the connection to recycle resources.
+	closedByPoller := c.isCloseBy(poller)
+	// force change closed by user
+	c.force(closing, user)
+
+	// If OnRequest is nil, relies on the user to actively close the connection to recycle resources.
+	if closedByPoller {
 		c.closeCallback(true)
 	}
 	return nil
