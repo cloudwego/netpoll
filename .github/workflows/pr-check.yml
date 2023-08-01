@@ -23,8 +23,27 @@ jobs:
             ${{ runner.os }}-go-
       - name: Unit Test
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Benchmark
-        run: go test -bench=. -benchmem -run=none ./...
+  stability-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.16"
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Hertz stability tests
+        run: |
+          git clone https://github.com/cloudwego/hertz.git ../hertz
+          cd ../hertz
+          git checkout main
+          go mod edit -replace github.com/cloudwego/netpoll=../netpoll
+          go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
   windows-test:
     runs-on: windows-latest
     steps:
