@@ -21,16 +21,15 @@ import (
 	"context"
 )
 
-// TODO: recycle *pollDesc
 func newPollDesc(fd int) *pollDesc {
 	pd := &pollDesc{}
 	poll := pollmanager.Pick()
-	op := poll.Alloc()
-	op.FD = fd
-	op.OnWrite = pd.onwrite
-	op.OnHup = pd.onhup
-
-	pd.operator = op
+	pd.operator = &FDOperator{
+		poll:    poll,
+		FD:      fd,
+		OnWrite: pd.onwrite,
+		OnHup:   pd.onhup,
+	}
 	pd.writeTrigger = make(chan struct{})
 	pd.closeTrigger = make(chan struct{})
 	return pd
@@ -45,13 +44,6 @@ type pollDesc struct {
 
 // WaitWrite .
 func (pd *pollDesc) WaitWrite(ctx context.Context) (err error) {
-	defer func() {
-		// if return err != nil, upper caller function will close the connection
-		if err != nil {
-			pd.operator.Free()
-		}
-	}()
-
 	if pd.operator.isUnused() {
 		// add ET|Write|Hup
 		if err = pd.operator.Control(PollWritable); err != nil {
@@ -84,6 +76,7 @@ func (pd *pollDesc) onwrite(p Poll) error {
 	select {
 	case <-pd.writeTrigger:
 	default:
+		pd.detach()
 		close(pd.writeTrigger)
 	}
 	return nil

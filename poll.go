@@ -57,10 +57,6 @@ const (
 	// PollDetach is used to remove the FDOperator from poll.
 	PollDetach PollEvent = 0x3
 
-	// PollModReadable is used to re-register the readable monitor for the FDOperator created by the dialer.
-	// It is only used when calling the dialer's conn init.
-	PollModReadable PollEvent = 0x4
-
 	// PollR2RW is used to monitor writable for FDOperator,
 	// which is only called when the socket write buffer is full.
 	PollR2RW PollEvent = 0x5

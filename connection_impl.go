@@ -357,19 +357,12 @@ func (c *connection) initNetFD(conn Conn) {
 }
 
 func (c *connection) initFDOperator() {
-	var op *FDOperator
-	if c.pd != nil && c.pd.operator != nil {
-		// reuse operator created at connect step
-		op = c.pd.operator
-	} else {
-		poll := pollmanager.Pick()
-		op = poll.Alloc()
-	}
+	poll := pollmanager.Pick()
+	op := poll.Alloc()
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck
 	op.Outputs, op.OutputAck = c.outputs, c.outputAck
-
 	c.operator = op
 }
 

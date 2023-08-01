@@ -1,6 +1,6 @@
 name: Push and Pull Request Check
 
-on: [ push, pull_request ]
+on: [ push ]
 
 jobs:
   compatibility-test:
@@ -15,12 +15,12 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
-      - uses: actions/cache@v2
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+#      - uses: actions/cache@v2
+#        with:
+#          path: ~/go/pkg/mod
+#          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+#          restore-keys: |
+#            ${{ runner.os }}-go-
       - name: Unit Test
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
       - name: Benchmark
@@ -33,12 +33,12 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: "1.20"
-      - uses: actions/cache@v2
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+#      - uses: actions/cache@v2
+#        with:
+#          path: ~/go/pkg/mod
+#          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+#          restore-keys: |
+#            ${{ runner.os }}-go-
       - name: Build Test
         run: go vet -v ./...
   style-test:
