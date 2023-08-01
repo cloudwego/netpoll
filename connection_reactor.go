@@ -28,8 +28,8 @@ func (c *connection) onHup(p Poll) error {
 	if !c.closeBy(poller) {
 		return nil
 	}
-	c.triggerRead()
-	c.triggerWrite(ErrConnClosed)
+	c.triggerRead(Exception(ErrEOF, "peer close"))
+	c.triggerWrite(Exception(ErrConnClosed, "peer close"))
 	// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
 	// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
 	// and it is safe to close the buffer at this time.
@@ -44,8 +44,8 @@ func (c *connection) onHup(p Poll) error {
 // onClose means close by user.
 func (c *connection) onClose() error {
 	if c.closeBy(user) {
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
+		c.triggerRead(Exception(ErrConnClosed, "self close"))
+		c.triggerWrite(Exception(ErrConnClosed, "self close"))
 		c.closeCallback(true)
 		return nil
 	}
@@ -107,7 +107,7 @@ func (c *connection) inputAck(n int) (err error) {
 		needTrigger = c.onRequest()
 	}
 	if needTrigger && length >= int(atomic.LoadInt64(&c.waitReadSize)) {
-		c.triggerRead()
+		c.triggerRead(nil)
 	}
 	return nil
 }

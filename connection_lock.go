@@ -65,6 +65,10 @@ func (l *locker) isCloseBy(w who) (yes bool) {
 	return atomic.LoadInt32(&l.keychain[closing]) == int32(w)
 }
 
+func (l *locker) status(k key) int32 {
+	return atomic.LoadInt32(&l.keychain[k])
+}
+
 func (l *locker) force(k key, v int32) {
 	atomic.StoreInt32(&l.keychain[k], v)
 }
