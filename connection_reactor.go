@@ -28,7 +28,6 @@ func (c *connection) onHup(p Poll) error {
 	if !c.closeBy(poller) {
 		return nil
 	}
-	// already PollDetach when call OnHup
 	c.triggerRead(Exception(ErrEOF, "peer close"))
 	c.triggerWrite(Exception(ErrConnClosed, "peer close"))
 	// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
@@ -37,35 +36,30 @@ func (c *connection) onHup(p Poll) error {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
 	if onConnect != nil || onRequest != nil {
-		c.closeCallback(true)
+		// already PollDetach when call OnHup
+		c.closeCallback(true, false)
 	}
 	return nil
 }
 
 // onClose means close by user.
 func (c *connection) onClose() error {
+	// user code close the connection
 	if c.closeBy(user) {
-		// If Close is called during OnPrepare, poll is not registered.
-		if c.operator.poll != nil {
-			if err := c.operator.Control(PollDetach); err != nil {
-				logger.Printf("NETPOLL: onClose detach operator failed: %v", err)
-			}
-		}
 		c.triggerRead(Exception(ErrConnClosed, "self close"))
 		c.triggerWrite(Exception(ErrConnClosed, "self close"))
-		c.closeCallback(true)
+		// Detach from poller when processing finished, otherwise it will cause race
+		c.closeCallback(true, true)
 		return nil
 	}
 
-	closedByPoller := c.isCloseBy(poller)
-	// force change closed by user
+	// closed by poller
+	// still need to change closing status to `user` since OnProcess should not be processed again
 	c.force(closing, user)
 
-	// If OnRequest is nil, relies on the user to actively close the connection to recycle resources.
-	if closedByPoller {
-		c.closeCallback(true)
-	}
-	return nil
+	// user code should actively close the connection to recycle resources.
+	// poller already detached operator
+	return c.closeCallback(true, false)
 }
 
 // closeBuffer recycle input & output LinkBuffer.

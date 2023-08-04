@@ -185,7 +185,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 				if c.IsActive() {
 					c.Close()
 				} else {
-					c.closeCallback(false)
+					c.closeCallback(false, false)
 				}
 			}
 		}()
@@ -200,7 +200,8 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		}
 		// Handling callback if connection has been closed.
 		if !c.IsActive() {
-			c.closeCallback(false)
+			// connection if closed by user when processing, so it needs detach
+			c.closeCallback(false, true)
 			panicked = false
 			return
 		}
@@ -221,9 +222,15 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 // closeCallback .
 // It can be confirmed that closeCallback and onRequest will not be executed concurrently.
 // If onRequest is still running, it will trigger closeCallback on exit.
-func (c *connection) closeCallback(needLock bool) (err error) {
+func (c *connection) closeCallback(needLock bool, needDetach bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
+	}
+	if needDetach && c.operator.poll != nil { // If Close is called during OnPrepare, poll is not registered.
+		// PollDetach only happen when user call conn.Close() or poller detect error
+		if err := c.operator.Control(PollDetach); err != nil {
+			logger.Printf("NETPOLL: onClose detach operator failed: %v", err)
+		}
 	}
 	var latest = c.closeCallbacks.Load()
 	if latest == nil {
