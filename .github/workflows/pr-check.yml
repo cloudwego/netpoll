@@ -3,35 +3,57 @@ name: Push and Pull Request Check
 on: [ push, pull_request ]
 
 jobs:
-  build:
+  compatibility-test:
+    strategy:
+      matrix:
+        go: [ 1.15, "1.20" ]
+        os: [ X64, ARM64 ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
+#      - uses: actions/cache@v2
+#        with:
+#          path: ~/go/pkg/mod
+#          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+#          restore-keys: |
+#            ${{ runner.os }}-go-
+      - name: Unit Test
+        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Benchmark
+        run: go test -bench=. -benchmem -run=none ./...
+  windows-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: "1.20"
+#      - uses: actions/cache@v2
+#        with:
+#          path: ~/go/pkg/mod
+#          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+#          restore-keys: |
+#            ${{ runner.os }}-go-
+      - name: Build Test
+        run: go vet -v ./...
+  style-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v3
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
           go-version: 1.16
-
-      - uses: actions/cache@v2
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
       - name: Check License Header
-        uses: apache/skywalking-eyes@main
+        uses: apache/skywalking-eyes/header@v0.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Lint
         run: |
           test -z "$(gofmt -s -l .)"
           go vet -stdmethods=false $(go list ./...)
-
-      - name: Unit Test
-        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
-
-      - name: Benchmark
-        run: go test -bench=. -benchmem -run=none ./...

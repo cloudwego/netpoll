@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,16 @@ type epollevent struct {
 	events uint32
 	_      int32
 	data   [8]byte // unaligned uintptr
+}
+
+// EpollCreate implements epoll_create1.
+func EpollCreate(flag int) (fd int, err error) {
+	var r0 uintptr
+	r0, _, err = syscall.RawSyscall(syscall.SYS_EPOLL_CREATE1, uintptr(flag), 0, 0)
+	if err == syscall.Errno(0) {
+		err = nil
+	}
+	return int(r0), err
 }
 
 // EpollCtl implements epoll_ctl.

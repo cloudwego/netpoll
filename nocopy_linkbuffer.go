@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 
 // LinkBuffer implements ReadWriter.
 type LinkBuffer struct {
-	length     int32
+	length     int64
 	mallocSize int
 
 	head  *linkBufferNode // release head
@@ -66,7 +66,7 @@ var _ Writer = &LinkBuffer{}
 
 // Len implements Reader.
 func (b *LinkBuffer) Len() int {
-	l := atomic.LoadInt32(&b.length)
+	l := atomic.LoadInt64(&b.length)
 	return int(l)
 }
 
@@ -292,7 +292,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 
 	// just use for range
 	p := &LinkBuffer{
-		length: int32(n),
+		length: int64(n),
 	}
 	defer func() {
 		// set to read-only
@@ -371,11 +371,10 @@ func (b *LinkBuffer) MallocAck(n int) (err error) {
 // Flush will submit all malloc data and must confirm that the allocated bytes have been correctly assigned.
 func (b *LinkBuffer) Flush() (err error) {
 	b.mallocSize = 0
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if cap(b.write.buf) > pagesize {
-		b.write.next = newLinkBufferNode(0)
-		b.write = b.write.next
-	}
+	// append an empty tail node to prevent memory leak if connection is not closed.
+	b.write.next = newLinkBufferNode(0)
+	b.write = b.write.next
+
 	var n int
 	for node := b.flush; node != b.write.next; node = node.next {
 		delta := node.malloc - len(node.buf)
@@ -481,7 +480,7 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	// find origin
 	origin := b.flush
 	malloc := b.mallocSize - remainLen // calculate the remaining malloc length
-	for t := origin.malloc - len(origin.buf); t <= malloc; t = origin.malloc - len(origin.buf) {
+	for t := origin.malloc - len(origin.buf); t < malloc; t = origin.malloc - len(origin.buf) {
 		malloc -= t
 		origin = origin.next
 	}
@@ -492,18 +491,24 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	dataNode := newLinkBufferNode(0)
 	dataNode.buf, dataNode.malloc = p[:0], n
 
-	newNode := newLinkBufferNode(0)
-	newNode.off = malloc
-	newNode.buf = origin.buf[:malloc]
-	newNode.malloc = origin.malloc
-	newNode.readonly = false
-	origin.malloc = malloc
-	origin.readonly = true
+	if remainLen > 0 {
+		newNode := newLinkBufferNode(0)
+		newNode.off = malloc
+		newNode.buf = origin.buf[:malloc]
+		newNode.malloc = origin.malloc
+		newNode.readonly = false
+		origin.malloc = malloc
+		origin.readonly = true
 
-	// link nodes
-	dataNode.next = newNode
-	newNode.next = origin.next
-	origin.next = dataNode
+		// link nodes
+		dataNode.next = newNode
+		newNode.next = origin.next
+		origin.next = dataNode
+	} else {
+		// link nodes
+		dataNode.next = origin.next
+		origin.next = dataNode
+	}
 
 	// adjust b.write
 	for b.write.next != nil {
@@ -525,7 +530,7 @@ func (b *LinkBuffer) WriteByte(p byte) (err error) {
 
 // Close will recycle all buffer.
 func (b *LinkBuffer) Close() (err error) {
-	atomic.StoreInt32(&b.length, 0)
+	atomic.StoreInt64(&b.length, 0)
 	b.mallocSize = 0
 	// just release all
 	b.Release()
@@ -675,7 +680,7 @@ func (b *LinkBuffer) resetTail(maxSize int) {
 
 // recalLen re-calculate the length
 func (b *LinkBuffer) recalLen(delta int) (length int) {
-	return int(atomic.AddInt32(&b.length, int32(delta)))
+	return int(atomic.AddInt64(&b.length, int64(delta)))
 }
 
 // ------------------------------------------ implement link node ------------------------------------------
@@ -807,7 +812,7 @@ func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
 		return true
 	}
 	l := b.read.Len()
-	for l == 0 {
+	for l == 0 && b.read != b.flush {
 		b.read = b.read.next
 		l = b.read.Len()
 	}

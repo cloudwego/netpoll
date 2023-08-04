@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+//go:build !windows
+// +build !windows
 
 package netpoll
 
@@ -327,6 +330,27 @@ func TestLinkBufferRefer(t *testing.T) {
 	Equal(t, buf.read.Len(), block8k-9)
 }
 
+func TestLinkBufferResetTail(t *testing.T) {
+	except := byte(1)
+
+	LinkBufferCap = 8
+	buf := NewLinkBuffer()
+
+	// 1. slice reader
+	buf.WriteByte(except)
+	buf.Flush()
+	r1, _ := buf.Slice(1)
+	fmt.Printf("1: %x\n", buf.flush.buf)
+	// 2. release & reset tail
+	buf.resetTail(LinkBufferCap)
+	buf.WriteByte(byte(2))
+	fmt.Printf("2: %x\n", buf.flush.buf)
+
+	// check slice reader
+	got, _ := r1.ReadByte()
+	Equal(t, got, except)
+}
+
 func TestWriteBuffer(t *testing.T) {
 	buf1 := NewLinkBuffer()
 	buf2 := NewLinkBuffer()
@@ -341,6 +365,57 @@ func TestWriteBuffer(t *testing.T) {
 	buf1.WriteBuffer(buf3)
 	buf1.Flush()
 	MustTrue(t, bytes.Equal(buf1.Bytes(), []byte{2, 3}))
+}
+
+func TestLinkBufferCheckSingleNode(t *testing.T) {
+	buf := NewLinkBuffer(block4k)
+	_, err := buf.Malloc(block8k)
+	MustNil(t, err)
+	buf.Flush()
+	MustTrue(t, buf.read.Len() == 0)
+	is := buf.isSingleNode(block8k)
+	MustTrue(t, is)
+	MustTrue(t, buf.read.Len() == block8k)
+	is = buf.isSingleNode(block8k + 1)
+	MustTrue(t, !is)
+
+	// cross node malloc, but b.read.Len() still == 0
+	buf = NewLinkBuffer(block4k)
+	_, err = buf.Malloc(block8k)
+	MustNil(t, err)
+	// not malloc ack yet
+	// read function will call isSingleNode inside
+	buf.isSingleNode(1)
+}
+
+func TestWriteMultiFlush(t *testing.T) {
+	buf := NewLinkBuffer()
+	b1, _ := buf.Malloc(4)
+	b1[0] = 1
+	b1[2] = 2
+	err := buf.Flush()
+	MustNil(t, err)
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 1)
+	MustTrue(t, len(buf.Bytes()) == 4)
+
+	err = buf.Skip(2)
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, len(buf.Bytes()) == 2)
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, len(buf.Bytes()) == 2)
+
+	b2, _ := buf.Malloc(2)
+	b2[0] = 3
+	err = buf.Flush()
+	MustNil(t, err)
+	MustTrue(t, buf.Bytes()[0] == 2)
+	MustTrue(t, buf.Bytes()[2] == 3)
+	MustTrue(t, len(buf.Bytes()) == 4)
 }
 
 func TestWriteBinary(t *testing.T) {
@@ -379,9 +454,11 @@ func TestWriteDirect(t *testing.T) {
 	buf.WriteDirect([]byte("nopqrst"), 28)
 	bt[4] = 'u'
 	buf.WriteDirect([]byte("vwxyz"), 27)
+	copy(bt[5:], "abcdefghijklmnopqrstuvwxyza")
+	buf.WriteDirect([]byte("abcdefghijklmnopqrstuvwxyz"), 0)
 	buf.Flush()
 	bs := buf.Bytes()
-	str := "abcdefghijklmnopqrstuvwxyz"
+	str := "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzaabcdefghijklmnopqrstuvwxyz"
 	for i := 0; i < len(str); i++ {
 		if bs[i] != str[i] {
 			t.Error("not equal!")

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -45,6 +45,10 @@ type Connection interface {
 	// A zero value for timeout means Reader will not timeout.
 	SetReadTimeout(timeout time.Duration) error
 
+	// SetWriteTimeout sets the timeout for future Write calls wait.
+	// A zero value for timeout means Writer will not timeout.
+	SetWriteTimeout(timeout time.Duration) error
+
 	// SetIdleTimeout sets the idle timeout of connections.
 	// Idle connections that exceed the set timeout are no longer guaranteed to be active,
 	// but can be checked by calling IsActive.
@@ -63,4 +67,29 @@ type Connection interface {
 	// the local resources, which bound to the idle connection, when hangup by the peer. No need another goroutine
 	// to polling check connection status.
 	AddCloseCallback(callback CloseCallback) error
+}
+
+// Conn extends net.Conn, but supports getting the conn's fd.
+type Conn interface {
+	net.Conn
+
+	// Fd return conn's fd, used by poll
+	Fd() (fd int)
+}
+
+// Listener extends net.Listener, but supports getting the listener's fd.
+type Listener interface {
+	net.Listener
+
+	// Fd return listener's fd, used by poll.
+	Fd() (fd int)
+}
+
+// Dialer extends net.Dialer's API, just for interface compatibility.
+// DialConnection is recommended, but of course all functions are practically the same.
+// The returned net.Conn can be directly asserted as Connection if error is nil.
+type Dialer interface {
+	DialConnection(network, address string, timeout time.Duration) (connection Connection, err error)
+
+	DialTimeout(network, address string, timeout time.Duration) (conn net.Conn, err error)
 }

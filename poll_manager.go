@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"runtime"
 )
 
@@ -28,14 +33,21 @@ func setLoadBalance(lb LoadBalance) error {
 	return pollmanager.SetLoadBalance(lb)
 }
 
+func setLoggerOutput(w io.Writer) {
+	logger = log.New(w, "", log.LstdFlags)
+}
+
 // manage all pollers
 var pollmanager *manager
+var logger *log.Logger
 
 func init() {
 	var loops = runtime.GOMAXPROCS(0)/20 + 1
 	pollmanager = &manager{}
 	pollmanager.SetLoadBalance(RoundRobin)
 	pollmanager.SetNumLoops(loops)
+
+	setLoggerOutput(os.Stderr)
 }
 
 // LoadBalance is used to do load balancing among multiple pollers.
@@ -49,7 +61,7 @@ type manager struct {
 // SetNumLoops will return error when set numLoops < 1
 func (m *manager) SetNumLoops(numLoops int) error {
 	if numLoops < 1 {
-		return fmt.Errorf("set invaild numLoops[%d]", numLoops)
+		return fmt.Errorf("set invalid numLoops[%d]", numLoops)
 	}
 
 	if numLoops < m.NumLoops {
@@ -60,7 +72,7 @@ func (m *manager) SetNumLoops(numLoops int) error {
 				polls[idx] = m.polls[idx]
 			} else {
 				if err := m.polls[idx].Close(); err != nil {
-					log.Printf("poller close failed: %v\n", err)
+					logger.Printf("NETPOLL: poller close failed: %v\n", err)
 				}
 			}
 		}
@@ -95,13 +107,24 @@ func (m *manager) Close() error {
 }
 
 // Run all pollers.
-func (m *manager) Run() error {
+func (m *manager) Run() (err error) {
+	defer func() {
+		if err != nil {
+			_ = m.Close()
+		}
+	}()
+
 	// new poll to fill delta.
 	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll = openPoll()
+		var poll Poll
+		poll, err = openPoll()
+		if err != nil {
+			return
+		}
 		m.polls = append(m.polls, poll)
 		go poll.Wait()
 	}
+
 	// LoadBalance must be set before calling Run, otherwise it will panic.
 	m.balance.Rebalance(m.polls)
 	return nil

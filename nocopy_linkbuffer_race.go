@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -403,11 +403,8 @@ func (b *LinkBuffer) Flush() (err error) {
 	b.Lock()
 	defer b.Unlock()
 	b.mallocSize = 0
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if cap(b.write.buf) > pagesize {
-		b.write.next = newLinkBufferNode(0)
-		b.write = b.write.next
-	}
+	b.write.next = newLinkBufferNode(0)
+	b.write = b.write.next
 	var n int
 	for node := b.flush; node != b.write.next; node = node.next {
 		delta := node.malloc - len(node.buf)
@@ -519,7 +516,7 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	// find origin
 	origin := b.flush
 	malloc := b.mallocSize - remainLen // calculate the remaining malloc length
-	for t := origin.malloc - len(origin.buf); t <= malloc; t = origin.malloc - len(origin.buf) {
+	for t := origin.malloc - len(origin.buf); t < malloc; t = origin.malloc - len(origin.buf) {
 		malloc -= t
 		origin = origin.next
 	}
@@ -530,18 +527,24 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	dataNode := newLinkBufferNode(0)
 	dataNode.buf, dataNode.malloc = p[:0], n
 
-	newNode := newLinkBufferNode(0)
-	newNode.off = malloc
-	newNode.buf = origin.buf[:malloc]
-	newNode.malloc = origin.malloc
-	newNode.readonly = false
-	origin.malloc = malloc
-	origin.readonly = true
+	if remainLen > 0 {
+		newNode := newLinkBufferNode(0)
+		newNode.off = malloc
+		newNode.buf = origin.buf[:malloc]
+		newNode.malloc = origin.malloc
+		newNode.readonly = false
+		origin.malloc = malloc
+		origin.readonly = true
 
-	// link nodes
-	dataNode.next = newNode
-	newNode.next = origin.next
-	origin.next = dataNode
+		// link nodes
+		dataNode.next = newNode
+		newNode.next = origin.next
+		origin.next = dataNode
+	} else {
+		// link nodes
+		dataNode.next = origin.next
+		origin.next = dataNode
+	}
 
 	// adjust b.write
 	for b.write.next != nil {
@@ -622,7 +625,8 @@ func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 //
 // bookSize: The size of data that can be read at once.
 // maxSize: The maximum size of data between two Release(). In some cases, this can
-// 	guarantee all data allocated in one node to reduce copy.
+//
+//	guarantee all data allocated in one node to reduce copy.
 func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	b.Lock()
 	defer b.Unlock()
@@ -855,7 +859,7 @@ func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
 		return true
 	}
 	l := b.read.Len()
-	for l == 0 {
+	for l == 0 && b.read != b.flush {
 		b.read = b.read.next
 		l = b.read.Len()
 	}

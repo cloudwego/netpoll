@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build dragonfly freebsd linux netbsd openbsd darwin
+//go:build !windows
+// +build !windows
 
 package netpoll
 
 import (
+	"math"
 	"os"
 	"syscall"
 	"unsafe"
@@ -68,6 +70,7 @@ func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_WRITEV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -83,6 +86,7 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_READV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
+	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -92,19 +96,38 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 // TODO: read from sysconf(_SC_IOV_MAX)? The Linux default is
 //  1024 and this seems conservative enough for now. Darwin's
 //  UIO_MAXIOV also seems to be 1024.
+// iovecs limit length to 2GB(2^31)
 func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
+	totalLen := 0
 	for i := 0; i < len(bs); i++ {
 		chunk := bs[i]
-		if len(chunk) == 0 {
+		l := len(chunk)
+		if l == 0 {
 			continue
 		}
-		iov := &syscall.Iovec{Base: &chunk[0]}
-		iov.SetLen(len(chunk))
-		// append
-		ivs[iovLen] = *iov
-		iovLen++
+		ivs[iovLen].Base = &chunk[0]
+		totalLen += l
+		if totalLen < math.MaxInt32 {
+			ivs[iovLen].SetLen(l)
+			iovLen++
+		} else {
+			newLen := math.MaxInt32 - totalLen + l
+			ivs[iovLen].SetLen(newLen)
+			iovLen++
+			return iovLen
+		}
 	}
+
 	return iovLen
+}
+
+func resetIovecs(bs [][]byte, ivs []syscall.Iovec) {
+	for i := 0; i < len(bs); i++ {
+		bs[i] = nil
+	}
+	for i := 0; i < len(ivs); i++ {
+		ivs[i].Base = nil
+	}
 }
 
 // Boolean to int.

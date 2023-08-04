@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,28 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
 	"sync/atomic"
-	"syscall"
 )
 
 // ------------------------------------------ implement FDOperator ------------------------------------------
 
 // onHup means close by poller.
 func (c *connection) onHup(p Poll) error {
-	if c.closeBy(poller) {
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
-		// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
-		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
-		// and it is safe to close the buffer at this time.
-		var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
-		var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-		if onConnect != nil || onRequest != nil {
-			c.closeCallback(true)
-		}
+	if !c.closeBy(poller) {
+		return nil
+	}
+	// already PollDetach when call OnHup
+	c.triggerRead(Exception(ErrEOF, "peer close"))
+	c.triggerWrite(Exception(ErrConnClosed, "peer close"))
+	// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
+	// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
+	// and it is safe to close the buffer at this time.
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	if onConnect != nil || onRequest != nil {
+		c.closeCallback(true)
 	}
 	return nil
 }
@@ -43,16 +47,22 @@ func (c *connection) onClose() error {
 	if c.closeBy(user) {
 		// If Close is called during OnPrepare, poll is not registered.
 		if c.operator.poll != nil {
-			c.operator.Control(PollDetach)
+			if err := c.operator.Control(PollDetach); err != nil {
+				logger.Printf("NETPOLL: onClose detach operator failed: %v", err)
+			}
 		}
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
+		c.triggerRead(Exception(ErrConnClosed, "self close"))
+		c.triggerWrite(Exception(ErrConnClosed, "self close"))
 		c.closeCallback(true)
 		return nil
 	}
-	if c.isCloseBy(poller) {
-		// Connection with OnRequest of nil
-		// relies on the user to actively close the connection to recycle resources.
+
+	closedByPoller := c.isCloseBy(poller)
+	// force change closed by user
+	c.force(closing, user)
+
+	// If OnRequest is nil, relies on the user to actively close the connection to recycle resources.
+	if closedByPoller {
 		c.closeCallback(true)
 	}
 	return nil
@@ -60,11 +70,18 @@ func (c *connection) onClose() error {
 
 // closeBuffer recycle input & output LinkBuffer.
 func (c *connection) closeBuffer() {
-	c.inputBuffer.Close()
-	barrierPool.Put(c.inputBarrier)
-
-	c.outputBuffer.Close()
-	barrierPool.Put(c.outputBarrier)
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
+	// if client close the connection, we cannot ensure that the poller is not process the buffer,
+	// so we need to check the buffer length, and if it's an "unclean" close operation, let's give up to reuse the buffer
+	if c.inputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		c.inputBuffer.Close()
+		barrierPool.Put(c.inputBarrier)
+	}
+	if c.outputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
+		c.outputBuffer.Close()
+		barrierPool.Put(c.outputBarrier)
+	}
 }
 
 // inputs implements FDOperator.
@@ -97,8 +114,8 @@ func (c *connection) inputAck(n int) (err error) {
 	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
 	}
-	if needTrigger && length >= int(atomic.LoadInt32(&c.waitReadSize)) {
-		c.triggerRead()
+	if needTrigger && length >= int(atomic.LoadInt64(&c.waitReadSize)) {
+		c.triggerRead(nil)
 	}
 	return nil
 }
@@ -129,35 +146,4 @@ func (c *connection) outputAck(n int) (err error) {
 func (c *connection) rw2r() {
 	c.operator.Control(PollRW2R)
 	c.triggerWrite(nil)
-}
-
-// flush write data directly.
-func (c *connection) flush() error {
-	if c.outputBuffer.IsEmpty() {
-		return nil
-	}
-	// TODO: Let the upper layer pass in whether to use ZeroCopy.
-	var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
-	var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
-	if err != nil && err != syscall.EAGAIN {
-		return Exception(err, "when flush")
-	}
-	if n > 0 {
-		err = c.outputBuffer.Skip(n)
-		c.outputBuffer.Release()
-		if err != nil {
-			return Exception(err, "when flush")
-		}
-	}
-	// return if write all buffer.
-	if c.outputBuffer.IsEmpty() {
-		return nil
-	}
-	err = c.operator.Control(PollR2RW)
-	if err != nil {
-		return Exception(err, "when flush")
-	}
-
-	err = <-c.writeTrigger
-	return err
 }
