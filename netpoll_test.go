@@ -251,6 +251,41 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestCloseConnWhenOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	conns := 10
+	var wg sync.WaitGroup
+	wg.Add(conns)
+	var loop = newTestEventLoop(network, address,
+		nil,
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			defer wg.Done()
+			err := connection.Close()
+			MustNil(t, err)
+			return ctx
+		}),
+	)
+
+	for i := 0; i < conns; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var conn, err = DialConnection(network, address, time.Second)
+			if err != nil {
+				return
+			}
+			_, err = conn.Reader().Next(1)
+			Assert(t, errors.Is(err, ErrEOF))
+			err = conn.Close()
+			MustNil(t, err)
+		}()
+	}
+
+	wg.Wait()
+	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func TestServerReadAndClose(t *testing.T) {
 	var network, address = "tcp", ":18888"
 	var sendMsg = []byte("hello")
@@ -362,8 +397,18 @@ func TestClientWriteAndClose(t *testing.T) {
 	MustNil(t, err)
 }
 
+func createTestListener(network, address string) (Listener, error) {
+	for {
+		ln, err := CreateListener(network, address)
+		if err == nil {
+			return ln, nil
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+}
+
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
-	ln, err := CreateListener(network, address)
+	ln, err := createTestListener(network, address)
 	if err != nil {
 		panic(err)
 	}

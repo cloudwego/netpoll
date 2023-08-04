@@ -90,6 +90,7 @@ func (p *defaultPoll) Wait() error {
 				continue
 			}
 
+			var totalRead int
 			evt := events[i]
 			triggerRead = evt.Filter == syscall.EVFILT_READ && evt.Flags&syscall.EV_ENABLE != 0
 			triggerWrite = evt.Filter == syscall.EVFILT_WRITE && evt.Flags&syscall.EV_ENABLE != 0
@@ -105,6 +106,7 @@ func (p *defaultPoll) Wait() error {
 					if len(bs) > 0 {
 						var n, err = ioread(operator.FD, bs, barriers[i].ivs)
 						operator.InputAck(n)
+						totalRead += n
 						if err != nil {
 							p.appendHup(operator)
 							continue
@@ -112,14 +114,20 @@ func (p *defaultPoll) Wait() error {
 					}
 				}
 			}
-			if triggerHup && triggerRead && operator.Inputs != nil { // read all left data if peer send and close
-				if err = readall(operator, barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
-					logger.Printf("NETPOLL: readall(fd=%d) before close: %s", operator.FD, err.Error())
-				}
-			}
 			if triggerHup {
-				p.appendHup(operator)
-				continue
+				if triggerRead && operator.Inputs != nil {
+					var leftRead int
+					// read all left data if peer send and close
+					if leftRead, err = readall(operator, barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
+						logger.Printf("NETPOLL: readall(fd=%d)=%d before close: %s", operator.FD, total, err.Error())
+					}
+					totalRead += leftRead
+				}
+				// only close connection if no further read bytes
+				if totalRead == 0 {
+					p.appendHup(operator)
+					continue
+				}
 			}
 			if triggerWrite {
 				if operator.OnWrite != nil {
@@ -172,19 +180,23 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	evs[0].Ident = uint64(operator.FD)
 	p.setOperator(unsafe.Pointer(&evs[0].Udata), operator)
 	switch event {
-	case PollReadable, PollModReadable:
+	case PollReadable:
 		operator.inuse()
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollWritable:
 		operator.inuse()
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE|syscall.EV_ONESHOT
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollDetach:
+		if operator.OnWrite != nil { // means WaitWrite finished
+			evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
+		} else {
+			evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE
+		}
 		p.delOperator(operator)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE|syscall.EV_ONESHOT
 	case PollR2RW:
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollRW2R:
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE|syscall.EV_ONESHOT
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err
