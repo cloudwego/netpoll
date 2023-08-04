@@ -36,7 +36,7 @@ type connection struct {
 	operator        *FDOperator
 	readTimeout     time.Duration
 	readTimer       *time.Timer
-	readTrigger     chan struct{}
+	readTrigger     chan error
 	waitReadSize    int64
 	writeTimeout    time.Duration
 	writeTimer      *time.Timer
@@ -50,9 +50,11 @@ type connection struct {
 	bookSize        int // The size of data that can be read at once.
 }
 
-var _ Connection = &connection{}
-var _ Reader = &connection{}
-var _ Writer = &connection{}
+var (
+	_ Connection = &connection{}
+	_ Reader     = &connection{}
+	_ Writer     = &connection{}
+)
 
 // Reader implements Connection.
 func (c *connection) Reader() Reader {
@@ -168,7 +170,7 @@ func (c *connection) Until(delim byte) (line []byte, err error) {
 		l = c.inputBuffer.Len()
 		i := c.inputBuffer.indexByte(delim, n)
 		if i < 0 {
-			n = l //skip all exists bytes
+			n = l // skip all exists bytes
 			continue
 		}
 		return c.Next(i + 1)
@@ -297,6 +299,12 @@ func (c *connection) Close() error {
 	return c.onClose()
 }
 
+// Detach detaches the connection from poller but doesn't close it.
+func (c *connection) Detach() error {
+	c.detaching = true
+	return c.onClose()
+}
+
 // ------------------------------------------ private ------------------------------------------
 
 var barrierPool = sync.Pool{
@@ -311,9 +319,9 @@ var barrierPool = sync.Pool{
 // init initialize the connection with options
 func (c *connection) init(conn Conn, opts *options) (err error) {
 	// init buffer, barrier, finalizer
-	c.readTrigger = make(chan struct{}, 1)
+	c.readTrigger = make(chan error, 1)
 	c.writeTrigger = make(chan error, 1)
-	c.bookSize, c.maxSize = block1k/2, pagesize
+	c.bookSize, c.maxSize = pagesize, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
 
@@ -349,27 +357,18 @@ func (c *connection) initNetFD(conn Conn) {
 }
 
 func (c *connection) initFDOperator() {
-	var op *FDOperator
-	if c.pd != nil && c.pd.operator != nil {
-		// reuse operator created at connect step
-		op = c.pd.operator
-	} else {
-		poll := pollmanager.Pick()
-		op = poll.Alloc()
-	}
+	poll := pollmanager.Pick()
+	op := poll.Alloc()
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck
 	op.Outputs, op.OutputAck = c.outputs, c.outputAck
-
 	c.operator = op
 }
 
 func (c *connection) initFinalizer() {
 	c.AddCloseCallback(func(connection Connection) (err error) {
 		c.stop(flushing)
-		// stop the finalizing state to prevent conn.fill function to be performed
-		c.stop(finalizing)
 		c.operator.Free()
 		if err = c.netFD.Close(); err != nil {
 			logger.Printf("NETPOLL: netFD close failed: %v", err)
@@ -379,9 +378,9 @@ func (c *connection) initFinalizer() {
 	})
 }
 
-func (c *connection) triggerRead() {
+func (c *connection) triggerRead(err error) {
 	select {
-	case c.readTrigger <- struct{}{}:
+	case c.readTrigger <- err:
 	default:
 	}
 }
@@ -405,15 +404,17 @@ func (c *connection) waitRead(n int) (err error) {
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
-		if c.IsActive() {
-			<-c.readTrigger
-			continue
+		switch c.status(closing) {
+		case poller:
+			return Exception(ErrEOF, "wait read")
+		case user:
+			return Exception(ErrConnClosed, "wait read")
+		default:
+			err = <-c.readTrigger
+			if err != nil {
+				return err
+			}
 		}
-		// confirm that fd is still valid.
-		if atomic.LoadUint32(&c.netFD.closed) == 0 {
-			return c.fill(n)
-		}
-		return Exception(ErrConnClosed, "wait read")
 	}
 	return nil
 }
@@ -428,65 +429,35 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	}
 
 	for c.inputBuffer.Len() < n {
-		if !c.IsActive() {
-			// cannot return directly, stop timer before !
-			// confirm that fd is still valid.
-			if atomic.LoadUint32(&c.netFD.closed) == 0 {
-				err = c.fill(n)
-			} else {
-				err = Exception(ErrConnClosed, "wait read")
+		switch c.status(closing) {
+		case poller:
+			// cannot return directly, stop timer first!
+			err = Exception(ErrEOF, "wait read")
+			goto RET
+		case user:
+			// cannot return directly, stop timer first!
+			err = Exception(ErrConnClosed, "wait read")
+			goto RET
+		default:
+			select {
+			case <-c.readTimer.C:
+				// double check if there is enough data to be read
+				if c.inputBuffer.Len() >= n {
+					return nil
+				}
+				return Exception(ErrReadTimeout, c.remoteAddr.String())
+			case err = <-c.readTrigger:
+				if err != nil {
+					return err
+				}
+				continue
 			}
-			break
-		}
-
-		select {
-		case <-c.readTimer.C:
-			// double check if there is enough data to be read
-			if c.inputBuffer.Len() >= n {
-				return nil
-			}
-			return Exception(ErrReadTimeout, c.remoteAddr.String())
-		case <-c.readTrigger:
-			continue
 		}
 	}
-
+RET:
 	// clean timer.C
 	if !c.readTimer.Stop() {
 		<-c.readTimer.C
-	}
-	return err
-}
-
-// fill data after connection is closed.
-func (c *connection) fill(need int) (err error) {
-	if !c.lock(finalizing) {
-		return ErrConnClosed
-	}
-	defer c.unlock(finalizing)
-
-	var n int
-	var bs [][]byte
-	for {
-		bs = c.inputs(c.inputBarrier.bs)
-	TryRead:
-		n, err = readv(c.fd, bs, c.inputBarrier.ivs)
-		if err != nil {
-			if err == syscall.EINTR {
-				// if err == EINTR, we must reuse bs that has been booked
-				// otherwise will mess the input buffer
-				goto TryRead
-			}
-			break
-		}
-		if n == 0 {
-			err = Exception(ErrEOF, "")
-			break
-		}
-		c.inputAck(n)
-	}
-	if c.inputBuffer.Len() >= need {
-		return nil
 	}
 	return err
 }

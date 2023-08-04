@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 )
 
-type who int32
+type who = int32
 
 const (
 	none who = iota
@@ -47,7 +47,6 @@ const (
 	closing key = iota
 	processing
 	flushing
-	finalizing
 	// total must be at the bottom.
 	total
 )
@@ -64,6 +63,14 @@ func (l *locker) closeBy(w who) (success bool) {
 
 func (l *locker) isCloseBy(w who) (yes bool) {
 	return atomic.LoadInt32(&l.keychain[closing]) == int32(w)
+}
+
+func (l *locker) status(k key) int32 {
+	return atomic.LoadInt32(&l.keychain[k])
+}
+
+func (l *locker) force(k key, v int32) {
+	atomic.StoreInt32(&l.keychain[k], v)
 }
 
 func (l *locker) lock(k key) (success bool) {

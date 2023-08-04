@@ -107,13 +107,24 @@ func (m *manager) Close() error {
 }
 
 // Run all pollers.
-func (m *manager) Run() error {
+func (m *manager) Run() (err error) {
+	defer func() {
+		if err != nil {
+			_ = m.Close()
+		}
+	}()
+
 	// new poll to fill delta.
 	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll = openPoll()
+		var poll Poll
+		poll, err = openPoll()
+		if err != nil {
+			return
+		}
 		m.polls = append(m.polls, poll)
 		go poll.Wait()
 	}
+
 	// LoadBalance must be set before calling Run, otherwise it will panic.
 	m.balance.Rebalance(m.polls)
 	return nil

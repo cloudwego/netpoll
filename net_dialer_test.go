@@ -167,7 +167,7 @@ func TestFDClose(t *testing.T) {
 // fd data package race test, use two servers and two dialers.
 func TestDialerThenClose(t *testing.T) {
 	// server 1
-	ln1, _ := CreateListener("tcp", ":1231")
+	ln1, _ := createTestListener("tcp", ":1231")
 	el1 := mockDialerEventLoop(1)
 	go func() {
 		el1.Serve(ln1)
@@ -177,7 +177,7 @@ func TestDialerThenClose(t *testing.T) {
 	defer el1.Shutdown(ctx1)
 
 	// server 2
-	ln2, _ := CreateListener("tcp", ":1232")
+	ln2, _ := createTestListener("tcp", ":1232")
 	el2 := mockDialerEventLoop(2)
 	go func() {
 		el2.Serve(ln2)

@@ -90,7 +90,7 @@ func (c *connection) AddCloseCallback(callback CloseCallback) error {
 	return nil
 }
 
-// OnPrepare supports close connection, but not read/write data.
+// onPrepare supports close connection, but not read/write data.
 // connection will be registered by this call after preparing.
 func (c *connection) onPrepare(opts *options) (err error) {
 	if opts != nil {
@@ -177,18 +177,31 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 	}
 	// add new task
 	var task = func() {
+		panicked := true
+		defer func() {
+			// cannot use recover() here, since we don't want to break the panic stack
+			if panicked {
+				c.unlock(processing)
+				if c.IsActive() {
+					c.Close()
+				} else {
+					c.closeCallback(false)
+				}
+			}
+		}()
 	START:
 		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
 		// Then the loop processing must ensure that the connection `IsActive`.
 		if isProcessable(c) {
 			process(c)
 		}
-		for c.IsActive() && isProcessable(c) {
+		for !c.isCloseBy(user) && isProcessable(c) {
 			process(c)
 		}
 		// Handling callback if connection has been closed.
 		if !c.IsActive() {
 			c.closeCallback(false)
+			panicked = false
 			return
 		}
 		c.unlock(processing)
@@ -197,6 +210,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			goto START
 		}
 		// task exits
+		panicked = false
 		return
 	}
 
@@ -211,12 +225,6 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
 	}
-	// If Close is called during OnPrepare, poll is not registered.
-	if c.isCloseBy(user) && c.operator.poll != nil {
-		if err = c.operator.Control(PollDetach); err != nil {
-			logger.Printf("NETPOLL: closeCallback detach operator failed: %v", err)
-		}
-	}
 	var latest = c.closeCallbacks.Load()
 	if latest == nil {
 		return nil
@@ -229,14 +237,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
-	if c.operator.isUnused() {
-		// operator is not registered
-		err = c.operator.Control(PollReadable)
-	} else {
-		// operator is already registered
-		// change event to wait read new data
-		err = c.operator.Control(PollModReadable)
-	}
+	err = c.operator.Control(PollReadable)
 	if err != nil {
 		logger.Printf("NETPOLL: connection register failed: %v", err)
 		c.Close()
