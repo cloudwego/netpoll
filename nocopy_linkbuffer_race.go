@@ -397,8 +397,11 @@ func (b *LinkBuffer) Flush() (err error) {
 	b.Lock()
 	defer b.Unlock()
 	b.mallocSize = 0
-	b.write.next = newLinkBufferNode(0)
-	b.write = b.write.next
+	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
+	if cap(b.write.buf) > pagesize {
+		b.write.next = newLinkBufferNode(0)
+		b.write = b.write.next
+	}
 	var n int
 	for node := b.flush; node != b.write.next; node = node.next {
 		delta := node.malloc - len(node.buf)
@@ -619,8 +622,7 @@ func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 //
 // bookSize: The size of data that can be read at once.
 // maxSize: The maximum size of data between two Release(). In some cases, this can
-//
-//	guarantee all data allocated in one node to reduce copy.
+// 	guarantee all data allocated in one node to reduce copy.
 func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	b.Lock()
 	defer b.Unlock()
