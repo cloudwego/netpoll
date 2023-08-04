@@ -1,6 +1,6 @@
 name: Push and Pull Request Check
 
-on: [ push, pull_request ]
+on: [ push ]
 
 jobs:
   compatibility-test:
