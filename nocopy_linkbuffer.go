@@ -365,11 +365,10 @@ func (b *LinkBuffer) MallocAck(n int) (err error) {
 // Flush will submit all malloc data and must confirm that the allocated bytes have been correctly assigned.
 func (b *LinkBuffer) Flush() (err error) {
 	b.mallocSize = 0
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if cap(b.write.buf) > pagesize {
-		b.write.next = newLinkBufferNode(0)
-		b.write = b.write.next
-	}
+	// append an empty tail node to prevent memory leak if connection is not closed.
+	b.write.next = newLinkBufferNode(0)
+	b.write = b.write.next
+
 	var n int
 	for node := b.flush; node != b.write.next; node = node.next {
 		delta := node.malloc - len(node.buf)
