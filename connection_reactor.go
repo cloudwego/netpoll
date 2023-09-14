@@ -31,11 +31,12 @@ func (c *connection) onHup(p Poll) error {
 	c.triggerRead(Exception(ErrEOF, "peer close"))
 	c.triggerWrite(Exception(ErrConnClosed, "peer close"))
 	// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
-	// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
+	// It can be confirmed that the OnRequest goroutine has been exited before closeCallback executing,
 	// and it is safe to close the buffer at this time.
-	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
-	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-	if onConnect != nil || onRequest != nil {
+	var onConnect = c.onConnectCallback.Load()
+	var onRequest = c.onRequestCallback.Load()
+	var needCloseByUser = onConnect == nil && onRequest == nil
+	if !needCloseByUser {
 		// already PollDetach when call OnHup
 		c.closeCallback(true, false)
 	}

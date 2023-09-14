@@ -594,16 +594,21 @@ func TestConnectionServerClose(t *testing.T) {
 		}
 	}()
 
-	var onRequest OnRequest = func(ctx context.Context, connection Connection) error {
+	var clientOnRequest OnRequest = func(ctx context.Context, connection Connection) error {
 		defer wg.Done()
 		buf, err := connection.Reader().Next(4)
 		MustNil(t, err)
 		Equal(t, string(buf), "ping")
+
 		_, err = connection.Writer().WriteString("pong")
 		MustNil(t, err)
 		err = connection.Writer().Flush()
 		MustNil(t, err)
-		return nil
+
+		_, err = connection.Reader().Next(1) // server will not send any data, just wait for server close
+		MustTrue(t, errors.Is(err, ErrEOF))  // should get EOF when server close
+
+		return connection.Close()
 	}
 	conns := 100
 	// server: OnPrepare, OnConnect, OnRequest, CloseCallback
@@ -613,7 +618,7 @@ func TestConnectionServerClose(t *testing.T) {
 		go func() {
 			conn, err := DialConnection("tcp", ":12345", time.Second)
 			MustNil(t, err)
-			err = conn.SetOnRequest(onRequest)
+			err = conn.SetOnRequest(clientOnRequest)
 			MustNil(t, err)
 			conn.AddCloseCallback(func(connection Connection) error {
 				wg.Done()
@@ -621,5 +626,6 @@ func TestConnectionServerClose(t *testing.T) {
 			})
 		}()
 	}
+	//time.Sleep(time.Second)
 	wg.Wait()
 }
