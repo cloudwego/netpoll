@@ -540,3 +540,86 @@ func TestParallelShortConnection(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 	}
 }
+
+func TestConnectionServerClose(t *testing.T) {
+	ln, err := createTestListener("tcp", ":12345")
+	MustNil(t, err)
+	defer ln.Close()
+
+	/*
+		Client              Server
+		- Client --- connect   --> Server
+		- Client <-- [ping]   --- Server
+		- Client --- [pong]   --> Server
+		- Client <-- close     --- Server
+		- Client --- close     --> Server
+	*/
+
+	var wg sync.WaitGroup
+	el, err := NewEventLoop(
+		func(ctx context.Context, connection Connection) error {
+			defer wg.Done()
+			buf, err := connection.Reader().Next(4) // pong
+			Equal(t, string(buf), "pong")
+			MustNil(t, err)
+			return connection.Close()
+		},
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			defer wg.Done()
+			// check OnPrepare
+			v := ctx.Value("prepare").(string)
+			Equal(t, v, "true")
+
+			send := []byte("ping")
+			_, err = connection.Writer().WriteBinary(send)
+			MustNil(t, err)
+			err = connection.Writer().Flush()
+			MustNil(t, err)
+			connection.AddCloseCallback(func(connection Connection) error {
+				wg.Done()
+				return nil
+			})
+			return ctx
+		}),
+		WithOnPrepare(func(connection Connection) context.Context {
+			defer wg.Done()
+			return context.WithValue(context.Background(), "prepare", "true")
+		}),
+	)
+	defer el.Shutdown(context.Background())
+	go func() {
+		err := el.Serve(ln)
+		if err != nil {
+			t.Logf("servce end with error: %v", err)
+		}
+	}()
+
+	var onRequest OnRequest = func(ctx context.Context, connection Connection) error {
+		defer wg.Done()
+		buf, err := connection.Reader().Next(4)
+		MustNil(t, err)
+		Equal(t, string(buf), "ping")
+		_, err = connection.Writer().WriteString("pong")
+		MustNil(t, err)
+		err = connection.Writer().Flush()
+		MustNil(t, err)
+		return nil
+	}
+	conns := 100
+	// server: OnPrepare, OnConnect, OnRequest, CloseCallback
+	// client: OnRequest, CloseCallback
+	wg.Add(conns * 6)
+	for i := 0; i < conns; i++ {
+		go func() {
+			conn, err := DialConnection("tcp", ":12345", time.Second)
+			MustNil(t, err)
+			err = conn.SetOnRequest(onRequest)
+			MustNil(t, err)
+			conn.AddCloseCallback(func(connection Connection) error {
+				wg.Done()
+				return nil
+			})
+		}()
+	}
+	wg.Wait()
+}
