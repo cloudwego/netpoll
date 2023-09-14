@@ -48,7 +48,6 @@ type onEvent struct {
 	onConnectCallback atomic.Value
 	onRequestCallback atomic.Value
 	closeCallbacks    atomic.Value // value is latest *callbackNode
-	closeCallbackOnce int32
 }
 
 type callbackNode struct {

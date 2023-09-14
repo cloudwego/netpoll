@@ -554,34 +554,41 @@ func TestConnectionServerClose(t *testing.T) {
 		- Client <-- close     --- Server
 		- Client --- close     --> Server
 	*/
-
+	const PING, PONG = "ping", "pong"
 	var wg sync.WaitGroup
 	el, err := NewEventLoop(
 		func(ctx context.Context, connection Connection) error {
+			t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
-			buf, err := connection.Reader().Next(4) // pong
-			Equal(t, string(buf), "pong")
+			buf, err := connection.Reader().Next(len(PONG)) // pong
+			Equal(t, string(buf), PONG)
 			MustNil(t, err)
-			return connection.Close()
+			err = connection.Reader().Release()
+			MustNil(t, err)
+			err = connection.Close()
+			MustNil(t, err)
+			return err
 		},
 		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			t.Logf("server.OnConnect: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			// check OnPrepare
 			v := ctx.Value("prepare").(string)
 			Equal(t, v, "true")
 
-			send := []byte("ping")
-			_, err = connection.Writer().WriteBinary(send)
+			_, err := connection.Writer().WriteBinary([]byte(PING))
 			MustNil(t, err)
 			err = connection.Writer().Flush()
 			MustNil(t, err)
 			connection.AddCloseCallback(func(connection Connection) error {
+				t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
 				wg.Done()
 				return nil
 			})
 			return ctx
 		}),
 		WithOnPrepare(func(connection Connection) context.Context {
+			t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			return context.WithValue(context.Background(), "prepare", "true")
 		}),
@@ -595,12 +602,13 @@ func TestConnectionServerClose(t *testing.T) {
 	}()
 
 	var clientOnRequest OnRequest = func(ctx context.Context, connection Connection) error {
+		t.Logf("client.OnRequest: addr=%s", connection.LocalAddr())
 		defer wg.Done()
-		buf, err := connection.Reader().Next(4)
+		buf, err := connection.Reader().Next(len(PING))
 		MustNil(t, err)
-		Equal(t, string(buf), "ping")
+		Equal(t, string(buf), PING)
 
-		_, err = connection.Writer().WriteString("pong")
+		_, err = connection.Writer().WriteBinary([]byte(PONG))
 		MustNil(t, err)
 		err = connection.Writer().Flush()
 		MustNil(t, err)
@@ -621,7 +629,8 @@ func TestConnectionServerClose(t *testing.T) {
 			err = conn.SetOnRequest(clientOnRequest)
 			MustNil(t, err)
 			conn.AddCloseCallback(func(connection Connection) error {
-				wg.Done()
+				t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
+				defer wg.Done()
 				return nil
 			})
 		}()
