@@ -1,12 +1,12 @@
 name: Push and Pull Request Check
 
-on: [ push ]
+on: [ push, pull_request ]
 
 jobs:
   compatibility-test:
     strategy:
       matrix:
-        go: [ 1.15, "1.20" ]
+        go: [ 1.15, "1.21" ]
         os: [ X64, ARM64 ]
     runs-on: ${{ matrix.os }}
     steps:

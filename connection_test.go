@@ -540,3 +540,101 @@ func TestParallelShortConnection(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 	}
 }
+
+func TestConnectionServerClose(t *testing.T) {
+	ln, err := createTestListener("tcp", ":12345")
+	MustNil(t, err)
+	defer ln.Close()
+
+	/*
+		Client              Server
+		- Client --- connect   --> Server
+		- Client <-- [ping]   --- Server
+		- Client --- [pong]   --> Server
+		- Client <-- close     --- Server
+		- Client --- close     --> Server
+	*/
+	const PING, PONG = "ping", "pong"
+	var wg sync.WaitGroup
+	el, err := NewEventLoop(
+		func(ctx context.Context, connection Connection) error {
+			t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
+			defer wg.Done()
+			buf, err := connection.Reader().Next(len(PONG)) // pong
+			Equal(t, string(buf), PONG)
+			MustNil(t, err)
+			err = connection.Reader().Release()
+			MustNil(t, err)
+			err = connection.Close()
+			MustNil(t, err)
+			return err
+		},
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			t.Logf("server.OnConnect: addr=%s", connection.RemoteAddr())
+			defer wg.Done()
+			// check OnPrepare
+			v := ctx.Value("prepare").(string)
+			Equal(t, v, "true")
+
+			_, err := connection.Writer().WriteBinary([]byte(PING))
+			MustNil(t, err)
+			err = connection.Writer().Flush()
+			MustNil(t, err)
+			connection.AddCloseCallback(func(connection Connection) error {
+				t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
+				wg.Done()
+				return nil
+			})
+			return ctx
+		}),
+		WithOnPrepare(func(connection Connection) context.Context {
+			t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
+			defer wg.Done()
+			return context.WithValue(context.Background(), "prepare", "true")
+		}),
+	)
+	defer el.Shutdown(context.Background())
+	go func() {
+		err := el.Serve(ln)
+		if err != nil {
+			t.Logf("servce end with error: %v", err)
+		}
+	}()
+
+	var clientOnRequest OnRequest = func(ctx context.Context, connection Connection) error {
+		t.Logf("client.OnRequest: addr=%s", connection.LocalAddr())
+		defer wg.Done()
+		buf, err := connection.Reader().Next(len(PING))
+		MustNil(t, err)
+		Equal(t, string(buf), PING)
+
+		_, err = connection.Writer().WriteBinary([]byte(PONG))
+		MustNil(t, err)
+		err = connection.Writer().Flush()
+		MustNil(t, err)
+
+		_, err = connection.Reader().Next(1) // server will not send any data, just wait for server close
+		MustTrue(t, errors.Is(err, ErrEOF))  // should get EOF when server close
+
+		return connection.Close()
+	}
+	conns := 100
+	// server: OnPrepare, OnConnect, OnRequest, CloseCallback
+	// client: OnRequest, CloseCallback
+	wg.Add(conns * 6)
+	for i := 0; i < conns; i++ {
+		go func() {
+			conn, err := DialConnection("tcp", ":12345", time.Second)
+			MustNil(t, err)
+			err = conn.SetOnRequest(clientOnRequest)
+			MustNil(t, err)
+			conn.AddCloseCallback(func(connection Connection) error {
+				t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
+				defer wg.Done()
+				return nil
+			})
+		}()
+	}
+	//time.Sleep(time.Second)
+	wg.Wait()
+}
