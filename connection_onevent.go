@@ -195,13 +195,26 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		if isProcessable(c) {
 			process(c)
 		}
-		for !c.isCloseBy(user) && isProcessable(c) {
+		// `process` must either eventually read all the input data or actively Close the connection,
+		// otherwise the goroutine will fall into a dead loop.
+		var closedBy who
+		for {
+			closedBy = c.status(closing)
+			// close by user or no processable
+			if closedBy == user || !isProcessable(c) {
+				break
+			}
 			process(c)
 		}
 		// Handling callback if connection has been closed.
-		if !c.IsActive() {
-			// connection if closed by user when processing, so it needs detach
-			c.closeCallback(false, true)
+		if closedBy != none {
+			//  if closed by user when processing, it "may" needs detach
+			needDetach := closedBy == user
+			// Here is a conor case that operator will be detached twice:
+			//   If server closed the connection(client OnHup will detach op first and closeBy=poller),
+			//   and then client's OnRequest function also closed the connection(closeBy=user).
+			// But operator already prevent that detach twice will not cause any problem
+			c.closeCallback(false, needDetach)
 			panicked = false
 			return
 		}
@@ -229,7 +242,7 @@ func (c *connection) closeCallback(needLock bool, needDetach bool) (err error) {
 	if needDetach && c.operator.poll != nil { // If Close is called during OnPrepare, poll is not registered.
 		// PollDetach only happen when user call conn.Close() or poller detect error
 		if err := c.operator.Control(PollDetach); err != nil {
-			logger.Printf("NETPOLL: onClose detach operator failed: %v", err)
+			logger.Printf("NETPOLL: closeCallback[%v,%v] detach operator failed: %v", needLock, needDetach, err)
 		}
 	}
 	var latest = c.closeCallbacks.Load()
