@@ -1,4 +1,4 @@
-// Copyright 2022 CloudWeGo Authors
+// Copyright 2023 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,25 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-// +build !windows
+//go:build (darwin || netbsd || freebsd || openbsd || dragonfly) && !race
+// +build darwin netbsd freebsd openbsd dragonfly
+// +build !race
 
 package netpoll
 
-import (
-	"errors"
-	"syscall"
-	"testing"
-)
+import "unsafe"
 
-func TestErrno(t *testing.T) {
-	var err1 error = Exception(ErrConnClosed, "when next")
-	MustTrue(t, errors.Is(err1, ErrConnClosed))
-	Equal(t, err1.Error(), "connection has been closed when next")
-	t.Logf("error1=%s", err1)
+func (p *defaultPoll) getOperator(fd int, ptr unsafe.Pointer) *FDOperator {
+	return *(**FDOperator)(ptr)
+}
 
-	var err2 error = Exception(syscall.EPIPE, "when flush")
-	MustTrue(t, errors.Is(err2, syscall.EPIPE))
-	Equal(t, err2.Error(), "broken pipe when flush")
-	t.Logf("error2=%s", err2)
+func (p *defaultPoll) setOperator(ptr unsafe.Pointer, operator *FDOperator) {
+	*(**FDOperator)(ptr) = operator
+}
+
+func (p *defaultPoll) delOperator(operator *FDOperator) {
+
 }

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -80,8 +80,17 @@ type Reader interface {
 	//
 	ReadByte() (b byte, err error)
 
-	// Slice returns a new Reader containing the next n bytes from this reader,
-	// the operation is zero-copy, similar to b = p [:n].
+	// Slice returns a new Reader containing the Next n bytes from this Reader.
+	//
+	// If you want to make a new Reader using the []byte returned by Next, Slice already does that,
+	// and the operation is zero-copy. Besides, Slice would also Release this Reader.
+	// The logic pseudocode is similar:
+	//
+	//  var p, err = this.Next(n)
+	//  var reader = new Reader(p) // pseudocode
+	//  this.Release()
+	//  return reader, err
+	//
 	Slice(n int) (r Reader, err error)
 
 	// Release the memory space occupied by all read slices. This method needs to be executed actively to

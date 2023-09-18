@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import (
 const (
 	// The connection closed when in use.
 	ErrConnClosed = syscall.Errno(0x101)
-	// read I/O buffer timeout, calling by Connection.Reader
+	// Read I/O buffer timeout, calling by Connection.Reader
 	ErrReadTimeout = syscall.Errno(0x102)
-	// dial timeout
+	// Dial timeout
 	ErrDialTimeout = syscall.Errno(0x103)
 	// Calling dialer without timeout.
 	ErrDialNoDeadline = syscall.Errno(0x104) // TODO: no-deadline support in future
@@ -33,6 +33,8 @@ const (
 	ErrUnsupported = syscall.Errno(0x105)
 	// Same as io.EOF
 	ErrEOF = syscall.Errno(0x106)
+	// Write I/O buffer timeout, calling by Connection.Writer
+	ErrWriteTimeout = syscall.Errno(0x107)
 )
 
 const ErrnoMask = 0xFF
@@ -94,4 +96,5 @@ var errnos = [...]string{
 	ErrnoMask & ErrDialNoDeadline: "dial no deadline",
 	ErrnoMask & ErrUnsupported:    "netpoll dose not support",
 	ErrnoMask & ErrEOF:            "EOF",
+	ErrnoMask & ErrWriteTimeout:   "connection write timeout",
 }

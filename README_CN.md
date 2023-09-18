@@ -29,10 +29,9 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 同时，[Netpoll][Netpoll] 还提供了一些 [特性](#特性)，推荐在 RPC 设计中替代
 [net][net] 。
 
-基于 [Netpoll][Netpoll] 开发的 RPC 框架 [Kitex][Kitex] 和 HTTP
-框架 [Hertz][Hertz] (即将开源)，性能均业界领先。
+基于 [Netpoll][Netpoll] 开发的 RPC 框架 [Kitex][Kitex] 和 HTTP 框架 [Hertz][Hertz]，性能均业界领先。
 
-[范例][netpoll-benchmark] 展示了如何使用 [Netpoll][Netpoll]
+[范例][netpoll-examples] 展示了如何使用 [Netpoll][Netpoll]
 构建 RPC Client 和 Server。
 
 更多信息请参阅 [文档](#文档)。
@@ -50,10 +49,8 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
     - 支持 Linux，macOS（操作系统）
 
 * **即将开源**
-    - [multisyscall][multisyscall] 支持批量系统调用
     - [io_uring][io_uring]
     - Shared Memory IPC
-    - 串行调度 I/O，适用于纯计算
     - 支持 TLS
     - 支持 UDP
 
@@ -66,7 +63,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 
 我们提供了 [netpoll-benchmark][netpoll-benchmark] 项目用来长期追踪和比较 [Netpoll][Netpoll] 与其他框架在不同情况下的性能数据以供参考。
 
-更多测试参考 [kitex-benchmark][kitex-benchmark] 和 [hertz-benchmark][hertz-benchmark] (即将开源)
+更多测试参考 [kitex-benchmark][kitex-benchmark] 和 [hertz-benchmark][hertz-benchmark]
 
 ## 参考
 
@@ -87,6 +84,7 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 [netpoll-benchmark]: https://github.com/cloudwego/netpoll-benchmark
 [kitex-benchmark]: https://github.com/cloudwego/kitex-benchmark
 [hertz-benchmark]: https://github.com/cloudwego/hertz-benchmark
+[netpoll-examples]:https://github.com/cloudwego/netpoll-examples
 
 [ByteDance]: https://www.bytedance.com
 [Redis]: https://redis.io
@@ -95,5 +93,4 @@ goroutine，大幅增加调度开销。此外，[net.Conn][net.Conn] 没有提�
 [LinkBuffer]: nocopy_linkbuffer.go
 [gopool]: https://github.com/bytedance/gopkg/tree/develop/util/gopool
 [mcache]: https://github.com/bytedance/gopkg/tree/develop/lang/mcache
-[multisyscall]: https://github.com/cloudwego/multisyscall
 [io_uring]: https://github.com/axboe/liburing

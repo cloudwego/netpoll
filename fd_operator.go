@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -42,13 +42,24 @@ type FDOperator struct {
 	// poll is the registered location of the file descriptor.
 	poll Poll
 
+	// protect only detach once
+	detached int32
+
 	// private, used by operatorCache
 	next  *FDOperator
 	state int32 // CAS: 0(unused) 1(inuse) 2(do-done)
+	index int32 // index in operatorCache
 }
 
 func (op *FDOperator) Control(event PollEvent) error {
+	if event == PollDetach && atomic.AddInt32(&op.detached, 1) > 1 {
+		return nil
+	}
 	return op.poll.Control(op, event)
+}
+
+func (op *FDOperator) Free() {
+	op.poll.Free(op)
 }
 
 func (op *FDOperator) do() (can bool) {
@@ -87,4 +98,5 @@ func (op *FDOperator) reset() {
 	op.Inputs, op.InputAck = nil, nil
 	op.Outputs, op.OutputAck = nil, nil
 	op.poll = nil
+	op.detached = 0
 }

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
 	"context"
-	"log"
 	"sync/atomic"
 
 	"github.com/bytedance/gopkg/util/gopool"
@@ -54,42 +56,48 @@ type callbackNode struct {
 }
 
 // SetOnConnect set the OnConnect callback.
-func (on *onEvent) SetOnConnect(onConnect OnConnect) error {
+func (c *connection) SetOnConnect(onConnect OnConnect) error {
 	if onConnect != nil {
-		on.onConnectCallback.Store(onConnect)
+		c.onConnectCallback.Store(onConnect)
 	}
 	return nil
 }
 
 // SetOnRequest initialize ctx when setting OnRequest.
-func (on *onEvent) SetOnRequest(onRequest OnRequest) error {
-	if onRequest != nil {
-		on.onRequestCallback.Store(onRequest)
+func (c *connection) SetOnRequest(onRequest OnRequest) error {
+	if onRequest == nil {
+		return nil
+	}
+	c.onRequestCallback.Store(onRequest)
+	// fix: trigger OnRequest if there is already input data.
+	if !c.inputBuffer.IsEmpty() {
+		c.onRequest()
 	}
 	return nil
 }
 
 // AddCloseCallback adds a CloseCallback to this connection.
-func (on *onEvent) AddCloseCallback(callback CloseCallback) error {
+func (c *connection) AddCloseCallback(callback CloseCallback) error {
 	if callback == nil {
 		return nil
 	}
 	var cb = &callbackNode{}
 	cb.fn = callback
-	if pre := on.closeCallbacks.Load(); pre != nil {
+	if pre := c.closeCallbacks.Load(); pre != nil {
 		cb.pre = pre.(*callbackNode)
 	}
-	on.closeCallbacks.Store(cb)
+	c.closeCallbacks.Store(cb)
 	return nil
 }
 
-// OnPrepare supports close connection, but not read/write data.
+// onPrepare supports close connection, but not read/write data.
 // connection will be registered by this call after preparing.
 func (c *connection) onPrepare(opts *options) (err error) {
 	if opts != nil {
 		c.SetOnConnect(opts.onConnect)
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
+		c.SetWriteTimeout(opts.writeTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
 
 		// calling prepare first and then register.
@@ -124,7 +132,7 @@ func (c *connection) onConnect() {
 				return true
 			}
 			// check for onRequest
-			return onRequest != nil && c.Reader().Len() > 0 && c.IsActive()
+			return onRequest != nil && c.Reader().Len() > 0
 		},
 		func(c *connection) {
 			if atomic.CompareAndSwapInt32(&connected, 0, 1) {
@@ -147,7 +155,7 @@ func (c *connection) onRequest() (needTrigger bool) {
 	processed := c.onProcess(
 		// only process when conn active and have unread data
 		func(c *connection) bool {
-			return c.Reader().Len() > 0 && c.IsActive()
+			return c.Reader().Len() > 0
 		},
 		func(c *connection) {
 			_ = onRequest(c.ctx, c)
@@ -169,14 +177,45 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 	}
 	// add new task
 	var task = func() {
+		panicked := true
+		defer func() {
+			// cannot use recover() here, since we don't want to break the panic stack
+			if panicked {
+				c.unlock(processing)
+				if c.IsActive() {
+					c.Close()
+				} else {
+					c.closeCallback(false, false)
+				}
+			}
+		}()
 	START:
-		// Single request processing, blocking allowed.
-		for isProcessable(c) {
+		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
+		// Then the loop processing must ensure that the connection `IsActive`.
+		if isProcessable(c) {
+			process(c)
+		}
+		// `process` must either eventually read all the input data or actively Close the connection,
+		// otherwise the goroutine will fall into a dead loop.
+		var closedBy who
+		for {
+			closedBy = c.status(closing)
+			// close by user or no processable
+			if closedBy == user || !isProcessable(c) {
+				break
+			}
 			process(c)
 		}
 		// Handling callback if connection has been closed.
-		if !c.IsActive() {
-			c.closeCallback(false)
+		if closedBy != none {
+			//  if closed by user when processing, it "may" needs detach
+			needDetach := closedBy == user
+			// Here is a conor case that operator will be detached twice:
+			//   If server closed the connection(client OnHup will detach op first and closeBy=poller),
+			//   and then client's OnRequest function also closed the connection(closeBy=user).
+			// But operator already prevent that detach twice will not cause any problem
+			c.closeCallback(false, needDetach)
+			panicked = false
 			return
 		}
 		c.unlock(processing)
@@ -185,6 +224,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			goto START
 		}
 		// task exits
+		panicked = false
 		return
 	}
 
@@ -195,9 +235,15 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 // closeCallback .
 // It can be confirmed that closeCallback and onRequest will not be executed concurrently.
 // If onRequest is still running, it will trigger closeCallback on exit.
-func (c *connection) closeCallback(needLock bool) (err error) {
+func (c *connection) closeCallback(needLock bool, needDetach bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
+	}
+	if needDetach && c.operator.poll != nil { // If Close is called during OnPrepare, poll is not registered.
+		// PollDetach only happen when user call conn.Close() or poller detect error
+		if err := c.operator.Control(PollDetach); err != nil {
+			logger.Printf("NETPOLL: closeCallback[%v,%v] detach operator failed: %v", needLock, needDetach, err)
+		}
 	}
 	var latest = c.closeCallbacks.Load()
 	if latest == nil {
@@ -211,14 +257,9 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
-	if c.operator.poll != nil {
-		err = c.operator.Control(PollModReadable)
-	} else {
-		c.operator.poll = pollmanager.Pick()
-		err = c.operator.Control(PollReadable)
-	}
+	err = c.operator.Control(PollReadable)
 	if err != nil {
-		log.Println("connection register failed:", err.Error())
+		logger.Printf("NETPOLL: connection register failed: %v", err)
 		c.Close()
 		return Exception(ErrConnClosed, err.Error())
 	}

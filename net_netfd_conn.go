@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,26 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
 // +build darwin netbsd freebsd openbsd dragonfly linux
 
 package netpoll
 
 import (
-	"log"
 	"net"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 )
-
-// Conn extends net.Conn, but supports getting the conn's fd.
-type Conn interface {
-	net.Conn
-
-	// Fd return conn's fd, used by poll
-	Fd() (fd int)
-}
 
 var _ Conn = &netFD{}
 
@@ -67,10 +59,10 @@ func (c *netFD) Close() (err error) {
 	if atomic.AddUint32(&c.closed, 1) != 1 {
 		return nil
 	}
-	if c.fd > 0 {
+	if !c.detaching && c.fd > 2 {
 		err = syscall.Close(c.fd)
 		if err != nil {
-			log.Printf("netFD[%d] close error: %s", c.fd, err.Error())
+			logger.Printf("NETPOLL: netFD[%d] close error: %s", c.fd, err.Error())
 		}
 	}
 	return err

@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,71 +20,80 @@ import (
 	"unsafe"
 )
 
-func allocop() *FDOperator {
-	return opcache.alloc()
-}
-
-func freeop(op *FDOperator) {
-	opcache.free(op)
-}
-
-func init() {
-	opcache = &operatorCache{
-		// cache: make(map[int][]byte),
-		cache: make([]*FDOperator, 0, 1024),
+func newOperatorCache() *operatorCache {
+	return &operatorCache{
+		cache:    make([]*FDOperator, 0, 1024),
+		freelist: make([]int32, 0, 1024),
 	}
-	runtime.KeepAlive(opcache)
 }
-
-var opcache *operatorCache
 
 type operatorCache struct {
 	locked int32
 	first  *FDOperator
 	cache  []*FDOperator
+	// freelist store the freeable operator
+	// to reduce GC pressure, we only store op index here
+	freelist   []int32
+	freelocked int32
 }
 
 func (c *operatorCache) alloc() *FDOperator {
-	c.lock()
+	lock(&c.locked)
 	if c.first == nil {
 		const opSize = unsafe.Sizeof(FDOperator{})
 		n := block4k / opSize
 		if n == 0 {
 			n = 1
 		}
-		// Must be in non-GC memory because can be referenced
-		// only from epoll/kqueue internals.
+		index := int32(len(c.cache))
 		for i := uintptr(0); i < n; i++ {
-			pd := &FDOperator{}
+			pd := &FDOperator{index: index}
 			c.cache = append(c.cache, pd)
 			pd.next = c.first
 			c.first = pd
+			index++
 		}
 	}
 	op := c.first
 	c.first = op.next
-	c.unlock()
+	unlock(&c.locked)
 	return op
 }
 
-func (c *operatorCache) free(op *FDOperator) {
-	if !op.isUnused() {
-		panic("op is using now")
-	}
+// freeable mark the operator that could be freed
+// only poller could do the real free action
+func (c *operatorCache) freeable(op *FDOperator) {
+	// reset all state
+	op.unused()
 	op.reset()
-
-	c.lock()
-	op.next = c.first
-	c.first = op
-	c.unlock()
+	lock(&c.freelocked)
+	c.freelist = append(c.freelist, op.index)
+	unlock(&c.freelocked)
 }
 
-func (c *operatorCache) lock() {
-	for !atomic.CompareAndSwapInt32(&c.locked, 0, 1) {
+func (c *operatorCache) free() {
+	lock(&c.freelocked)
+	defer unlock(&c.freelocked)
+	if len(c.freelist) == 0 {
+		return
+	}
+
+	lock(&c.locked)
+	for _, idx := range c.freelist {
+		op := c.cache[idx]
+		op.next = c.first
+		c.first = op
+	}
+	c.freelist = c.freelist[:0]
+	unlock(&c.locked)
+}
+
+func lock(locked *int32) {
+	for !atomic.CompareAndSwapInt32(locked, 0, 1) {
 		runtime.Gosched()
 	}
 }
 
-func (c *operatorCache) unlock() {
-	atomic.StoreInt32(&c.locked, 0)
+func unlock(locked *int32) {
+	atomic.StoreInt32(locked, 0)
 }

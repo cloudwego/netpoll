@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 
 // LinkBuffer implements ReadWriter.
 type LinkBuffer struct {
-	length     int32
+	length     int64
 	mallocSize int
 
 	head  *linkBufferNode // release head
@@ -66,7 +66,7 @@ var _ Writer = &LinkBuffer{}
 
 // Len implements Reader.
 func (b *LinkBuffer) Len() int {
-	l := atomic.LoadInt32(&b.length)
+	l := atomic.LoadInt64(&b.length)
 	return int(l)
 }
 
@@ -286,7 +286,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 
 	// just use for range
 	p := &LinkBuffer{
-		length: int32(n),
+		length: int64(n),
 	}
 	defer func() {
 		// set to read-only
@@ -461,9 +461,8 @@ func (b *LinkBuffer) WriteBinary(p []byte) (n int, err error) {
 	}
 	// here will copy
 	b.growth(n)
-	malloc := b.write.malloc
-	b.write.malloc += n
-	return copy(b.write.buf[malloc:b.write.malloc], p), nil
+	buf := b.write.Malloc(n)
+	return copy(buf, p), nil
 }
 
 // WriteDirect cannot be mixed with WriteString or WriteBinary functions.
@@ -475,7 +474,7 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	// find origin
 	origin := b.flush
 	malloc := b.mallocSize - remainLen // calculate the remaining malloc length
-	for t := origin.malloc - len(origin.buf); t <= malloc; t = origin.malloc - len(origin.buf) {
+	for t := origin.malloc - len(origin.buf); t < malloc; t = origin.malloc - len(origin.buf) {
 		malloc -= t
 		origin = origin.next
 	}
@@ -486,18 +485,24 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 	dataNode := newLinkBufferNode(0)
 	dataNode.buf, dataNode.malloc = p[:0], n
 
-	newNode := newLinkBufferNode(0)
-	newNode.off = malloc
-	newNode.buf = origin.buf[:malloc]
-	newNode.malloc = origin.malloc
-	newNode.readonly = false
-	origin.malloc = malloc
-	origin.readonly = true
+	if remainLen > 0 {
+		newNode := newLinkBufferNode(0)
+		newNode.off = malloc
+		newNode.buf = origin.buf[:malloc]
+		newNode.malloc = origin.malloc
+		newNode.readonly = false
+		origin.malloc = malloc
+		origin.readonly = true
 
-	// link nodes
-	dataNode.next = newNode
-	newNode.next = origin.next
-	origin.next = dataNode
+		// link nodes
+		dataNode.next = newNode
+		newNode.next = origin.next
+		origin.next = dataNode
+	} else {
+		// link nodes
+		dataNode.next = origin.next
+		origin.next = dataNode
+	}
 
 	// adjust b.write
 	for b.write.next != nil {
@@ -519,16 +524,16 @@ func (b *LinkBuffer) WriteByte(p byte) (err error) {
 
 // Close will recycle all buffer.
 func (b *LinkBuffer) Close() (err error) {
-	atomic.StoreInt32(&b.length, 0)
+	atomic.StoreInt64(&b.length, 0)
 	b.mallocSize = 0
 	// just release all
+	b.Release()
 	for node := b.head; node != nil; {
 		nd := node
 		node = node.next
 		nd.Release()
 	}
-	// releaseLink(b.head, nil)
-	// b.head, b.read, b.flush, b.write = emptyNode, emptyNode, emptyNode, emptyNode
+	b.head, b.read, b.flush, b.write = nil, nil, nil, nil
 	return nil
 }
 
@@ -572,7 +577,8 @@ func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 //
 // bookSize: The size of data that can be read at once.
 // maxSize: The maximum size of data between two Release(). In some cases, this can
-// 	guarantee all data allocated in one node to reduce copy.
+//
+//	guarantee all data allocated in one node to reduce copy.
 func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	l := cap(b.write.buf) - b.write.malloc
 	// grow linkBuffer
@@ -657,29 +663,9 @@ func (b *LinkBuffer) resetTail(maxSize int) {
 	return
 }
 
-// Reset resets the buffer to be empty,
-// but it retains the underlying storage for use by future writes.
-// Reset is the same as Truncate(0).
-// func (b *LinkBuffer) Reset() {
-// 	atomic.StoreInt32(&b.length, 0)
-//  b.mallocSize = 0
-// 	releaseLink(b.head, nil)
-// 	node := linkedPool.Get().(*linkBufferNode)
-// 	b.head, b.read, b.flush, b.write = node, node, node, node
-// }
-
 // recalLen re-calculate the length
 func (b *LinkBuffer) recalLen(delta int) (length int) {
-	return int(atomic.AddInt32(&b.length, int32(delta)))
-}
-
-func (node *linkBufferNode) Reset() {
-	if node.origin != nil || atomic.LoadInt32(&node.refer) != 1 {
-		return
-	}
-	node.off, node.malloc = 0, 0
-	node.buf = node.buf[:0]
-	return
+	return int(atomic.AddInt64(&b.length, int64(delta)))
 }
 
 // ------------------------------------------ implement link node ------------------------------------------
@@ -688,6 +674,8 @@ func (node *linkBufferNode) Reset() {
 // Nodes with size <= 0 are marked as readonly, which means the node.buf is not allocated by this mcache.
 func newLinkBufferNode(size int) *linkBufferNode {
 	var node = linkedPool.Get().(*linkBufferNode)
+	// reset node offset
+	node.off, node.malloc, node.refer, node.readonly = 0, 0, 1, false
 	if size <= 0 {
 		node.readonly = true
 		return node
@@ -725,18 +713,14 @@ func (node *linkBufferNode) IsEmpty() (ok bool) {
 	return node.off == len(node.buf)
 }
 
-//
-// func (node *linkBufferNode) Reset() (err error) {
-// 	node.off, node.malloc, node.refer, node.next, node.origin = 0, 0, 1, nil, nil
-// 	node.buf = node.buf[:0]
-// 	return nil
-// }
-//
-// func (node *linkBufferNode) Close() (err error) {
-// 	node.off, node.malloc, node.refer = 0, 0, 0
-// 	node.next, node.origin, node.buf = nil, nil, zeroSlice
-// 	return nil
-// }
+func (node *linkBufferNode) Reset() {
+	if node.origin != nil || atomic.LoadInt32(&node.refer) != 1 {
+		return
+	}
+	node.off, node.malloc = 0, 0
+	node.buf = node.buf[:0]
+	return
+}
 
 func (node *linkBufferNode) Next(n int) (p []byte) {
 	off := node.off
@@ -778,14 +762,11 @@ func (node *linkBufferNode) Release() (err error) {
 	}
 	// release self
 	if atomic.AddInt32(&node.refer, -1) == 0 {
-		node.off, node.malloc, node.refer, node.origin, node.next = 0, 0, 1, nil, nil
 		// readonly nodes cannot recycle node.buf, other node.buf are recycled to mcache.
-		if node.readonly {
-			node.readonly = false
-		} else {
+		if !node.readonly {
 			free(node.buf)
 		}
-		node.buf = nil
+		node.buf, node.origin, node.next = nil, nil, nil
 		linkedPool.Put(node)
 	}
 	return nil
@@ -816,7 +797,7 @@ func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
 		return true
 	}
 	l := b.read.Len()
-	for l == 0 {
+	for l == 0 && b.read != b.flush {
 		b.read = b.read.next
 		l = b.read.Len()
 	}

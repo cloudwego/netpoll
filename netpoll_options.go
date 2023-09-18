@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
+	"io"
 	"time"
 )
 
@@ -23,15 +27,25 @@ import (
 // If the number of cores in your service process is less than 20c, theoretically only one poller is needed.
 // Otherwise you may need to adjust the number of pollers to achieve the best results.
 // Experience recommends assigning a poller every 20c.
+//
+// You can only use SetNumLoops before any connection is created. An example usage:
+//
+//	func init() {
+//	    netpoll.SetNumLoops(...)
+//	}
 func SetNumLoops(numLoops int) error {
 	return setNumLoops(numLoops)
 }
 
-// LoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
+// SetLoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
 // to distribute the incoming connections between multiple polls.
 // This option only works when NumLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
+}
+
+func SetLoggerOutput(w io.Writer) {
+	setLoggerOutput(w)
 }
 
 // DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
@@ -64,6 +78,13 @@ func WithReadTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithWriteTimeout sets the write timeout of connections.
+func WithWriteTimeout(timeout time.Duration) Option {
+	return Option{func(op *options) {
+		op.writeTimeout = timeout
+	}}
+}
+
 // WithIdleTimeout sets the idle timeout of connections.
 func WithIdleTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
@@ -77,9 +98,10 @@ type Option struct {
 }
 
 type options struct {
-	onPrepare   OnPrepare
-	onConnect   OnConnect
-	onRequest   OnRequest
-	readTimeout time.Duration
-	idleTimeout time.Duration
+	onPrepare    OnPrepare
+	onConnect    OnConnect
+	onRequest    OnRequest
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
 }

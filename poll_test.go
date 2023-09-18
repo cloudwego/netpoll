@@ -1,4 +1,4 @@
-// Copyright 2021 CloudWeGo Authors
+// Copyright 2022 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !windows
+// +build !windows
+
 package netpoll
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -27,7 +31,9 @@ func TestPollTrigger(t *testing.T) {
 	t.Skip()
 	var trigger int
 	var stop = make(chan error)
-	var p = openDefaultPoll()
+	var p, err = openDefaultPoll()
+	MustNil(t, err)
+
 	go func() {
 		stop <- p.Wait()
 	}()
@@ -42,7 +48,7 @@ func TestPollTrigger(t *testing.T) {
 	Equal(t, trigger, 2)
 
 	p.Close()
-	err := <-stop
+	err = <-stop
 	MustNil(t, err)
 }
 
@@ -61,15 +67,15 @@ func TestPollMod(t *testing.T) {
 		return nil
 	}
 	var stop = make(chan error)
-	var p = openDefaultPoll()
+	var p, err = openDefaultPoll()
+	MustNil(t, err)
 	go func() {
 		stop <- p.Wait()
 	}()
 
 	var rfd, wfd = GetSysFdPairs()
-	var rop = &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup}
-	var wop = &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup}
-	var err error
+	var rop = &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
+	var wop = &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
 	var r, w, h int32
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w == 0 && h == 0, r, w, h)
@@ -80,22 +86,28 @@ func TestPollMod(t *testing.T) {
 
 	err = p.Control(wop, PollWritable) // trigger one shot
 	MustNil(t, err)
-	time.Sleep(50 * time.Millisecond)
+	for atomic.LoadInt32(&wn) == 0 {
+		runtime.Gosched()
+	}
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w == 1 && h == 0, r, w, h)
 
 	err = p.Control(rop, PollR2RW) // trigger write
 	MustNil(t, err)
-	time.Sleep(time.Millisecond)
+	for atomic.LoadInt32(&wn) <= 1 {
+		runtime.Gosched()
+	}
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w >= 2 && h == 0, r, w, h)
 
 	// close wfd, then trigger hup rfd
 	err = syscall.Close(wfd) // trigger hup
 	MustNil(t, err)
-	time.Sleep(time.Millisecond)
-	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
-	Assert(t, r == 0 && w >= 2 && h >= 1, r, w, h)
+	for atomic.LoadInt32(&hn) == 0 {
+		runtime.Gosched()
+	}
+	w, h = atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
+	Assert(t, w >= 2 && h >= 1, r, w, h)
 
 	p.Close()
 	err = <-stop
@@ -103,7 +115,8 @@ func TestPollMod(t *testing.T) {
 }
 
 func TestPollClose(t *testing.T) {
-	var p = openDefaultPoll()
+	var p, err = openDefaultPoll()
+	MustNil(t, err)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -116,7 +129,7 @@ func TestPollClose(t *testing.T) {
 
 func BenchmarkPollMod(b *testing.B) {
 	b.StopTimer()
-	var p = openDefaultPoll()
+	var p, _ = openDefaultPoll()
 	r, _ := GetSysFdPairs()
 	var operator = &FDOperator{FD: r}
 	p.Control(operator, PollReadable)
