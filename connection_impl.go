@@ -36,7 +36,7 @@ type connection struct {
 	operator        *FDOperator
 	readTimeout     time.Duration
 	readTimer       *time.Timer
-	readTrigger     chan struct{}
+	readTrigger     chan error
 	waitReadSize    int64
 	writeTimeout    time.Duration
 	writeTimer      *time.Timer
@@ -319,9 +319,9 @@ var barrierPool = sync.Pool{
 // init initialize the connection with options
 func (c *connection) init(conn Conn, opts *options) (err error) {
 	// init buffer, barrier, finalizer
-	c.readTrigger = make(chan struct{}, 1)
+	c.readTrigger = make(chan error, 1)
 	c.writeTrigger = make(chan error, 1)
-	c.bookSize, c.maxSize = block1k/2, pagesize
+	c.bookSize, c.maxSize = pagesize, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
 
@@ -357,19 +357,12 @@ func (c *connection) initNetFD(conn Conn) {
 }
 
 func (c *connection) initFDOperator() {
-	var op *FDOperator
-	if c.pd != nil && c.pd.operator != nil {
-		// reuse operator created at connect step
-		op = c.pd.operator
-	} else {
-		poll := pollmanager.Pick()
-		op = poll.Alloc()
-	}
+	poll := pollmanager.Pick()
+	op := poll.Alloc()
 	op.FD = c.fd
 	op.OnRead, op.OnWrite, op.OnHup = nil, nil, c.onHup
 	op.Inputs, op.InputAck = c.inputs, c.inputAck
 	op.Outputs, op.OutputAck = c.outputs, c.outputAck
-
 	c.operator = op
 }
 
@@ -385,9 +378,9 @@ func (c *connection) initFinalizer() {
 	})
 }
 
-func (c *connection) triggerRead() {
+func (c *connection) triggerRead(err error) {
 	select {
-	case c.readTrigger <- struct{}{}:
+	case c.readTrigger <- err:
 	default:
 	}
 }
@@ -411,10 +404,17 @@ func (c *connection) waitRead(n int) (err error) {
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
-		if !c.IsActive() {
+		switch c.status(closing) {
+		case poller:
+			return Exception(ErrEOF, "wait read")
+		case user:
 			return Exception(ErrConnClosed, "wait read")
+		default:
+			err = <-c.readTrigger
+			if err != nil {
+				return err
+			}
 		}
-		<-c.readTrigger
 	}
 	return nil
 }
@@ -429,24 +429,32 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	}
 
 	for c.inputBuffer.Len() < n {
-		if !c.IsActive() {
-			// cannot return directly, stop timer before !
+		switch c.status(closing) {
+		case poller:
+			// cannot return directly, stop timer first!
+			err = Exception(ErrEOF, "wait read")
+			goto RET
+		case user:
+			// cannot return directly, stop timer first!
 			err = Exception(ErrConnClosed, "wait read")
-			break
-		}
-
-		select {
-		case <-c.readTimer.C:
-			// double check if there is enough data to be read
-			if c.inputBuffer.Len() >= n {
-				return nil
+			goto RET
+		default:
+			select {
+			case <-c.readTimer.C:
+				// double check if there is enough data to be read
+				if c.inputBuffer.Len() >= n {
+					return nil
+				}
+				return Exception(ErrReadTimeout, c.remoteAddr.String())
+			case err = <-c.readTrigger:
+				if err != nil {
+					return err
+				}
+				continue
 			}
-			return Exception(ErrReadTimeout, c.remoteAddr.String())
-		case <-c.readTrigger:
-			continue
 		}
 	}
-
+RET:
 	// clean timer.C
 	if !c.readTimer.Stop() {
 		<-c.readTimer.C

@@ -497,9 +497,8 @@ func (b *LinkBuffer) WriteBinary(p []byte) (n int, err error) {
 	}
 	// here will copy
 	b.growth(n)
-	malloc := b.write.malloc
-	b.write.malloc += n
-	return copy(b.write.buf[malloc:b.write.malloc], p), nil
+	buf := b.write.Malloc(n)
+	return copy(buf, p), nil
 }
 
 // WriteDirect cannot be mixed with WriteString or WriteBinary functions.
@@ -622,7 +621,8 @@ func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 //
 // bookSize: The size of data that can be read at once.
 // maxSize: The maximum size of data between two Release(). In some cases, this can
-// 	guarantee all data allocated in one node to reduce copy.
+//
+//	guarantee all data allocated in one node to reduce copy.
 func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	b.Lock()
 	defer b.Unlock()

@@ -177,18 +177,45 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 	}
 	// add new task
 	var task = func() {
+		panicked := true
+		defer func() {
+			// cannot use recover() here, since we don't want to break the panic stack
+			if panicked {
+				c.unlock(processing)
+				if c.IsActive() {
+					c.Close()
+				} else {
+					c.closeCallback(false, false)
+				}
+			}
+		}()
 	START:
 		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
 		// Then the loop processing must ensure that the connection `IsActive`.
 		if isProcessable(c) {
 			process(c)
 		}
-		for c.IsActive() && isProcessable(c) {
+		// `process` must either eventually read all the input data or actively Close the connection,
+		// otherwise the goroutine will fall into a dead loop.
+		var closedBy who
+		for {
+			closedBy = c.status(closing)
+			// close by user or no processable
+			if closedBy == user || !isProcessable(c) {
+				break
+			}
 			process(c)
 		}
 		// Handling callback if connection has been closed.
-		if !c.IsActive() {
-			c.closeCallback(false)
+		if closedBy != none {
+			//  if closed by user when processing, it "may" needs detach
+			needDetach := closedBy == user
+			// Here is a conor case that operator will be detached twice:
+			//   If server closed the connection(client OnHup will detach op first and closeBy=poller),
+			//   and then client's OnRequest function also closed the connection(closeBy=user).
+			// But operator already prevent that detach twice will not cause any problem
+			c.closeCallback(false, needDetach)
+			panicked = false
 			return
 		}
 		c.unlock(processing)
@@ -197,6 +224,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			goto START
 		}
 		// task exits
+		panicked = false
 		return
 	}
 
@@ -207,14 +235,14 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 // closeCallback .
 // It can be confirmed that closeCallback and onRequest will not be executed concurrently.
 // If onRequest is still running, it will trigger closeCallback on exit.
-func (c *connection) closeCallback(needLock bool) (err error) {
+func (c *connection) closeCallback(needLock bool, needDetach bool) (err error) {
 	if needLock && !c.lock(processing) {
 		return nil
 	}
-	// If Close is called during OnPrepare, poll is not registered.
-	if c.isCloseBy(user) && c.operator.poll != nil {
-		if err = c.operator.Control(PollDetach); err != nil {
-			logger.Printf("NETPOLL: closeCallback detach operator failed: %v", err)
+	if needDetach && c.operator.poll != nil { // If Close is called during OnPrepare, poll is not registered.
+		// PollDetach only happen when user call conn.Close() or poller detect error
+		if err := c.operator.Control(PollDetach); err != nil {
+			logger.Printf("NETPOLL: closeCallback[%v,%v] detach operator failed: %v", needLock, needDetach, err)
 		}
 	}
 	var latest = c.closeCallbacks.Load()
@@ -229,14 +257,7 @@ func (c *connection) closeCallback(needLock bool) (err error) {
 
 // register only use for connection register into poll.
 func (c *connection) register() (err error) {
-	if c.operator.isUnused() {
-		// operator is not registered
-		err = c.operator.Control(PollReadable)
-	} else {
-		// operator is already registered
-		// change event to wait read new data
-		err = c.operator.Control(PollModReadable)
-	}
+	err = c.operator.Control(PollReadable)
 	if err != nil {
 		logger.Printf("NETPOLL: connection register failed: %v", err)
 		c.Close()

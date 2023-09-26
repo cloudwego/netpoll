@@ -15,6 +15,7 @@
 package netpoll
 
 import (
+	"errors"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -116,12 +117,14 @@ func (p *defaultPoll) Wait() (err error) {
 
 func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 	var triggerRead, triggerWrite, triggerHup, triggerError bool
+	var err error
 	for i := range events {
 		operator := p.getOperator(0, unsafe.Pointer(&events[i].data))
 		if operator == nil || !operator.do() {
 			continue
 		}
 
+		var totalRead int
 		evt := events[i].events
 		triggerRead = evt&syscall.EPOLLIN != 0
 		triggerWrite = evt&syscall.EPOLLOUT != 0
@@ -154,6 +157,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				if len(bs) > 0 {
 					var n, err = ioread(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
+					totalRead += n
 					if err != nil {
 						p.appendHup(operator)
 						continue
@@ -163,14 +167,21 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
 			}
 		}
-		if triggerHup && triggerRead && operator.Inputs != nil { // read all left data if peer send and close
-			if err := readall(operator, p.barriers[i]); err != nil {
-				logger.Printf("NETPOLL: readall(fd=%d) before close: %s", operator.FD, err.Error())
-			}
-		}
 		if triggerHup {
-			p.appendHup(operator)
-			continue
+			if triggerRead && operator.Inputs != nil {
+				// read all left data if peer send and close
+				var leftRead int
+				// read all left data if peer send and close
+				if leftRead, err = readall(operator, p.barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
+					logger.Printf("NETPOLL: readall(fd=%d)=%d before close: %s", operator.FD, total, err.Error())
+				}
+				totalRead += leftRead
+			}
+			// only close connection if no further read bytes
+			if totalRead == 0 {
+				p.appendHup(operator)
+				continue
+			}
 		}
 		if triggerError {
 			// Under block-zerocopy, the kernel may give an error callback, which is not a real error, just an EAGAIN.
@@ -237,8 +248,6 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollWritable: // client create a new connection and wait connect finished
 		operator.inuse()
 		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
-	case PollModReadable: // client wait read/write
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach: // deregister
 		p.delOperator(operator)
 		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR

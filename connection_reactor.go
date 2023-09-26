@@ -25,35 +25,42 @@ import (
 
 // onHup means close by poller.
 func (c *connection) onHup(p Poll) error {
-	if c.closeBy(poller) {
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
-		// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
-		// It can be confirmed that the OnRequest goroutine has been exited before closecallback executing,
-		// and it is safe to close the buffer at this time.
-		var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
-		var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-		if onConnect != nil || onRequest != nil {
-			c.closeCallback(true)
-		}
+	if !c.closeBy(poller) {
+		return nil
+	}
+	c.triggerRead(Exception(ErrEOF, "peer close"))
+	c.triggerWrite(Exception(ErrConnClosed, "peer close"))
+	// It depends on closing by user if OnConnect and OnRequest is nil, otherwise it needs to be released actively.
+	// It can be confirmed that the OnRequest goroutine has been exited before closeCallback executing,
+	// and it is safe to close the buffer at this time.
+	var onConnect = c.onConnectCallback.Load()
+	var onRequest = c.onRequestCallback.Load()
+	var needCloseByUser = onConnect == nil && onRequest == nil
+	if !needCloseByUser {
+		// already PollDetach when call OnHup
+		c.closeCallback(true, false)
 	}
 	return nil
 }
 
 // onClose means close by user.
 func (c *connection) onClose() error {
+	// user code close the connection
 	if c.closeBy(user) {
-		c.triggerRead()
-		c.triggerWrite(ErrConnClosed)
-		c.closeCallback(true)
+		c.triggerRead(Exception(ErrConnClosed, "self close"))
+		c.triggerWrite(Exception(ErrConnClosed, "self close"))
+		// Detach from poller when processing finished, otherwise it will cause race
+		c.closeCallback(true, true)
 		return nil
 	}
-	if c.isCloseBy(poller) {
-		// Connection with OnRequest of nil
-		// relies on the user to actively close the connection to recycle resources.
-		c.closeCallback(true)
-	}
-	return nil
+
+	// closed by poller
+	// still need to change closing status to `user` since OnProcess should not be processed again
+	c.force(closing, user)
+
+	// user code should actively close the connection to recycle resources.
+	// poller already detached operator
+	return c.closeCallback(true, false)
 }
 
 // closeBuffer recycle input & output LinkBuffer.
@@ -103,7 +110,7 @@ func (c *connection) inputAck(n int) (err error) {
 		needTrigger = c.onRequest()
 	}
 	if needTrigger && length >= int(atomic.LoadInt64(&c.waitReadSize)) {
-		c.triggerRead()
+		c.triggerRead(nil)
 	}
 	return nil
 }

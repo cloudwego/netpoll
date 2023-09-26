@@ -251,6 +251,41 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestCloseConnWhenOnConnect(t *testing.T) {
+	var network, address = "tcp", ":8888"
+	conns := 10
+	var wg sync.WaitGroup
+	wg.Add(conns)
+	var loop = newTestEventLoop(network, address,
+		nil,
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			defer wg.Done()
+			err := connection.Close()
+			MustNil(t, err)
+			return ctx
+		}),
+	)
+
+	for i := 0; i < conns; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var conn, err = DialConnection(network, address, time.Second)
+			if err != nil {
+				return
+			}
+			_, err = conn.Reader().Next(1)
+			Assert(t, errors.Is(err, ErrEOF))
+			err = conn.Close()
+			MustNil(t, err)
+		}()
+	}
+
+	wg.Wait()
+	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func TestServerReadAndClose(t *testing.T) {
 	var network, address = "tcp", ":18888"
 	var sendMsg = []byte("hello")
@@ -282,6 +317,37 @@ func TestServerReadAndClose(t *testing.T) {
 	MustNil(t, err)
 	err = conn.Writer().Flush()
 	MustTrue(t, errors.Is(err, ErrConnClosed))
+
+	err = loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestServerPanicAndClose(t *testing.T) {
+	var network, address = "tcp", ":18888"
+	var sendMsg = []byte("hello")
+	var paniced int32
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			_, err := connection.Reader().Next(len(sendMsg))
+			MustNil(t, err)
+			atomic.StoreInt32(&paniced, 1)
+			panic("test")
+		},
+	)
+
+	var conn, err = DialConnection(network, address, time.Second)
+	MustNil(t, err)
+	_, err = conn.Writer().WriteBinary(sendMsg)
+	MustNil(t, err)
+	err = conn.Writer().Flush()
+	MustNil(t, err)
+
+	for atomic.LoadInt32(&paniced) == 0 {
+		runtime.Gosched() // wait for poller close connection
+	}
+	for conn.IsActive() {
+		runtime.Gosched() // wait for poller close connection
+	}
 
 	err = loop.Shutdown(context.Background())
 	MustNil(t, err)
@@ -331,8 +397,18 @@ func TestClientWriteAndClose(t *testing.T) {
 	MustNil(t, err)
 }
 
+func createTestListener(network, address string) (Listener, error) {
+	for {
+		ln, err := CreateListener(network, address)
+		if err == nil {
+			return ln, nil
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+}
+
 func newTestEventLoop(network, address string, onRequest OnRequest, opts ...Option) EventLoop {
-	ln, err := CreateListener(network, address)
+	ln, err := createTestListener(network, address)
 	if err != nil {
 		panic(err)
 	}
