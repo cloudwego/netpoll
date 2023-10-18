@@ -25,6 +25,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -637,4 +638,40 @@ func TestConnectionServerClose(t *testing.T) {
 	}
 	//time.Sleep(time.Second)
 	wg.Wait()
+}
+
+func TestConnectionDailTimeoutAndClose(t *testing.T) {
+	ln, err := createTestListener("tcp", ":12345")
+	MustNil(t, err)
+	defer ln.Close()
+
+	el, err := NewEventLoop(
+		func(ctx context.Context, connection Connection) error {
+			_, err = connection.Reader().Next(connection.Reader().Len())
+			return err
+		},
+	)
+	defer el.Shutdown(context.Background())
+	go func() {
+		err := el.Serve(ln)
+		if err != nil {
+			t.Logf("servce end with error: %v", err)
+		}
+	}()
+
+	loops := 100
+	conns := 100
+	for l := 0; l < loops; l++ {
+		var wg sync.WaitGroup
+		wg.Add(conns)
+		for i := 0; i < conns; i++ {
+			go func() {
+				defer wg.Done()
+				conn, err := DialConnection("tcp", ":12345", time.Nanosecond)
+				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"))
+				_ = conn
+			}()
+		}
+		wg.Wait()
+	}
 }
