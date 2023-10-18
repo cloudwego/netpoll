@@ -71,7 +71,6 @@ func (c *connection) closeBuffer() {
 	// so we need to check the buffer length, and if it's an "unclean" close operation, let's give up to reuse the buffer
 	if c.inputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
 		c.inputBuffer.Close()
-		barrierPool.Put(c.inputBarrier)
 	}
 	if c.outputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
 		c.outputBuffer.Close()

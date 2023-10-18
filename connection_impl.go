@@ -43,7 +43,6 @@ type connection struct {
 	writeTrigger    chan error
 	inputBuffer     *LinkBuffer
 	outputBuffer    *LinkBuffer
-	inputBarrier    *barrier
 	outputBarrier   *barrier
 	supportZeroCopy bool
 	maxSize         int // The maximum size of data between two Release().
@@ -323,7 +322,7 @@ func (c *connection) init(conn Conn, opts *options) (err error) {
 	c.writeTrigger = make(chan error, 1)
 	c.bookSize, c.maxSize = pagesize, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
-	c.inputBarrier, c.outputBarrier = barrierPool.Get().(*barrier), barrierPool.Get().(*barrier)
+	c.outputBarrier = barrierPool.Get().(*barrier)
 
 	c.initNetFD(conn) // conn must be *netFD{}
 	c.initFDOperator()
