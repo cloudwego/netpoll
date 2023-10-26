@@ -26,6 +26,10 @@ import (
 
 var runTask = gopool.CtxGo
 
+func setRunner(runner func(ctx context.Context, f func())) {
+	runTask = runner
+}
+
 func disableGopool() error {
 	runTask = func(ctx context.Context, f func()) {
 		go f()
