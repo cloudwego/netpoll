@@ -89,7 +89,7 @@ func (a *pollArgs) reset(size, caps int) {
 
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
-	//gomaxprocs := runtime.GOMAXPROCS(0)
+	gomaxprocs := runtime.GOMAXPROCS(0)
 	// init
 	var caps, msec, n = barriercap, -1, 0
 	p.Reset(128, caps)
@@ -111,25 +111,31 @@ func (p *defaultPoll) Wait() (err error) {
 			return err
 		}
 		if n <= 0 {
-			if msec > 0 {
-				msec = -1 // no need to sched, because we will use block syscall
-			} else if msec == 0 {
-				msec = 1
-				runtime.Gosched()
-			}
+			msec = -1 // no need to sched, because we will use block syscall
 			continue
 		}
 
 		msec = 0
-		if p.Handler(p.events[:n]) {
-			return nil
+		ex, ey := 0, gomaxprocs
+		for {
+			if ey > n {
+				ey = n
+			}
+			if ey == ex {
+				break
+			}
+			if p.Handler(p.events[ex:ey]) {
+				return nil
+			}
+			ex = ey
+			ey += gomaxprocs
+
+			// put poller G to global runq
+			// release p to other Gs in local runq
+			runtime.Gosched()
 		}
 		// we can make sure that there is no op remaining if Handler finished
 		p.opcache.free()
-
-		// put poller G to global runq
-		// release p to other Gs in local runq
-		runtime.Gosched()
 	}
 }
 
