@@ -89,6 +89,7 @@ func (a *pollArgs) reset(size, caps int) {
 
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
+	//gomaxprocs := runtime.GOMAXPROCS(0)
 	// init
 	var caps, msec, n = barriercap, -1, 0
 	p.Reset(128, caps)
@@ -118,12 +119,17 @@ func (p *defaultPoll) Wait() (err error) {
 			}
 			continue
 		}
+
 		msec = 0
 		if p.Handler(p.events[:n]) {
 			return nil
 		}
 		// we can make sure that there is no op remaining if Handler finished
 		p.opcache.free()
+
+		// put poller G to global runq
+		// release p to other Gs in local runq
+		runtime.Gosched()
 	}
 }
 
