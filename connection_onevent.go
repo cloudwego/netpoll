@@ -20,11 +20,12 @@ package netpoll
 import (
 	"context"
 	"sync/atomic"
-
-	"github.com/bytedance/gopkg/util/gopool"
 )
 
-var runTask = gopool.CtxGo
+//var runTask = gopool.CtxGo
+var runTask = func(ctx context.Context, f func()) {
+	go f()
+}
 
 func setRunner(runner func(ctx context.Context, f func())) {
 	runTask = runner
