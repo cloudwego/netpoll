@@ -89,7 +89,6 @@ func (a *pollArgs) reset(size, caps int) {
 
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
-	gomaxprocs := runtime.GOMAXPROCS(0)
 	// init
 	var caps, msec, n = barriercap, -1, 0
 	p.Reset(128, caps)
@@ -98,13 +97,11 @@ func (p *defaultPoll) Wait() (err error) {
 		if n == p.size && p.size < 128*1024 {
 			p.Reset(p.size<<1, caps)
 		}
-		// msec: 0(raw) => 1ms(sched,raw) => -1(block_syscall)
-		// poller's G will hold P at most 1ms
-		if msec > 0 {
+
+		if msec == 0 {
 			n, err = EpollWaitRaw(p.fd, p.events, msec)
-		} else if msec == 0 {
-			n, err = EpollWaitRaw(p.fd, p.events, msec)
-		} else { // < 0
+		} else { // > 0 or < 0
+			// release P
 			n, err = EpollWaitBlock(p.fd, p.events, msec)
 		}
 		if err != nil && err != syscall.EINTR {
@@ -116,26 +113,13 @@ func (p *defaultPoll) Wait() (err error) {
 		}
 
 		msec = 0
-		ex, ey := 0, gomaxprocs
-		for {
-			if ey > n {
-				ey = n
-			}
-			if ey == ex {
-				break
-			}
-			if p.Handler(p.events[ex:ey]) {
-				return nil
-			}
-			ex = ey
-			ey += gomaxprocs
-
-			// put poller G to global runq
-			// release p to other Gs in local runq
-			runtime.Gosched()
+		if p.Handler(p.events[:n]) {
+			return nil
 		}
 		// we can make sure that there is no op remaining if Handler finished
 		p.opcache.free()
+		// put poller G to global runq, release p to other Gs in local runq
+		runtime.Gosched()
 	}
 }
 
