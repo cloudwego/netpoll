@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -412,8 +413,10 @@ func (c *connection) waitRead(n int) (err error) {
 		default:
 			err = <-c.readTrigger
 			if err != nil {
-				return err
+				log.Printf("netpoll: readTrigger get err=%v,status=%d", err, c.status(closing))
+				//return err
 			}
+			continue
 		}
 	}
 	return nil
@@ -448,7 +451,8 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 				return Exception(ErrReadTimeout, c.remoteAddr.String())
 			case err = <-c.readTrigger:
 				if err != nil {
-					return err
+					log.Printf("netpoll: readTrigger get err=%v,status=%d", err, c.status(closing))
+					//return err
 				}
 				continue
 			}
