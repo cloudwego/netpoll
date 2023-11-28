@@ -178,10 +178,10 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				totalRead += leftRead
 			}
 			// only close connection if no further read bytes
-			if totalRead == 0 {
-				p.appendHup(operator)
-				continue
-			}
+			//if totalRead == 0 {
+			p.appendHup(operator)
+			continue
+			//}
 		}
 		if triggerError {
 			// Under block-zerocopy, the kernel may give an error callback, which is not a real error, just an EAGAIN.
