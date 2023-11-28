@@ -410,9 +410,9 @@ func (c *connection) waitRead(n int) (err error) {
 			return Exception(ErrConnClosed, "wait read")
 		default:
 			err = <-c.readTrigger
-			//if err != nil {
-			//	return err
-			//}
+			if err != nil {
+				return err
+			}
 			continue
 		}
 	}
@@ -447,9 +447,9 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 				}
 				return Exception(ErrReadTimeout, c.remoteAddr.String())
 			case err = <-c.readTrigger:
-				//if err != nil {
-				//	return err
-				//}
+				if err != nil {
+					goto RET
+				}
 				continue
 			}
 		}
