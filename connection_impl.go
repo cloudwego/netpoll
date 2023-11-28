@@ -404,17 +404,10 @@ func (c *connection) waitRead(n int) (err error) {
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
-		switch c.status(closing) {
-		case poller:
-			return Exception(ErrEOF, "wait read")
-		case user:
+		if !c.IsActive() {
 			return Exception(ErrConnClosed, "wait read")
-		default:
-			err = <-c.readTrigger
-			if err != nil {
-				return err
-			}
 		}
+		<-c.readTrigger
 	}
 	return nil
 }
@@ -429,32 +422,23 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 	}
 
 	for c.inputBuffer.Len() < n {
-		switch c.status(closing) {
-		case poller:
-			// cannot return directly, stop timer first!
-			err = Exception(ErrEOF, "wait read")
-			goto RET
-		case user:
-			// cannot return directly, stop timer first!
+		if !c.IsActive() {
+			// cannot return directly, stop timer before !
 			err = Exception(ErrConnClosed, "wait read")
-			goto RET
-		default:
-			select {
-			case <-c.readTimer.C:
-				// double check if there is enough data to be read
-				if c.inputBuffer.Len() >= n {
-					return nil
-				}
-				return Exception(ErrReadTimeout, c.remoteAddr.String())
-			case err = <-c.readTrigger:
-				if err != nil {
-					return err
-				}
-				continue
+			break
+		}
+		select {
+		case <-c.readTimer.C:
+			// double check if there is enough data to be read
+			if c.inputBuffer.Len() >= n {
+				return nil
 			}
+			return Exception(ErrReadTimeout, c.remoteAddr.String())
+		case <-c.readTrigger:
+			continue
 		}
 	}
-RET:
+
 	// clean timer.C
 	if !c.readTimer.Stop() {
 		<-c.readTimer.C
