@@ -407,7 +407,7 @@ func (c *connection) waitRead(n int) (err error) {
 	for c.inputBuffer.Len() < n {
 		switch c.status(closing) {
 		case poller:
-			return Exception(ErrEOF, "wait read")
+			return Exception(ErrConnClosed, "wait read")
 		case user:
 			return Exception(ErrConnClosed, "wait read")
 		default:
@@ -435,7 +435,7 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 		switch c.status(closing) {
 		case poller:
 			// cannot return directly, stop timer first!
-			err = Exception(ErrEOF, "wait read")
+			err = Exception(ErrConnClosed, "wait read")
 			goto RET
 		case user:
 			// cannot return directly, stop timer first!
