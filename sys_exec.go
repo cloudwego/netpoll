@@ -62,6 +62,16 @@ type barrier struct {
 	ivs []syscall.Iovec
 }
 
+func (b *barrier) reset() {
+	for i := range b.bs {
+		b.bs[i] = nil
+	}
+	for i := range b.ivs {
+		b.ivs[i].Base = nil
+		b.ivs[i].Len = 0
+	}
+}
+
 // writev wraps the writev system call.
 func writev(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	iovLen := iovecs(bs, ivs)

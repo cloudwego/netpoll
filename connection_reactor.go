@@ -74,6 +74,7 @@ func (c *connection) closeBuffer() {
 	}
 	if c.outputBuffer.Len() == 0 || onConnect != nil || onRequest != nil {
 		c.outputBuffer.Close()
+		c.outputBarrier.reset()
 		barrierPool.Put(c.outputBarrier)
 	}
 }

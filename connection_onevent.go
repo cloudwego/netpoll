@@ -256,6 +256,7 @@ func (c *connection) closeCallback(needLock bool, needDetach bool) (err error) {
 	for callback := latest.(*callbackNode); callback != nil; callback = callback.pre {
 		callback.fn(c)
 	}
+	c.ctx = nil
 	return nil
 }
 

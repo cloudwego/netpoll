@@ -20,8 +20,11 @@ package netpoll
 import (
 	"context"
 	"errors"
+	"log"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,11 +38,12 @@ func newServer(ln Listener, opts *options, onQuit func(err error)) *server {
 }
 
 type server struct {
-	operator    FDOperator
-	ln          Listener
-	opts        *options
-	onQuit      func(err error)
-	connections sync.Map // key=fd, value=connection
+	operator       FDOperator
+	ln             Listener
+	opts           *options
+	onQuit         func(err error)
+	connections    sync.Map // key=fd, value=connection
+	connectionsNum int64
 }
 
 // Run this server.
@@ -106,20 +110,31 @@ func (s *server) OnRead(p Poll) error {
 		return nil
 	}
 	// store & register connection
-	var connection = &connection{}
-	connection.init(conn.(Conn), s.opts)
-	if !connection.IsActive() {
+	var nconn = &connection{}
+	runtime.SetFinalizer(nconn, func(cc *connection) {
+		log.Printf("netpoll finalized connection: %v", cc)
+	})
+	nconn.init(conn.(Conn), s.opts)
+	if !nconn.IsActive() {
 		return nil
 	}
 	var fd = conn.(Conn).Fd()
-	connection.AddCloseCallback(func(connection Connection) error {
+	nconn.AddCloseCallback(func(nconn Connection) error {
 		s.connections.Delete(fd)
+		atomic.AddInt64(&s.connectionsNum, -1)
+		totalConn := 0
+		s.connections.Range(func(key, value interface{}) bool {
+			totalConn++
+			return true
+		})
+		log.Printf("netpoll close connection: fd=%d, totalConn=%d", fd, totalConn)
 		return nil
 	})
-	s.connections.Store(fd, connection)
+	s.connections.Store(fd, nconn)
+	atomic.AddInt64(&s.connectionsNum, 1)
 
 	// trigger onConnect asynchronously
-	connection.onConnect()
+	nconn.onConnect()
 	return nil
 }
 
