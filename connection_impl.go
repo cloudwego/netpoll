@@ -447,7 +447,7 @@ func (c *connection) waitReadWithTimeout(n int) (err error) {
 				return Exception(ErrReadTimeout, c.remoteAddr.String())
 			case err = <-c.readTrigger:
 				if err != nil {
-					return err
+					goto RET
 				}
 				continue
 			}
