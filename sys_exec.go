@@ -86,7 +86,6 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 	}
 	// syscall
 	r, _, e := syscall.RawSyscall(syscall.SYS_READV, uintptr(fd), uintptr(unsafe.Pointer(&ivs[0])), uintptr(iovLen))
-	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
 		return int(r), syscall.Errno(e)
 	}
@@ -94,8 +93,10 @@ func readv(fd int, bs [][]byte, ivs []syscall.Iovec) (n int, err error) {
 }
 
 // TODO: read from sysconf(_SC_IOV_MAX)? The Linux default is
-//  1024 and this seems conservative enough for now. Darwin's
-//  UIO_MAXIOV also seems to be 1024.
+//
+//	1024 and this seems conservative enough for now. Darwin's
+//	UIO_MAXIOV also seems to be 1024.
+//
 // iovecs limit length to 2GB(2^31)
 func iovecs(bs [][]byte, ivs []syscall.Iovec) (iovLen int) {
 	totalLen := 0
