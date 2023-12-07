@@ -29,13 +29,22 @@ func DialConnection(network, address string, timeout time.Duration) (connection 
 }
 
 // NewDialer only support TCP and unix socket now.
-func NewDialer() Dialer {
-	return &dialer{}
+func NewDialer(opts ...Option) Dialer {
+	d := new(dialer)
+	if len(opts) > 0 {
+		d.opts = new(options)
+		for _, opt := range opts {
+			opt.f(d.opts)
+		}
+	}
+	return d
 }
 
 var defaultDialer = NewDialer()
 
-type dialer struct{}
+type dialer struct {
+	opts *options
+}
 
 // DialTimeout implements Dialer.
 func (d *dialer) DialTimeout(network, address string, timeout time.Duration) (net.Conn, error) {
@@ -59,7 +68,7 @@ func (d *dialer) DialConnection(network, address string, timeout time.Duration) 
 		raddr := &UnixAddr{
 			UnixAddr: net.UnixAddr{Name: address, Net: network},
 		}
-		return DialUnix(network, nil, raddr)
+		return dialUnix(network, nil, raddr, d.opts)
 	default:
 		return nil, net.UnknownNetworkError(network)
 	}
@@ -95,9 +104,9 @@ func (d *dialer) dialTCP(ctx context.Context, network, address string) (connecti
 		tcpAddr.Port = portnum
 		tcpAddr.Zone = ipaddr.Zone
 		if ipaddr.IP != nil && ipaddr.IP.To4() == nil {
-			connection, err = DialTCP(ctx, "tcp6", nil, tcpAddr)
+			connection, err = dialTCP(ctx, "tcp6", nil, tcpAddr, d.opts)
 		} else {
-			connection, err = DialTCP(ctx, "tcp", nil, tcpAddr)
+			connection, err = dialTCP(ctx, "tcp", nil, tcpAddr, d.opts)
 		}
 		if err == nil {
 			return connection, nil

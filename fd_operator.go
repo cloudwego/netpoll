@@ -19,6 +19,15 @@ import (
 	"sync/atomic"
 )
 
+const (
+	opdetach    int32 = -1
+	_           int32 = 0 // default op mode, means nothing
+	opread      int32 = 1
+	opwrite     int32 = 2
+	opreadwrite int32 = 3
+	ophup       int32 = 4
+)
+
 // FDOperator is a collection of operations on file descriptors.
 type FDOperator struct {
 	// FD is file descriptor, poll will bind when register.
@@ -42,8 +51,7 @@ type FDOperator struct {
 	// poll is the registered location of the file descriptor.
 	poll Poll
 
-	// protect only detach once
-	detached int32
+	mode int32
 
 	// private, used by operatorCache
 	next  *FDOperator
@@ -52,14 +60,19 @@ type FDOperator struct {
 }
 
 func (op *FDOperator) Control(event PollEvent) error {
-	if event == PollDetach && atomic.AddInt32(&op.detached, 1) > 1 {
-		return nil
-	}
 	return op.poll.Control(op, event)
 }
 
 func (op *FDOperator) Free() {
 	op.poll.Free(op)
+}
+
+func (op *FDOperator) getMode() int32 {
+	return atomic.LoadInt32(&op.mode)
+}
+
+func (op *FDOperator) setMode(mode int32) {
+	atomic.StoreInt32(&op.mode, mode)
 }
 
 func (op *FDOperator) do() (can bool) {
@@ -98,5 +111,5 @@ func (op *FDOperator) reset() {
 	op.Inputs, op.InputAck = nil, nil
 	op.Outputs, op.OutputAck = nil, nil
 	op.poll = nil
-	op.detached = 0
+	op.mode = 0
 }

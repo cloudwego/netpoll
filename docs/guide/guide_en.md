@@ -558,6 +558,30 @@ func callback(connection netpoll.Connection) error {
 }
 ```
 
+## 8. How to configure the read threshold of the connection?
+
+By default, Netpoll does not place any limit on the reading speed of data sent by the end.
+Whenever there have more data on the connection, Netpoll will read the data into its own buffer as quickly as possible. 
+
+But sometimes users may not want data to be read too quickly, or they want to control the service memory usage, or the user's OnRequest callback processing data very slowly and need to control the peer's send speed.
+In this case, you can use `WithReadThreshold` to control the maximum reading threshold.
+
+### Client side use
+
+```
+dialer := netpoll.NewDialer(netpoll.WithReadThreshold(1024 * 1024 * 1024 * 1)) // 1GB
+conn, _ = dialer.DialConnection(network, address, timeout)
+```
+
+### Server side use
+
+```
+eventLoop, _ := netpoll.NewEventLoop(
+   handle,
+   netpoll.WithReadThreshold(1024 * 1024 * 1024 * 1), // 1GB
+)
+```
+
 # Attention
 
 ## 1. Wrong setting of NumLoops

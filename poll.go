@@ -59,8 +59,18 @@ const (
 
 	// PollR2RW is used to monitor writable for FDOperator,
 	// which is only called when the socket write buffer is full.
-	PollR2RW PollEvent = 0x5
-
+	PollR2RW PollEvent = 0x4
 	// PollRW2R is used to remove the writable monitor of FDOperator, generally used with PollR2RW.
-	PollRW2R PollEvent = 0x6
+	PollRW2R PollEvent = 0x5
+
+	// PollRW2W is used to remove the readable monitor of FDOperator.
+	PollRW2W PollEvent = 0x6
+	// PollW2RW is used to add the readable monitor of FDOperator, generally used with PollRW2W.
+	PollW2RW  PollEvent = 0x7
+	PollW2Hup PollEvent = 0x8
+
+	// PollR2Hup is used to remove the readable monitor of FDOperator.
+	PollR2Hup PollEvent = 0x9
+	// PollHup2R is used to add the readable monitor of FDOperator, generally used with PollR2Hup.
+	PollHup2R PollEvent = 0x10
 )

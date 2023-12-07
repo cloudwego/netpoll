@@ -182,11 +182,14 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	switch event {
 	case PollReadable:
 		operator.inuse()
+		operator.setMode(opread)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollWritable:
 		operator.inuse()
+		operator.setMode(opwrite)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollDetach:
+		operator.setMode(ophup)
 		if operator.OnWrite != nil { // means WaitWrite finished
 			evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
 		} else {
@@ -194,9 +197,26 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		}
 		p.delOperator(operator)
 	case PollR2RW:
+		operator.setMode(opreadwrite)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollRW2R:
+		operator.setMode(opread)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
+	case PollRW2W:
+		operator.setMode(opwrite)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE
+	case PollW2RW:
+		operator.setMode(opreadwrite)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
+	case PollR2Hup:
+		operator.setMode(ophup)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE
+	case PollW2Hup:
+		operator.setMode(ophup)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
+	case PollHup2R:
+		operator.setMode(opread)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err

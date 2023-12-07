@@ -244,16 +244,37 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	switch event {
 	case PollReadable: // server accept a new connection and wait read
 		operator.inuse()
+		operator.setMode(opread)
 		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable: // client create a new connection and wait connect finished
 		operator.inuse()
+		operator.setMode(opwrite)
 		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach: // deregister
+		if operator.getMode() == opdetach {
+			// protect only detach once
+			return nil
+		}
+		operator.setMode(opdetach)
 		p.delOperator(operator)
 		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW: // connection wait read/write
+		operator.setMode(opreadwrite)
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R: // connection wait read
+		operator.setMode(opread)
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollRW2W:
+		operator.setMode(opwrite)
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollW2RW:
+		operator.setMode(opreadwrite)
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollR2Hup, PollW2Hup:
+		operator.setMode(ophup)
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollHup2R:
+		operator.setMode(opread)
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return EpollCtl(p.fd, op, operator.FD, &evt)

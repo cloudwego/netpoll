@@ -54,27 +54,27 @@ type OnPrepare func(connection Connection) context.Context
 //
 // An example usage in TCP Proxy scenario:
 //
-//  func onConnect(ctx context.Context, upstream netpoll.Connection) context.Context {
-//	  downstream, _ := netpoll.DialConnection("tcp", downstreamAddr, time.Second)
-//	  return context.WithValue(ctx, downstreamKey, downstream)
-//  }
-//  func onRequest(ctx context.Context, upstream netpoll.Connection) error {
-//    downstream := ctx.Value(downstreamKey).(netpoll.Connection)
-//  }
+//	 func onConnect(ctx context.Context, upstream netpoll.Connection) context.Context {
+//		  downstream, _ := netpoll.DialConnection("tcp", downstreamAddr, time.Second)
+//		  return context.WithValue(ctx, downstreamKey, downstream)
+//	 }
+//	 func onRequest(ctx context.Context, upstream netpoll.Connection) error {
+//	   downstream := ctx.Value(downstreamKey).(netpoll.Connection)
+//	 }
 type OnConnect func(ctx context.Context, connection Connection) context.Context
 
 // OnRequest defines the function for handling connection. When data is sent from the connection peer,
 // netpoll actively reads the data in LT mode and places it in the connection's input buffer.
 // Generally, OnRequest starts handling the data in the following way:
 //
-//	func OnRequest(ctx context, connection Connection) error {
-//		input := connection.Reader().Next(n)
-//		handling input data...
-//  	send, _ := connection.Writer().Malloc(l)
-//		copy(send, output)
-//		connection.Flush()
-//		return nil
-//	}
+//		func OnRequest(ctx context, connection Connection) error {
+//			input := connection.Reader().Next(n)
+//			handling input data...
+//	 	send, _ := connection.Writer().Malloc(l)
+//			copy(send, output)
+//			connection.Flush()
+//			return nil
+//		}
 //
 // OnRequest will run in a separate goroutine and
 // it is guaranteed that there is one and only one OnRequest running at the same time.

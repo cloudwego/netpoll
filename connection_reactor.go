@@ -104,6 +104,11 @@ func (c *connection) inputAck(n int) (err error) {
 		c.maxSize = mallocMax
 	}
 
+	// trigger throttle
+	if c.readBufferThreshold > 0 && int64(length) >= c.readBufferThreshold {
+		c.pauseRead()
+	}
+
 	var needTrigger = true
 	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
@@ -117,7 +122,7 @@ func (c *connection) inputAck(n int) (err error) {
 // outputs implements FDOperator.
 func (c *connection) outputs(vs [][]byte) (rs [][]byte, supportZeroCopy bool) {
 	if c.outputBuffer.IsEmpty() {
-		c.rw2r()
+		c.pauseWrite()
 		return rs, c.supportZeroCopy
 	}
 	rs = c.outputBuffer.GetBytes(vs)
@@ -131,13 +136,41 @@ func (c *connection) outputAck(n int) (err error) {
 		c.outputBuffer.Release()
 	}
 	if c.outputBuffer.IsEmpty() {
-		c.rw2r()
+		c.pauseWrite()
 	}
 	return nil
 }
 
-// rw2r removed the monitoring of write events.
-func (c *connection) rw2r() {
-	c.operator.Control(PollRW2R)
+// pauseWrite removed the monitoring of write events.
+// pauseWrite used in poller
+func (c *connection) pauseWrite() {
+	switch c.operator.getMode() {
+	case opreadwrite:
+		c.operator.Control(PollRW2R)
+	case opwrite:
+		c.operator.Control(PollW2Hup)
+	}
 	c.triggerWrite(nil)
+}
+
+// pauseRead removed the monitoring of read events.
+// pauseRead used in poller
+func (c *connection) pauseRead() {
+	switch c.operator.getMode() {
+	case opread:
+		c.operator.Control(PollR2Hup)
+	case opreadwrite:
+		c.operator.Control(PollRW2W)
+	}
+}
+
+// resumeRead add the monitoring of read events.
+// resumeRead used by users
+func (c *connection) resumeRead() {
+	switch c.operator.getMode() {
+	case ophup:
+		c.operator.Control(PollHup2R)
+	case opwrite:
+		c.operator.Control(PollW2RW)
+	}
 }

@@ -519,6 +519,26 @@ func callback(connection netpoll.Connection) error {
 }
 ```
 
+## 8. 如何配置连接的读取阈值大小 ？
+
+Netpoll 默认不会对端发送数据的读取速度有任何限制，每当连接有数据时，Netpoll 会尽可能快地将数据存放在自己的 buffer 中。但有时候可能用户不希望数据过快发送，或者是希望控制服务内存使用量，又或者业务 OnRequest 回调处理速度很慢需要限制发送方速度，此时可以使用 `WithReadThreshold` 来控制读取的最大阈值。
+
+### Client 侧使用
+
+```
+dialer := netpoll.NewDialer(netpoll.WithReadThreshold(1024 * 1024 * 1024 * 1)) // 1GB
+conn, _ = dialer.DialConnection(network, address, timeout)
+```
+
+### Server 侧使用
+
+```
+eventLoop, _ := netpoll.NewEventLoop(
+	handle,
+	netpoll.WithReadThreshold(1024 * 1024 * 1024 * 1), // 1GB
+)
+```
+
 # 注意事项
 
 ## 1. 错误设置 NumLoops

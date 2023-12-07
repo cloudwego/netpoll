@@ -33,20 +33,21 @@ type connection struct {
 	netFD
 	onEvent
 	locker
-	operator        *FDOperator
-	readTimeout     time.Duration
-	readTimer       *time.Timer
-	readTrigger     chan error
-	waitReadSize    int64
-	writeTimeout    time.Duration
-	writeTimer      *time.Timer
-	writeTrigger    chan error
-	inputBuffer     *LinkBuffer
-	outputBuffer    *LinkBuffer
-	outputBarrier   *barrier
-	supportZeroCopy bool
-	maxSize         int // The maximum size of data between two Release().
-	bookSize        int // The size of data that can be read at once.
+	operator            *FDOperator
+	readTimeout         time.Duration
+	readTimer           *time.Timer
+	readTrigger         chan error
+	waitReadSize        int64
+	writeTimeout        time.Duration
+	writeTimer          *time.Timer
+	writeTrigger        chan error
+	inputBuffer         *LinkBuffer
+	outputBuffer        *LinkBuffer
+	outputBarrier       *barrier
+	supportZeroCopy     bool
+	maxSize             int   // The maximum size of data between two Release().
+	bookSize            int   // The size of data that can be read at once.
+	readBufferThreshold int64 // The readBufferThreshold limit the size of connection inputBuffer. In bytes.
 }
 
 var (
@@ -91,6 +92,12 @@ func (c *connection) SetWriteTimeout(timeout time.Duration) error {
 	if timeout >= 0 {
 		c.writeTimeout = timeout
 	}
+	return nil
+}
+
+// SetReadBufferThreshold implements Connection.
+func (c *connection) SetReadBufferThreshold(threshold int64) error {
+	c.readBufferThreshold = threshold
 	return nil
 }
 
@@ -394,28 +401,44 @@ func (c *connection) triggerWrite(err error) {
 // waitRead will wait full n bytes.
 func (c *connection) waitRead(n int) (err error) {
 	if n <= c.inputBuffer.Len() {
-		return nil
+		goto CLEANUP
 	}
+	// cannot wait read with an out of threshold size
+	if c.readBufferThreshold > 0 && int64(n) > c.readBufferThreshold {
+		// just return error and dont do cleanup
+		return Exception(ErrReadOutOfThreshold, "wait read")
+	}
+
 	atomic.StoreInt64(&c.waitReadSize, int64(n))
-	defer atomic.StoreInt64(&c.waitReadSize, 0)
 	if c.readTimeout > 0 {
-		return c.waitReadWithTimeout(n)
+		err = c.waitReadWithTimeout(n)
+		goto CLEANUP
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
 		switch c.status(closing) {
 		case poller:
-			return Exception(ErrEOF, "wait read")
+			err = Exception(ErrEOF, "wait read")
 		case user:
-			return Exception(ErrConnClosed, "wait read")
+			err = Exception(ErrConnClosed, "wait read")
 		default:
 			err = <-c.readTrigger
-			if err != nil {
-				return err
-			}
+		}
+		if err != nil {
+			goto CLEANUP
 		}
 	}
-	return nil
+CLEANUP:
+	atomic.StoreInt64(&c.waitReadSize, 0)
+	if c.readBufferThreshold > 0 && err == nil {
+		// only resume read when current read size could make newBufferSize < readBufferThreshold
+		bufferSize := int64(c.inputBuffer.Len())
+		newBufferSize := bufferSize - int64(n)
+		if bufferSize >= c.readBufferThreshold && newBufferSize < c.readBufferThreshold {
+			c.resumeRead()
+		}
+	}
+	return err
 }
 
 // waitReadWithTimeout will wait full n bytes or until timeout.
