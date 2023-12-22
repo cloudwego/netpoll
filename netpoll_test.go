@@ -505,6 +505,73 @@ func TestReadThresholdOption(t *testing.T) {
 	wg.Wait()
 }
 
+func TestReadThresholdClosed(t *testing.T) {
+	/*
+		client => server: 102400 bytes + 5 bytes
+		client => server: close connection
+		server cached: 102400 bytes, and throttled
+		server read: 102400 bytes, and unthrottled
+		server cached: 5 bytes
+		server read: 5 bytes
+	*/
+	readThreshold := 1024 * 100
+	trigger := make(chan struct{})
+	msg1 := make([]byte, readThreshold)
+	msg2 := []byte("hello")
+
+	// server
+	ln, err := CreateListener("tcp", ":12345")
+	MustNil(t, err)
+	svr, _ := NewEventLoop(func(ctx context.Context, connection Connection) error {
+		if connection.Reader().Len() < readThreshold {
+			return nil
+		}
+		// server read
+		t.Logf("server reading msg1")
+		trigger <- struct{}{} // let client send msg2
+		<-trigger             // ensure client send msg2 and closed
+		total := 0
+		for {
+			msg, err := connection.Reader().Next(1)
+			total += len(msg)
+			if errors.Is(err, ErrEOF) {
+				break
+			}
+			_ = msg
+		}
+		Equal(t, total, readThreshold+5)
+		close(trigger)
+		return nil
+	}, WithReadBufferThreshold(int64(readThreshold)))
+	defer svr.Shutdown(context.Background())
+	go func() {
+		svr.Serve(ln)
+	}()
+	time.Sleep(time.Millisecond * 100)
+
+	// client write
+	dialer := NewDialer(WithReadBufferThreshold(int64(readThreshold)))
+	cli, err := dialer.DialConnection("tcp", "127.0.0.1:12345", time.Second)
+	MustNil(t, err)
+	t.Logf("client writing msg1")
+	_, err = cli.Writer().WriteBinary(msg1)
+	MustNil(t, err)
+	err = cli.Writer().Flush()
+	MustNil(t, err)
+	<-trigger
+	time.Sleep(time.Millisecond * 100)
+	t.Logf("client writing msg2")
+	_, err = cli.Writer().WriteBinary(msg2)
+	MustNil(t, err)
+	err = cli.Writer().Flush()
+	MustNil(t, err)
+	err = cli.Close()
+	MustNil(t, err)
+	t.Logf("client closed")
+	trigger <- struct{}{}
+	<-trigger
+}
+
 func createTestListener(network, address string) (Listener, error) {
 	for {
 		ln, err := CreateListener(network, address)

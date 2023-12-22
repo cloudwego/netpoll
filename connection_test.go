@@ -763,3 +763,65 @@ func TestConnectionReadThreshold(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestConnectionReadThresholdWithClosed(t *testing.T) {
+	var readThreshold int64 = 1024 * 100
+	var opts = &options{}
+	var trigger = make(chan struct{})
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if int64(connection.Reader().Len()) < readThreshold {
+			return nil
+		}
+		Equal(t, connection.Reader().Len(), int(readThreshold))
+		trigger <- struct{}{} // let client send final msg and close
+		<-trigger             // wait for client send and close
+
+		// read non-throttled data
+		buf, err := connection.Reader().Next(int(readThreshold))
+		Equal(t, int64(len(buf)), readThreshold)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		t.Logf("read non-throttled data")
+
+		// continue read throttled data
+		buf, err = connection.Reader().Next(5)
+		MustNil(t, err)
+		t.Logf("read throttled data: [%s]", buf)
+		Equal(t, len(buf), 5)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		Equal(t, connection.Reader().Len(), 0)
+
+		_, err = connection.Reader().Next(1)
+		Assert(t, errors.Is(err, ErrEOF))
+		trigger <- struct{}{}
+		return nil
+	}
+
+	WithReadBufferThreshold(readThreshold).f(opts)
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+	Assert(t, rconn.readBufferThreshold == readThreshold)
+
+	msg := make([]byte, readThreshold)
+	_, err := wconn.Writer().WriteBinary(msg)
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+
+	<-trigger
+	_, err = wconn.Writer().WriteString("hello")
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+	t.Logf("flush final msg")
+	err = wconn.Close()
+	MustNil(t, err)
+	trigger <- struct{}{}
+
+	<-trigger
+}

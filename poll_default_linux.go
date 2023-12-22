@@ -168,7 +168,8 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 			}
 		}
 		if triggerHup {
-			if triggerRead && operator.Inputs != nil {
+			// if peer closed with throttled state, we should ensure we read all left data to avoid data loss
+			if (triggerRead || atomic.LoadInt32(&operator.throttled) > 0) && operator.Inputs != nil {
 				// read all left data if peer send and close
 				var leftRead int
 				// read all left data if peer send and close

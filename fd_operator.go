@@ -51,7 +51,8 @@ type FDOperator struct {
 	// poll is the registered location of the file descriptor.
 	poll Poll
 
-	mode int32
+	mode      int32
+	throttled int32
 
 	// private, used by operatorCache
 	next  *FDOperator
@@ -112,4 +113,5 @@ func (op *FDOperator) reset() {
 	op.Outputs, op.OutputAck = nil, nil
 	op.poll = nil
 	op.mode = 0
+	op.throttled = 0
 }

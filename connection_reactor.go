@@ -156,21 +156,31 @@ func (c *connection) pauseWrite() {
 // pauseRead removed the monitoring of read events.
 // pauseRead used in poller
 func (c *connection) pauseRead() {
+	// Note that the poller ensure that every fd should read all left data in socket buffer before detach it.
+	// So the operator mode should never be ophup.
+	var changeTo PollEvent
 	switch c.operator.getMode() {
 	case opread:
-		c.operator.Control(PollR2Hup)
+		changeTo = PollR2Hup
 	case opreadwrite:
-		c.operator.Control(PollRW2W)
+		changeTo = PollRW2W
+	}
+	if changeTo > 0 && atomic.CompareAndSwapInt32(&c.operator.throttled, 0, 1) {
+		c.operator.Control(changeTo)
 	}
 }
 
 // resumeRead add the monitoring of read events.
 // resumeRead used by users
 func (c *connection) resumeRead() {
+	var changeTo PollEvent
 	switch c.operator.getMode() {
 	case ophup:
-		c.operator.Control(PollHup2R)
+		changeTo = PollHup2R
 	case opwrite:
-		c.operator.Control(PollW2RW)
+		changeTo = PollW2RW
+	}
+	if changeTo > 0 && atomic.CompareAndSwapInt32(&c.operator.throttled, 1, 0) {
+		c.operator.Control(changeTo)
 	}
 }

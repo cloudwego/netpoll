@@ -115,7 +115,8 @@ func (p *defaultPoll) Wait() error {
 				}
 			}
 			if triggerHup {
-				if triggerRead && operator.Inputs != nil {
+				// if peer closed with throttled state, we should ensure we read all left data to avoid data loss
+				if (triggerRead || atomic.LoadInt32(&operator.throttled) > 0) && operator.Inputs != nil {
 					var leftRead int
 					// read all left data if peer send and close
 					if leftRead, err = readall(operator, barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
