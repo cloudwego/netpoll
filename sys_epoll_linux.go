@@ -28,6 +28,19 @@ func entersyscallblock()
 //go:linkname exitsyscall runtime.exitsyscall
 func exitsyscall()
 
+//go:nosplit
+func callEntersyscallblock() {
+	entersyscallblock()
+}
+
+//go:nosplit
+func callExitsyscall() {
+	exitsyscall()
+}
+
+//go:noescape
+func BlockSyscall6(num, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, errno uintptr)
+
 // EpollCreate implements epoll_create1.
 func EpollCreate(flag int) (fd int, err error) {
 	var r0 uintptr
@@ -68,18 +81,10 @@ func EpollWaitRaw(epfd int, events []epollevent, msec int) (n int, err error) {
 
 func EpollWaitBlock(epfd int, events []epollevent, msec int) (n int, err error) {
 	r0, _, errno := BlockSyscall6(SYS_EPOLL_WAIT, uintptr(epfd), uintptr(unsafe.Pointer(&events[0])), uintptr(len(events)), uintptr(msec), 0, 0)
-	if errno == syscall.Errno(0) {
+	if errno == 0 {
 		err = nil
 	} else {
-		err = errno
+		err = syscall.Errno(errno)
 	}
 	return int(r0), err
-}
-
-//go:nosplit
-func BlockSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err syscall.Errno) {
-	entersyscallblock()
-	r1, r2, err = syscall.RawSyscall6(trap, a1, a2, a3, a4, a5, a6)
-	exitsyscall()
-	return r1, r2, err
 }

@@ -99,9 +99,7 @@ func (p *defaultPoll) Wait() (err error) {
 		}
 		// msec: 0(raw) => 1ms(sched,raw) => -1(block_syscall)
 		// poller's G will hold P at most 1ms
-		if msec > 0 {
-			n, err = EpollWaitRaw(p.fd, p.events, msec)
-		} else if msec == 0 {
+		if msec >= 0 {
 			n, err = EpollWaitRaw(p.fd, p.events, msec)
 		} else { // < 0
 			n, err = EpollWaitBlock(p.fd, p.events, msec)
