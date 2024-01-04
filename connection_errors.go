@@ -16,6 +16,7 @@ package netpoll
 
 import (
 	"fmt"
+	"net"
 	"syscall"
 )
 
@@ -50,6 +51,10 @@ func Exception(err error, suffix string) error {
 	}
 	return &exception{no: no, suffix: suffix}
 }
+
+var (
+	_ net.Error = (*exception)(nil)
+)
 
 type exception struct {
 	no     syscall.Errno
@@ -86,6 +91,21 @@ func (e *exception) Is(target error) bool {
 
 func (e *exception) Unwrap() error {
 	return e.no
+}
+
+func (e *exception) Timeout() bool {
+	switch e.no {
+	case ErrDialTimeout, ErrReadTimeout, ErrWriteTimeout:
+		return true
+	}
+	if e.no.Timeout() {
+		return true
+	}
+	return false
+}
+
+func (e *exception) Temporary() bool {
+	return e.no.Temporary()
 }
 
 // Errors defined in netpoll
