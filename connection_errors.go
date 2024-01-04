@@ -37,7 +37,7 @@ const (
 	// Write I/O buffer timeout, calling by Connection.Writer
 	ErrWriteTimeout = syscall.Errno(0x107)
 	// The wait read size large than read threshold
-	ErrReadOutOfThreshold = syscall.Errno(0x108)
+	ErrReadExceedThreshold = syscall.Errno(0x108)
 )
 
 const ErrnoMask = 0xFF
@@ -112,12 +112,12 @@ func (e *exception) Temporary() bool {
 
 // Errors defined in netpoll
 var errnos = [...]string{
-	ErrnoMask & ErrConnClosed:         "connection has been closed",
-	ErrnoMask & ErrReadTimeout:        "connection read timeout",
-	ErrnoMask & ErrDialTimeout:        "dial wait timeout",
-	ErrnoMask & ErrDialNoDeadline:     "dial no deadline",
-	ErrnoMask & ErrUnsupported:        "netpoll dose not support",
-	ErrnoMask & ErrEOF:                "EOF",
-	ErrnoMask & ErrWriteTimeout:       "connection write timeout",
-	ErrnoMask & ErrReadOutOfThreshold: "connection read size is out of threshold",
+	ErrnoMask & ErrConnClosed:          "connection has been closed",
+	ErrnoMask & ErrReadTimeout:         "connection read timeout",
+	ErrnoMask & ErrDialTimeout:         "dial wait timeout",
+	ErrnoMask & ErrDialNoDeadline:      "dial no deadline",
+	ErrnoMask & ErrUnsupported:         "netpoll dose not support",
+	ErrnoMask & ErrEOF:                 "EOF",
+	ErrnoMask & ErrWriteTimeout:        "connection write timeout",
+	ErrnoMask & ErrReadExceedThreshold: "connection read size exceeds the threshold",
 }

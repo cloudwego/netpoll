@@ -406,7 +406,7 @@ func (c *connection) waitRead(n int) (err error) {
 	// cannot wait read with an out of threshold size
 	if c.readBufferThreshold > 0 && int64(n) > c.readBufferThreshold {
 		// just return error and dont do cleanup
-		return Exception(ErrReadOutOfThreshold, "wait read")
+		return Exception(ErrReadExceedThreshold, "wait read")
 	}
 
 	atomic.StoreInt64(&c.waitReadSize, int64(n))

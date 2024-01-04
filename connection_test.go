@@ -685,7 +685,7 @@ func TestConnectionReadOutOfThreshold(t *testing.T) {
 		defer wg.Done()
 		// read throttled data
 		_, err := connection.Reader().Next(readSize)
-		Assert(t, errors.Is(err, ErrReadOutOfThreshold), err)
+		Assert(t, errors.Is(err, ErrReadExceedThreshold), err)
 		connection.Close()
 		return nil
 	}
