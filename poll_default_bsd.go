@@ -218,6 +218,9 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollHup2R:
 		operator.setMode(opread)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
+	case PollHup2W:
+		operator.setMode(opwrite)
+		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err

@@ -277,6 +277,9 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollHup2R:
 		operator.setMode(opread)
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollHup2W:
+		operator.setMode(opwrite)
+		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return EpollCtl(p.fd, op, operator.FD, &evt)
 }

@@ -72,5 +72,7 @@ const (
 	// PollR2Hup is used to remove the readable monitor of FDOperator.
 	PollR2Hup PollEvent = 0x9
 	// PollHup2R is used to add the readable monitor of FDOperator, generally used with PollR2Hup.
-	PollHup2R PollEvent = 0x10
+	PollHup2R PollEvent = 0xA
+	// PollHup2W is used to add the writeable monitor of FDOperator.
+	PollHup2W PollEvent = 0xB
 )

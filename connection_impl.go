@@ -415,7 +415,7 @@ func (c *connection) waitRead(n int) (err error) {
 		goto CLEANUP
 	}
 	// wait full n
-	for c.inputBuffer.Len() < n {
+	for c.inputBuffer.Len() < n && err == nil {
 		switch c.status(closing) {
 		case poller:
 			err = Exception(ErrEOF, "wait read")
@@ -423,9 +423,6 @@ func (c *connection) waitRead(n int) (err error) {
 			err = Exception(ErrConnClosed, "wait read")
 		default:
 			err = <-c.readTrigger
-		}
-		if err != nil {
-			goto CLEANUP
 		}
 	}
 CLEANUP:
@@ -506,7 +503,13 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	err = c.operator.Control(PollR2RW)
+	if c.operator.getMode() == ophup {
+		// triggered read throttled, so here shouldn't trigger read event again
+		err = c.operator.Control(PollHup2W)
+	} else {
+		err = c.operator.Control(PollR2RW)
+	}
+	c.operator.done()
 	if err != nil {
 		return Exception(err, "when flush")
 	}
