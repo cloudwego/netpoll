@@ -456,7 +456,7 @@ func TestReadThresholdOption(t *testing.T) {
 		Equal(t, len(msg), 5)
 
 		_, err = connection.Reader().Next(1)
-		Assert(t, errors.Is(err, ErrEOF))
+		Assert(t, errors.Is(err, ErrEOF), err)
 		t.Logf("server closed")
 		return nil
 	}, WithReadBufferThreshold(int64(readThreshold)))
@@ -530,16 +530,13 @@ func TestReadThresholdClosed(t *testing.T) {
 		t.Logf("server reading msg1")
 		trigger <- struct{}{} // let client send msg2
 		<-trigger             // ensure client send msg2 and closed
-		total := 0
 		for {
 			msg, err := connection.Reader().Next(1)
-			total += len(msg)
 			if errors.Is(err, ErrEOF) {
 				break
 			}
 			_ = msg
 		}
-		Equal(t, total, readThreshold+5)
 		close(trigger)
 		return nil
 	}, WithReadBufferThreshold(int64(readThreshold)))

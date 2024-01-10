@@ -564,12 +564,12 @@ By default, Netpoll does not place any limit on the reading speed of data sent b
 Whenever there have more data on the connection, Netpoll will read the data into its own buffer as quickly as possible. 
 
 But sometimes users may not want data to be read too quickly, or they want to control the service memory usage, or the user's OnRequest callback processing data very slowly and need to control the peer's send speed.
-In this case, you can use `WithReadThreshold` to control the maximum reading threshold.
+In this case, you can use `WithReadBufferThreshold` to control the maximum reading threshold.
 
 ### Client side use
 
 ```
-dialer := netpoll.NewDialer(netpoll.WithReadThreshold(1024 * 1024 * 1024 * 1)) // 1GB
+dialer := netpoll.NewDialer(netpoll.WithReadBufferThreshold(1024 * 1024 * 1024 * 1)) // 1GB
 conn, _ = dialer.DialConnection(network, address, timeout)
 ```
 
@@ -578,7 +578,7 @@ conn, _ = dialer.DialConnection(network, address, timeout)
 ```
 eventLoop, _ := netpoll.NewEventLoop(
    handle,
-   netpoll.WithReadThreshold(1024 * 1024 * 1024 * 1), // 1GB
+   netpoll.WithReadBufferThreshold(1024 * 1024 * 1024 * 1), // 1GB
 )
 ```
 

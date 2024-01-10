@@ -80,6 +80,12 @@ func (c *connection) closeBuffer() {
 
 // inputs implements FDOperator.
 func (c *connection) inputs(vs [][]byte) (rs [][]byte) {
+	// trigger throttle
+	if c.readBufferThreshold > 0 && int64(c.inputBuffer.Len()) >= c.readBufferThreshold {
+		c.pauseRead()
+		return
+	}
+
 	vs[0] = c.inputBuffer.book(c.bookSize, c.maxSize)
 	return vs[:1]
 }
@@ -123,6 +129,7 @@ func (c *connection) inputAck(n int) (err error) {
 func (c *connection) outputs(vs [][]byte) (rs [][]byte, supportZeroCopy bool) {
 	if c.outputBuffer.IsEmpty() {
 		c.pauseWrite()
+		c.triggerWrite(nil)
 		return rs, c.supportZeroCopy
 	}
 	rs = c.outputBuffer.GetBytes(vs)
@@ -137,50 +144,43 @@ func (c *connection) outputAck(n int) (err error) {
 	}
 	if c.outputBuffer.IsEmpty() {
 		c.pauseWrite()
+		c.triggerWrite(nil)
 	}
 	return nil
 }
 
+/* The race description of operator event monitoring
+- Pause operation will remove old event monitor of operator
+- Resume operation will add new event monitor of operator
+- Only poller could use Pause to remove event monitor, and poller already hold the op.do() locker
+- Only user could use Resume, and user's operation maybe compete with poller's operation
+- If competition happen, because of all resume operation will monitor all events, it's safe to do that with a race condition.
+    * If resume first and pause latter, poller will monitor the accurate events it needs.
+    * If pause first and resume latter,  poller will monitor the duplicate events which will be removed after next poller triggered.
+      And poller will ensure to remove the duplicate events.
+- If there is no readBufferThreshold option, the code path will be more simple and efficient.
+*/
+
 // pauseWrite removed the monitoring of write events.
 // pauseWrite used in poller
 func (c *connection) pauseWrite() {
-	switch c.operator.getMode() {
-	case opreadwrite:
-		c.operator.Control(PollRW2R)
-	case opwrite:
-		c.operator.Control(PollW2Hup)
-	}
-	c.triggerWrite(nil)
+	c.operator.Control(PollRW2R)
+}
+
+// resumeWrite add the monitoring of write events.
+// resumeWrite used by users
+func (c *connection) resumeWrite() {
+	c.operator.Control(PollR2RW)
 }
 
 // pauseRead removed the monitoring of read events.
 // pauseRead used in poller
 func (c *connection) pauseRead() {
-	// Note that the poller ensure that every fd should read all left data in socket buffer before detach it.
-	// So the operator mode should never be ophup.
-	var changeTo PollEvent
-	switch c.operator.getMode() {
-	case opread:
-		changeTo = PollR2Hup
-	case opreadwrite:
-		changeTo = PollRW2W
-	}
-	if changeTo > 0 && atomic.CompareAndSwapInt32(&c.operator.throttled, 0, 1) {
-		c.operator.Control(changeTo)
-	}
+	c.operator.Control(PollRW2W)
 }
 
 // resumeRead add the monitoring of read events.
 // resumeRead used by users
 func (c *connection) resumeRead() {
-	var changeTo PollEvent
-	switch c.operator.getMode() {
-	case ophup:
-		changeTo = PollHup2R
-	case opwrite:
-		changeTo = PollW2RW
-	}
-	if changeTo > 0 && atomic.CompareAndSwapInt32(&c.operator.throttled, 1, 0) {
-		c.operator.Control(changeTo)
-	}
+	c.operator.Control(PollW2RW)
 }

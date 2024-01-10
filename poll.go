@@ -48,31 +48,23 @@ type PollEvent int
 const (
 	// PollReadable is used to monitor whether the FDOperator registered by
 	// listener and connection is readable or closed.
-	PollReadable PollEvent = 0x1
+	PollReadable PollEvent = iota + 1
 
 	// PollWritable is used to monitor whether the FDOperator created by the dialer is writable or closed.
 	// ET mode must be used (still need to poll hup after being writable)
-	PollWritable PollEvent = 0x2
+	PollWritable
 
 	// PollDetach is used to remove the FDOperator from poll.
-	PollDetach PollEvent = 0x3
+	PollDetach
 
 	// PollR2RW is used to monitor writable for FDOperator,
 	// which is only called when the socket write buffer is full.
-	PollR2RW PollEvent = 0x4
+	PollR2RW
 	// PollRW2R is used to remove the writable monitor of FDOperator, generally used with PollR2RW.
-	PollRW2R PollEvent = 0x5
+	PollRW2R
 
 	// PollRW2W is used to remove the readable monitor of FDOperator.
-	PollRW2W PollEvent = 0x6
+	PollRW2W
 	// PollW2RW is used to add the readable monitor of FDOperator, generally used with PollRW2W.
-	PollW2RW  PollEvent = 0x7
-	PollW2Hup PollEvent = 0x8
-
-	// PollR2Hup is used to remove the readable monitor of FDOperator.
-	PollR2Hup PollEvent = 0x9
-	// PollHup2R is used to add the readable monitor of FDOperator, generally used with PollR2Hup.
-	PollHup2R PollEvent = 0xA
-	// PollHup2W is used to add the writeable monitor of FDOperator.
-	PollHup2W PollEvent = 0xB
+	PollW2RW
 )

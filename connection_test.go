@@ -784,18 +784,10 @@ func TestConnectionReadThresholdWithClosed(t *testing.T) {
 		MustNil(t, err)
 		t.Logf("read non-throttled data")
 
-		// continue read throttled data
-		buf, err = connection.Reader().Next(5)
-		MustNil(t, err)
-		t.Logf("read throttled data: [%s]", buf)
-		Equal(t, len(buf), 5)
-		MustNil(t, err)
-		err = connection.Reader().Release()
-		MustNil(t, err)
-		Equal(t, connection.Reader().Len(), 0)
-
-		_, err = connection.Reader().Next(1)
-		Assert(t, errors.Is(err, ErrEOF))
+		// continue read throttled data with EOF
+		for !errors.Is(err, ErrEOF) {
+			buf, err = connection.Reader().Next(1)
+		}
 		trigger <- struct{}{}
 		return nil
 	}

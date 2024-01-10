@@ -503,17 +503,10 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	if c.operator.getMode() == ophup {
-		// triggered read throttled, so here shouldn't trigger read event again
-		err = c.operator.Control(PollHup2W)
-	} else {
-		err = c.operator.Control(PollR2RW)
-	}
-	c.operator.done()
-	if err != nil {
-		return Exception(err, "when flush")
-	}
 
+	// no need to check if resume write successfully
+	// if resume failed, the connection will be triggered triggerWrite(err), and waitFlush will return err
+	c.resumeWrite()
 	return c.waitFlush()
 }
 
@@ -546,8 +539,8 @@ func (c *connection) waitFlush() (err error) {
 		default:
 		}
 		// if timeout, remove write event from poller
-		// we cannot flush it again, since we don't if the poller is still process outputBuffer
-		c.operator.Control(PollRW2R)
+		// we cannot flush it again, since we don't know if the poller is still processing outputBuffer
+		c.pauseWrite()
 		return Exception(ErrWriteTimeout, c.remoteAddr.String())
 	}
 }

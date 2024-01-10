@@ -115,8 +115,7 @@ func (p *defaultPoll) Wait() error {
 				}
 			}
 			if triggerHup {
-				// if peer closed with throttled state, we should ensure we read all left data to avoid data loss
-				if (triggerRead || atomic.LoadInt32(&operator.throttled) > 0) && operator.Inputs != nil {
+				if triggerRead && operator.Inputs != nil {
 					var leftRead int
 					// read all left data if peer send and close
 					if leftRead, err = readall(operator, barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
@@ -183,14 +182,11 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	switch event {
 	case PollReadable:
 		operator.inuse()
-		operator.setMode(opread)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollWritable:
 		operator.inuse()
-		operator.setMode(opwrite)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollDetach:
-		operator.setMode(ophup)
 		if operator.OnWrite != nil { // means WaitWrite finished
 			evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
 		} else {
@@ -198,29 +194,13 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		}
 		p.delOperator(operator)
 	case PollR2RW:
-		operator.setMode(opreadwrite)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	case PollRW2R:
-		operator.setMode(opread)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
 	case PollRW2W:
-		operator.setMode(opwrite)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE
 	case PollW2RW:
-		operator.setMode(opreadwrite)
 		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollR2Hup:
-		operator.setMode(ophup)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_DELETE
-	case PollW2Hup:
-		operator.setMode(ophup)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_DELETE
-	case PollHup2R:
-		operator.setMode(opread)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_READ, syscall.EV_ADD|syscall.EV_ENABLE
-	case PollHup2W:
-		operator.setMode(opwrite)
-		evs[0].Filter, evs[0].Flags = syscall.EVFILT_WRITE, syscall.EV_ADD|syscall.EV_ENABLE
 	}
 	_, err := syscall.Kevent(p.fd, evs, nil, nil)
 	return err
