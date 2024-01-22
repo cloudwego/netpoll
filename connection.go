@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// CloseCallback will be called when the connection is closed.
+// CloseCallback will be called after the connection is closed.
 // Return: error is unused which will be ignored directly.
 type CloseCallback func(connection Connection) error
 

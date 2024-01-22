@@ -48,10 +48,11 @@ type gracefulExit interface {
 // OnPrepare, OnRequest, CloseCallback share the lock processing,
 // which is a CAS lock and can only be cleared by OnRequest.
 type onEvent struct {
-	ctx               context.Context
-	onConnectCallback atomic.Value
-	onRequestCallback atomic.Value
-	closeCallbacks    atomic.Value // value is latest *callbackNode
+	ctx                  context.Context
+	onConnectCallback    atomic.Value
+	onDisconnectCallback atomic.Value
+	onRequestCallback    atomic.Value
+	closeCallbacks       atomic.Value // value is latest *callbackNode
 }
 
 type callbackNode struct {
@@ -63,6 +64,14 @@ type callbackNode struct {
 func (c *connection) SetOnConnect(onConnect OnConnect) error {
 	if onConnect != nil {
 		c.onConnectCallback.Store(onConnect)
+	}
+	return nil
+}
+
+// SetOnDisconnect set the OnDisconnect callback.
+func (c *connection) SetOnDisconnect(onDisconnect OnDisconnect) error {
+	if onDisconnect != nil {
+		c.onDisconnectCallback.Store(onDisconnect)
 	}
 	return nil
 }
@@ -99,6 +108,7 @@ func (c *connection) AddCloseCallback(callback CloseCallback) error {
 func (c *connection) onPrepare(opts *options) (err error) {
 	if opts != nil {
 		c.SetOnConnect(opts.onConnect)
+		c.SetOnDisconnect(opts.onDisconnect)
 		c.SetOnRequest(opts.onRequest)
 		c.SetReadTimeout(opts.readTimeout)
 		c.SetWriteTimeout(opts.writeTimeout)
@@ -148,6 +158,14 @@ func (c *connection) onConnect() {
 			}
 		},
 	)
+}
+
+func (c *connection) onDisconnect() {
+	var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
+	if onDisconnect == nil {
+		return
+	}
+	onDisconnect(c.ctx, c)
 }
 
 // onRequest is responsible for executing the closeCallbacks after the connection has been closed.

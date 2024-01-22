@@ -136,6 +136,66 @@ func TestOnConnectWrite(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestOnDisconnect(t *testing.T) {
+	var ctxKey = struct{}{}
+	var network, address = "tcp", ":8888"
+	var canceled, closed int32
+	var conns int32 = 100
+	req := "ping"
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			cancelFunc, _ := ctx.Value(ctxKey).(context.CancelFunc)
+			MustTrue(t, cancelFunc != nil)
+			Assert(t, ctx.Done() != nil)
+
+			buf, err := connection.Reader().Next(4) // should consumed all data
+			MustNil(t, err)
+			Equal(t, string(buf), req)
+			select {
+			case <-ctx.Done():
+				atomic.AddInt32(&canceled, 1)
+			case <-time.After(time.Second):
+			}
+			return nil
+		},
+		WithOnConnect(func(ctx context.Context, conn Connection) context.Context {
+			conn.AddCloseCallback(func(connection Connection) error {
+				atomic.AddInt32(&closed, 1)
+				return nil
+			})
+			ctx, cancel := context.WithCancel(ctx)
+			return context.WithValue(ctx, ctxKey, cancel)
+		}),
+		WithOnDisconnect(func(ctx context.Context, conn Connection) {
+			cancelFunc, _ := ctx.Value(ctxKey).(context.CancelFunc)
+			MustTrue(t, cancelFunc != nil)
+			cancelFunc()
+		}),
+	)
+
+	for i := int32(0); i < conns; i++ {
+		var conn, err = DialConnection(network, address, time.Second)
+		MustNil(t, err)
+
+		_, err = conn.Writer().WriteString(req)
+		MustNil(t, err)
+		err = conn.Writer().Flush()
+		MustNil(t, err)
+
+		err = conn.Close()
+		MustNil(t, err)
+	}
+	for atomic.LoadInt32(&closed) < conns {
+		t.Logf("closed: %d, canceled: %d", atomic.LoadInt32(&closed), atomic.LoadInt32(&canceled))
+		runtime.Gosched()
+	}
+	Equal(t, atomic.LoadInt32(&closed), conns)
+	Equal(t, atomic.LoadInt32(&canceled), conns)
+
+	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
 func TestGracefulExit(t *testing.T) {
 	var network, address = "tcp", ":8888"
 
