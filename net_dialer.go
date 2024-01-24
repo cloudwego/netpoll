@@ -28,6 +28,21 @@ func DialConnection(network, address string, timeout time.Duration) (connection 
 	return defaultDialer.DialConnection(network, address, timeout)
 }
 
+// DialVSock is a default implementation of Dialer.
+func DialVSock(cid, port uint32, timeout time.Duration) (connection Connection, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	c, err := vSockSocket(ctx, cid, port)
+	if err != nil {
+		return nil, err
+	}
+	connection, err = newVSockConnection(c)
+	if err != nil {
+		return nil, err
+	}
+	return connection, nil
+}
+
 // NewDialer only support TCP and unix socket now.
 func NewDialer() Dialer {
 	return &dialer{}

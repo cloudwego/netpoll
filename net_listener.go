@@ -21,11 +21,30 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strconv"
 	"syscall"
+
+	"github.com/mdlayher/vsock"
 )
 
 // CreateListener return a new Listener.
 func CreateListener(network, addr string) (l Listener, err error) {
+	/* Usage
+	1. replace go mod to github.com/joway/socket@main and github.com/joway/vsock@main
+	2. set DPU_CONTEXT_ID and DPU_PORT env when start server
+	*/
+	dpuCtxId := os.Getenv("DPU_CONTEXT_ID")
+	dpuPort := os.Getenv("MESH_INGRESS_PORT")
+	if len(dpuCtxId) > 0 {
+		ctxId, _ := strconv.Atoi(dpuCtxId)
+		port, _ := strconv.Atoi(dpuPort)
+		ln, err := vsock.ListenContextID(uint32(ctxId), uint32(port), nil)
+		if err != nil {
+			return nil, err
+		}
+		return ConvertListener(ln)
+	}
+
 	if network == "udp" {
 		// TODO: udp listener.
 		return udpListener(network, addr)
@@ -141,6 +160,8 @@ func (ln *listener) parseFD() (err error) {
 	case *net.TCPListener:
 		ln.file, err = netln.File()
 	case *net.UnixListener:
+		ln.file, err = netln.File()
+	case *vsock.Listener:
 		ln.file, err = netln.File()
 	default:
 		return errors.New("listener type can't support")
