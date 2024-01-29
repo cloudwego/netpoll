@@ -42,9 +42,11 @@ func CreateListener(network, addr string) (l Listener, err error) {
 		if err != nil {
 			return nil, err
 		}
+		logger.Printf("DPU listener success: ", ctxId, port)
 		return ConvertListener(ln)
 	}
 
+	logger.Printf("Cannot found dpu env", dpuCtxId, dpuPort)
 	if network == "udp" {
 		// TODO: udp listener.
 		return udpListener(network, addr)
@@ -98,11 +100,26 @@ type listener struct {
 	addr  net.Addr       // listener's local addr
 	ln    net.Listener   // tcp|unix listener
 	pconn net.PacketConn // udp listener
+	dpu   bool
 	file  *os.File
 }
 
 // Accept implements Listener.
 func (ln *listener) Accept() (net.Conn, error) {
+	if ln.dpu {
+		cc, err := ln.ln.Accept()
+		if err != nil {
+			return nil, err
+		}
+		vconn := cc.(*vsock.Conn)
+		fd := vconn.Fd()
+		var nfd = &netFD{}
+		nfd.fd = fd
+		nfd.localAddr = ln.addr
+		nfd.network = ln.addr.Network()
+		nfd.remoteAddr = vconn.RemoteAddr()
+		return nfd, nil
+	}
 	// udp
 	if ln.pconn != nil {
 		return ln.UDPAccept()
@@ -163,6 +180,7 @@ func (ln *listener) parseFD() (err error) {
 		ln.file, err = netln.File()
 	case *vsock.Listener:
 		ln.file, err = netln.File()
+		ln.dpu = true
 	default:
 		return errors.New("listener type can't support")
 	}
