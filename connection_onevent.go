@@ -206,7 +206,7 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			}
 			process(c)
 		}
-		// Handling callback if connection has been closed.
+		// handling callback if connection has been closed.
 		if closedBy != none {
 			//  if closed by user when processing, it "may" needs detach
 			needDetach := closedBy == user
@@ -219,7 +219,17 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			return
 		}
 		c.unlock(processing)
-		// Double check when exiting.
+		// Note: Poller's closeCallback call will try to get processing lock failed but here already neer to unlock processing.
+		//       So here we need to check connection state again, to avoid connection leak
+		// double check close state
+		if c.status(closing) != 0 && c.lock(processing) {
+			// poller will get the processing lock failed, here help poller do closeCallback
+			// fd must already detach by poller
+			c.closeCallback(false, false)
+			panicked = false
+			return
+		}
+		// double check isProcessable
 		if isProcessable(c) && c.lock(processing) {
 			goto START
 		}
