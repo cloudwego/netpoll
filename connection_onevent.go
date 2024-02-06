@@ -134,23 +134,36 @@ func (c *connection) onPrepare(opts *options) (err error) {
 func (c *connection) onConnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
+		atomic.StoreInt32(&c.connected, 1)
+		return
+	}
+	if !c.lock(connecting) {
+		// it never happens because onDisconnect will not lock connecting if c.connected == 0
 		return
 	}
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-	var connected int32
 	c.onProcess(
 		// only process when conn active and have unread data
 		func(c *connection) bool {
 			// if onConnect not called
-			if atomic.LoadInt32(&connected) == 0 {
+			if atomic.LoadInt32(&c.connected) == 0 {
 				return true
 			}
 			// check for onRequest
 			return onRequest != nil && c.Reader().Len() > 0
 		},
 		func(c *connection) {
-			if atomic.CompareAndSwapInt32(&connected, 0, 1) {
+			if atomic.CompareAndSwapInt32(&c.connected, 0, 1) {
 				c.ctx = onConnect(c.ctx, c)
+
+				if !c.IsActive() {
+					// since we hold connecting lock, so we should help to call onDisconnect here
+					var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
+					if onDisconnect != nil {
+						onDisconnect(c.ctx, c)
+					}
+				}
+				c.unlock(connecting)
 				return
 			}
 			if onRequest != nil {
@@ -160,12 +173,25 @@ func (c *connection) onConnect() {
 	)
 }
 
+// when onDisconnect called, c.IsActive() must return false
 func (c *connection) onDisconnect() {
 	var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
 	if onDisconnect == nil {
 		return
 	}
-	onDisconnect(c.ctx, c)
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	if onConnect == nil {
+		// no need lock if onConnect is nil
+		onDisconnect(c.ctx, c)
+		return
+	}
+	if atomic.LoadInt32(&c.connected) > 0 && c.lock(connecting) { // means OnConnect already finished
+		onDisconnect(c.ctx, c)
+		c.unlock(connecting)
+		return
+	}
+	// the connection is not finish onConnect yet, return and let onConnect to call onDisconnect
+	return
 }
 
 // onRequest is responsible for executing the closeCallbacks after the connection has been closed.
@@ -173,6 +199,11 @@ func (c *connection) onRequest() (needTrigger bool) {
 	var onRequest, ok = c.onRequestCallback.Load().(OnRequest)
 	if !ok {
 		return true
+	}
+	// wait onConnect finished first
+	if atomic.LoadInt32(&c.connected) == 0 && c.onConnectCallback.Load() != nil {
+		// let onConnect to call onRequest
+		return
 	}
 	processed := c.onProcess(
 		// only process when conn active and have unread data
@@ -249,7 +280,6 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		panicked = false
 		return
 	}
-
 	runTask(c.ctx, task)
 	return true
 }

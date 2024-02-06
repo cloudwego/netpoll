@@ -45,8 +45,9 @@ type connection struct {
 	outputBuffer    *LinkBuffer
 	outputBarrier   *barrier
 	supportZeroCopy bool
-	maxSize         int // The maximum size of data between two Release().
-	bookSize        int // The size of data that can be read at once.
+	maxSize         int   // The maximum size of data between two Release().
+	bookSize        int   // The size of data that can be read at once.
+	connected       int32 // The OnConnect callback finished state
 }
 
 var (
@@ -323,6 +324,7 @@ func (c *connection) init(conn Conn, opts *options) (err error) {
 	c.bookSize, c.maxSize = pagesize, pagesize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
 	c.outputBarrier = barrierPool.Get().(*barrier)
+	c.connected = 0
 
 	c.initNetFD(conn) // conn must be *netFD{}
 	c.initFDOperator()

@@ -45,6 +45,7 @@ type key int32
 
 const (
 	closing key = iota
+	connecting
 	processing
 	flushing
 	// total must be at the bottom.
