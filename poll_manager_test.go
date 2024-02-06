@@ -18,6 +18,8 @@
 package netpoll
 
 import (
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -45,9 +47,47 @@ func TestPollManager(t *testing.T) {
 }
 
 func TestPollManagerReset(t *testing.T) {
-	n := pollmanager.NumLoops
+	n := pollmanager.numLoops
 	err := pollmanager.Reset()
 	MustNil(t, err)
-	Equal(t, len(pollmanager.polls), n)
-	Equal(t, pollmanager.NumLoops, n)
+	Equal(t, len(pollmanager.polls), int(n))
+}
+
+func TestPollManagerSetNumLoops(t *testing.T) {
+	pm := newManager(1)
+
+	startGs := runtime.NumGoroutine()
+	poll := pm.Pick()
+	newGs := runtime.NumGoroutine()
+	Assert(t, poll != nil)
+	Assert(t, newGs-startGs == 1, newGs, startGs)
+	t.Logf("old=%d, new=%d", startGs, newGs)
+
+	// change pollers
+	oldGs := newGs
+	err := pm.SetNumLoops(100)
+	MustNil(t, err)
+	newGs = runtime.NumGoroutine()
+	t.Logf("old=%d, new=%d", oldGs, newGs)
+	Assert(t, newGs == oldGs)
+
+	// trigger polls adjustment
+	var wg sync.WaitGroup
+	finish := make(chan struct{})
+	oldGs = startGs + 32 // 32 self goroutines
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			poll := pm.Pick()
+			newGs := runtime.NumGoroutine()
+			t.Logf("old=%d, new=%d", oldGs, newGs)
+			Assert(t, poll != nil)
+			Assert(t, newGs-oldGs == 100)
+			Assert(t, len(pm.polls) == 100)
+			wg.Done()
+			<-finish // hold goroutines
+		}()
+	}
+	wg.Wait()
+	close(finish)
 }

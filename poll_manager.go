@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sync/atomic"
 )
 
 func setNumLoops(numLoops int) error {
@@ -37,53 +38,46 @@ func setLoggerOutput(w io.Writer) {
 	logger = log.New(w, "", log.LstdFlags)
 }
 
-// manage all pollers
+// pollmanager manage all pollers
 var pollmanager *manager
 var logger *log.Logger
 
 func init() {
-	var loops = runtime.GOMAXPROCS(0)/20 + 1
-	pollmanager = &manager{}
-	pollmanager.SetLoadBalance(RoundRobin)
-	pollmanager.SetNumLoops(loops)
-
+	pollmanager = newManager(runtime.GOMAXPROCS(0)/20 + 1)
 	setLoggerOutput(os.Stderr)
+}
+
+const (
+	managerUninitialized = iota
+	managerInitializing
+	managerInitialized
+)
+
+func newManager(numLoops int) *manager {
+	m := new(manager)
+	m.SetLoadBalance(RoundRobin)
+	m.SetNumLoops(numLoops)
+	return m
 }
 
 // LoadBalance is used to do load balancing among multiple pollers.
 // a single poller may not be optimal if the number of cores is large (40C+).
 type manager struct {
-	NumLoops int
+	numLoops int32
+	status   int32       // 0: uninitialized, 1: initializing, 2: initialized
 	balance  loadbalance // load balancing method
 	polls    []Poll      // all the polls
 }
 
 // SetNumLoops will return error when set numLoops < 1
-func (m *manager) SetNumLoops(numLoops int) error {
+func (m *manager) SetNumLoops(numLoops int) (err error) {
 	if numLoops < 1 {
 		return fmt.Errorf("set invalid numLoops[%d]", numLoops)
 	}
-
-	if numLoops < m.NumLoops {
-		// if less than, close the redundant pollers
-		var polls = make([]Poll, numLoops)
-		for idx := 0; idx < m.NumLoops; idx++ {
-			if idx < numLoops {
-				polls[idx] = m.polls[idx]
-			} else {
-				if err := m.polls[idx].Close(); err != nil {
-					logger.Printf("NETPOLL: poller close failed: %v\n", err)
-				}
-			}
-		}
-		m.NumLoops = numLoops
-		m.polls = polls
-		m.balance.Rebalance(m.polls)
-		return nil
-	}
-
-	m.NumLoops = numLoops
-	return m.Run()
+	// note: set new numLoops first and then change the status
+	atomic.StoreInt32(&m.numLoops, int32(numLoops))
+	atomic.StoreInt32(&m.status, managerUninitialized)
+	return nil
 }
 
 // SetLoadBalance set load balance.
@@ -96,14 +90,14 @@ func (m *manager) SetLoadBalance(lb LoadBalance) error {
 }
 
 // Close release all resources.
-func (m *manager) Close() error {
+func (m *manager) Close() (err error) {
 	for _, poll := range m.polls {
-		poll.Close()
+		err = poll.Close()
 	}
-	m.NumLoops = 0
+	m.numLoops = 0
 	m.balance = nil
 	m.polls = nil
-	return nil
+	return err
 }
 
 // Run all pollers.
@@ -114,16 +108,34 @@ func (m *manager) Run() (err error) {
 		}
 	}()
 
-	// new poll to fill delta.
-	for idx := len(m.polls); idx < m.NumLoops; idx++ {
-		var poll Poll
-		poll, err = openPoll()
-		if err != nil {
-			return
-		}
-		m.polls = append(m.polls, poll)
-		go poll.Wait()
+	numLoops := int(atomic.LoadInt32(&m.numLoops))
+	if numLoops == len(m.polls) {
+		return nil
 	}
+	var polls = make([]Poll, numLoops)
+	if numLoops < len(m.polls) {
+		// shrink polls
+		copy(polls, m.polls[:numLoops])
+		for idx := numLoops; idx < len(m.polls); idx++ {
+			// close redundant polls
+			if err = m.polls[idx].Close(); err != nil {
+				logger.Printf("NETPOLL: poller close failed: %v\n", err)
+			}
+		}
+	} else {
+		// growth polls
+		copy(polls, m.polls)
+		for idx := len(m.polls); idx < numLoops; idx++ {
+			var poll Poll
+			poll, err = openPoll()
+			if err != nil {
+				return err
+			}
+			polls[idx] = poll
+			go poll.Wait()
+		}
+	}
+	m.polls = polls
 
 	// LoadBalance must be set before calling Run, otherwise it will panic.
 	m.balance.Rebalance(m.polls)
@@ -141,5 +153,20 @@ func (m *manager) Reset() error {
 
 // Pick will select the poller for use each time based on the LoadBalance.
 func (m *manager) Pick() Poll {
+START:
+	// fast path
+	if atomic.LoadInt32(&m.status) == managerInitialized {
+		return m.balance.Pick()
+	}
+	// slow path
+	// try to get initializing lock failed, wait others finished the init work, and try again
+	if !atomic.CompareAndSwapInt32(&m.status, managerUninitialized, managerInitializing) {
+		runtime.Gosched()
+		goto START
+	}
+	// adjust polls
+	// m.Run() will finish very quickly, so will not many goroutines block on Pick.
+	_ = m.Run()
+	atomic.StoreInt32(&m.status, managerInitialized) // initialized
 	return m.balance.Pick()
 }

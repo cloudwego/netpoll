@@ -40,7 +40,7 @@ func SetNumLoops(numLoops int) error {
 
 // SetLoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
 // to distribute the incoming connections between multiple polls.
-// This option only works when NumLoops is set.
+// This option only works when numLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
 }
