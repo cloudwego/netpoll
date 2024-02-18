@@ -75,6 +75,15 @@ func (b *LinkBuffer) IsEmpty() (ok bool) {
 	return b.Len() == 0
 }
 
+func (b *LinkBuffer) Reuse(size ...int) {
+	var l int
+	if len(size) > 0 {
+		l = size[0]
+	}
+	var node = newLinkBufferNode(l)
+	b.head, b.read, b.flush, b.write = node, node, node, node
+}
+
 // ------------------------------------------ implement zero-copy reader ------------------------------------------
 
 // Next implements Reader.
