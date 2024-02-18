@@ -1,4 +1,4 @@
-module github.com/cloudwego/netpoll
+module github.com/nana-miko/netpoll
 
 go 1.15
 
