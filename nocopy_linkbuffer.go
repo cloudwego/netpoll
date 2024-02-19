@@ -34,7 +34,7 @@ import (
 const BinaryInplaceThreshold = block4k
 
 // LinkBufferCap that can be modified marks the minimum value of each node of LinkBuffer.
-var LinkBufferCap = block1k
+var LinkBufferCap = block4k
 
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
@@ -77,6 +77,7 @@ func (b *LinkBuffer) IsEmpty() (ok bool) {
 	return b.Len() == 0
 }
 
+// Reuse reactivates a LinkBuffer that has been closed or appended to another LinkBuffer.
 func (b *LinkBuffer) Reuse(size ...int) {
 	if b.enable {
 		return
@@ -85,6 +86,7 @@ func (b *LinkBuffer) Reuse(size ...int) {
 	b.enable = true
 }
 
+// Initialize initializes a LinkBuffer.
 func (b *LinkBuffer) Initialize(size ...int) {
 	var l int
 	if len(size) > 0 {

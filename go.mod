@@ -1,10 +1,9 @@
-module github.com/nana-miko/netpoll
+module github.com/cloudwego/netpoll
 
 go 1.18
 
 require (
 	github.com/bytedance/gopkg v0.0.0-20220413063733-65bf48ffb3a7
-	github.com/cloudwego/netpoll v0.5.1
 	golang.org/x/sys v0.0.0-20220110181412-a018aaa089fe
 )
 
