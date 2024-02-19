@@ -45,6 +45,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 	}
 	var node = newLinkBufferNode(l)
 	buf.head, buf.read, buf.flush, buf.write = node, node, node, node
+	buf.enable = true
 	return buf
 }
 
@@ -52,6 +53,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 type LinkBuffer struct {
 	length     int64
 	mallocSize int
+	enable     bool
 
 	head  *linkBufferNode // release head
 	read  *linkBufferNode // read head
@@ -73,6 +75,25 @@ func (b *LinkBuffer) Len() int {
 // IsEmpty check if this LinkBuffer is empty.
 func (b *LinkBuffer) IsEmpty() (ok bool) {
 	return b.Len() == 0
+}
+
+// Reuse reactivates a LinkBuffer that has been closed or appended to another LinkBuffer.
+func (b *LinkBuffer) Reuse(size ...int) {
+	if b.enable {
+		return
+	}
+	b.Initialize(size...)
+	b.enable = true
+}
+
+// Initialize initializes a LinkBuffer.
+func (b *LinkBuffer) Initialize(size ...int) {
+	var l int
+	if len(size) > 0 {
+		l = size[0]
+	}
+	var node = newLinkBufferNode(l)
+	b.head, b.read, b.flush, b.write = node, node, node, node
 }
 
 // ------------------------------------------ implement zero-copy reader ------------------------------------------
@@ -419,7 +440,7 @@ func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 		nd.Release()
 	}
 	buf.length, buf.mallocSize, buf.head, buf.read, buf.flush, buf.write = 0, 0, nil, nil, nil, nil
-
+	buf.enable = false
 	// DON'T MODIFY THE CODE BELOW UNLESS YOU KNOW WHAT YOU ARE DOING !
 	//
 	// You may encounter a chain of bugs and not be able to
@@ -534,6 +555,7 @@ func (b *LinkBuffer) Close() (err error) {
 		nd.Release()
 	}
 	b.head, b.read, b.flush, b.write = nil, nil, nil, nil
+	b.enable = false
 	return nil
 }
 
