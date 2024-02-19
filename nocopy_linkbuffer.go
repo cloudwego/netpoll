@@ -553,6 +553,7 @@ func (b *LinkBuffer) Close() (err error) {
 		nd.Release()
 	}
 	b.head, b.read, b.flush, b.write = nil, nil, nil, nil
+	b.enable = false
 	return nil
 }
 
