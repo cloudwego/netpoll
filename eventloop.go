@@ -34,6 +34,15 @@ type EventLoop interface {
 	Shutdown(ctx context.Context) error
 }
 
+/* The Connection Callback Sequence Diagram
+| Connection State                     | Callback Function | Notes
+|   Connected but not initialized      |    OnPrepare      | Conn is not registered into poller
+|   Connected and initialized          |    OnConnect      | Conn is ready for read or write
+|   Read first byte                    |    OnRequest      | Conn is ready for read or write
+|   Peer closed but conn is active     |    OnDisconnect   | Conn access will race with OnRequest function
+|   Self closed and conn is closed     |    CloseCallback  | Conn is destroyed
+*/
+
 // OnPrepare is used to inject custom preparation at connection initialization,
 // which is optional but important in some scenarios. For example, a qps limiter
 // can be set by closing overloaded connections directly in OnPrepare.
@@ -62,6 +71,11 @@ type OnPrepare func(connection Connection) context.Context
 //	   downstream := ctx.Value(downstreamKey).(netpoll.Connection)
 //	 }
 type OnConnect func(ctx context.Context, connection Connection) context.Context
+
+// OnDisconnect is called once connection is going to be closed.
+// OnDisconnect must return as quick as possible because it will block poller.
+// OnDisconnect is different from CloseCallback, you could check with "The Connection Callback Sequence Diagram" section.
+type OnDisconnect func(ctx context.Context, connection Connection)
 
 // OnRequest defines the function for handling connection. When data is sent from the connection peer,
 // netpoll actively reads the data in LT mode and places it in the connection's input buffer.
