@@ -34,7 +34,7 @@ import (
 const BinaryInplaceThreshold = block4k
 
 // LinkBufferCap that can be modified marks the minimum value of each node of LinkBuffer.
-var LinkBufferCap = block4k
+var LinkBufferCap = block1k
 
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
@@ -45,6 +45,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 	}
 	var node = newLinkBufferNode(l)
 	buf.head, buf.read, buf.flush, buf.write = node, node, node, node
+	buf.enable = true
 	return buf
 }
 
@@ -52,6 +53,7 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 type LinkBuffer struct {
 	length     int64
 	mallocSize int
+	enable     bool
 
 	head  *linkBufferNode // release head
 	read  *linkBufferNode // read head
@@ -76,6 +78,14 @@ func (b *LinkBuffer) IsEmpty() (ok bool) {
 }
 
 func (b *LinkBuffer) Reuse(size ...int) {
+	if b.enable {
+		return
+	}
+	b.Initialize(size...)
+	b.enable = true
+}
+
+func (b *LinkBuffer) Initialize(size ...int) {
 	var l int
 	if len(size) > 0 {
 		l = size[0]
@@ -428,7 +438,7 @@ func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 		nd.Release()
 	}
 	buf.length, buf.mallocSize, buf.head, buf.read, buf.flush, buf.write = 0, 0, nil, nil, nil, nil
-
+	buf.enable = false
 	// DON'T MODIFY THE CODE BELOW UNLESS YOU KNOW WHAT YOU ARE DOING !
 	//
 	// You may encounter a chain of bugs and not be able to
