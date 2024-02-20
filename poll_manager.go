@@ -172,6 +172,10 @@ START:
 	// adjust polls
 	// m.Run() will finish very quickly, so will not many goroutines block on Pick.
 	_ = m.Run()
-	atomic.StoreInt32(&m.status, managerInitialized) // initialized
+
+	if !atomic.CompareAndSwapInt32(&m.status, managerInitializing, managerInitialized) {
+		// SetNumLoops called during m.Run() which cause CAS failed
+		// The polls will be adjusted next Pick
+	}
 	return m.balance.Pick()
 }
