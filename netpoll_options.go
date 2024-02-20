@@ -45,6 +45,12 @@ func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
 }
 
+// Initialize the pollers actively. By default, it's lazy initialized.
+// It's safe to call it multi times.
+func Initialize() {
+	initialize()
+}
+
 func SetLoggerOutput(w io.Writer) {
 	setLoggerOutput(w)
 }

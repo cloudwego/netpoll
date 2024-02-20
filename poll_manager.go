@@ -34,6 +34,11 @@ func setLoadBalance(lb LoadBalance) error {
 	return pollmanager.SetLoadBalance(lb)
 }
 
+func initialize() {
+	// The first call of Pick() will init pollers
+	_ = pollmanager.Pick()
+}
+
 func setLoggerOutput(w io.Writer) {
 	logger = log.New(w, "", log.LstdFlags)
 }
