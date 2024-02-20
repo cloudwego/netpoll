@@ -134,7 +134,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 func (c *connection) onConnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
-		atomic.StoreInt32(&c.connected, 1)
+		atomic.StoreInt32(&c.state, 1)
 		return
 	}
 	if !c.lock(connecting) {
@@ -146,17 +146,17 @@ func (c *connection) onConnect() {
 		// only process when conn active and have unread data
 		func(c *connection) bool {
 			// if onConnect not called
-			if atomic.LoadInt32(&c.connected) == 0 {
+			if atomic.LoadInt32(&c.state) == 0 {
 				return true
 			}
 			// check for onRequest
 			return onRequest != nil && c.Reader().Len() > 0
 		},
 		func(c *connection) {
-			if atomic.CompareAndSwapInt32(&c.connected, 0, 1) {
+			if atomic.CompareAndSwapInt32(&c.state, 0, 1) {
 				c.ctx = onConnect(c.ctx, c)
 
-				if !c.IsActive() {
+				if !c.IsActive() && atomic.CompareAndSwapInt32(&c.state, 1, 2) {
 					// since we hold connecting lock, so we should help to call onDisconnect here
 					var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
 					if onDisconnect != nil {
@@ -182,15 +182,21 @@ func (c *connection) onDisconnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
 		// no need lock if onConnect is nil
+		atomic.StoreInt32(&c.state, 2)
 		onDisconnect(c.ctx, c)
 		return
 	}
-	if atomic.LoadInt32(&c.connected) > 0 && c.lock(connecting) { // means OnConnect already finished
-		onDisconnect(c.ctx, c)
+	// check if OnConnect finished when onConnect != nil && onDisconnect != nil
+	if atomic.LoadInt32(&c.state) > 0 && c.lock(connecting) { // means OnConnect already finished
+		// protect onDisconnect run once
+		// if CAS return false, means OnConnect already helps to run onDisconnect
+		if atomic.CompareAndSwapInt32(&c.state, 1, 2) {
+			onDisconnect(c.ctx, c)
+		}
 		c.unlock(connecting)
 		return
 	}
-	// the connection is not finish onConnect yet, return and let onConnect to call onDisconnect
+	// OnConnect is not finished yet, return and let onConnect helps to call onDisconnect
 	return
 }
 
@@ -201,7 +207,7 @@ func (c *connection) onRequest() (needTrigger bool) {
 		return true
 	}
 	// wait onConnect finished first
-	if atomic.LoadInt32(&c.connected) == 0 && c.onConnectCallback.Load() != nil {
+	if atomic.LoadInt32(&c.state) == 0 && c.onConnectCallback.Load() != nil {
 		// let onConnect to call onRequest
 		return
 	}
