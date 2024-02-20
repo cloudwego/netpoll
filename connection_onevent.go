@@ -134,23 +134,36 @@ func (c *connection) onPrepare(opts *options) (err error) {
 func (c *connection) onConnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
+		atomic.StoreInt32(&c.state, 1)
+		return
+	}
+	if !c.lock(connecting) {
+		// it never happens because onDisconnect will not lock connecting if c.connected == 0
 		return
 	}
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-	var connected int32
 	c.onProcess(
 		// only process when conn active and have unread data
 		func(c *connection) bool {
 			// if onConnect not called
-			if atomic.LoadInt32(&connected) == 0 {
+			if atomic.LoadInt32(&c.state) == 0 {
 				return true
 			}
 			// check for onRequest
 			return onRequest != nil && c.Reader().Len() > 0
 		},
 		func(c *connection) {
-			if atomic.CompareAndSwapInt32(&connected, 0, 1) {
+			if atomic.CompareAndSwapInt32(&c.state, 0, 1) {
 				c.ctx = onConnect(c.ctx, c)
+
+				if !c.IsActive() && atomic.CompareAndSwapInt32(&c.state, 1, 2) {
+					// since we hold connecting lock, so we should help to call onDisconnect here
+					var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
+					if onDisconnect != nil {
+						onDisconnect(c.ctx, c)
+					}
+				}
+				c.unlock(connecting)
 				return
 			}
 			if onRequest != nil {
@@ -160,12 +173,31 @@ func (c *connection) onConnect() {
 	)
 }
 
+// when onDisconnect called, c.IsActive() must return false
 func (c *connection) onDisconnect() {
 	var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
 	if onDisconnect == nil {
 		return
 	}
-	onDisconnect(c.ctx, c)
+	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
+	if onConnect == nil {
+		// no need lock if onConnect is nil
+		atomic.StoreInt32(&c.state, 2)
+		onDisconnect(c.ctx, c)
+		return
+	}
+	// check if OnConnect finished when onConnect != nil && onDisconnect != nil
+	if atomic.LoadInt32(&c.state) > 0 && c.lock(connecting) { // means OnConnect already finished
+		// protect onDisconnect run once
+		// if CAS return false, means OnConnect already helps to run onDisconnect
+		if atomic.CompareAndSwapInt32(&c.state, 1, 2) {
+			onDisconnect(c.ctx, c)
+		}
+		c.unlock(connecting)
+		return
+	}
+	// OnConnect is not finished yet, return and let onConnect helps to call onDisconnect
+	return
 }
 
 // onRequest is responsible for executing the closeCallbacks after the connection has been closed.
@@ -173,6 +205,11 @@ func (c *connection) onRequest() (needTrigger bool) {
 	var onRequest, ok = c.onRequestCallback.Load().(OnRequest)
 	if !ok {
 		return true
+	}
+	// wait onConnect finished first
+	if atomic.LoadInt32(&c.state) == 0 && c.onConnectCallback.Load() != nil {
+		// let onConnect to call onRequest
+		return
 	}
 	processed := c.onProcess(
 		// only process when conn active and have unread data
@@ -259,7 +296,6 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 		panicked = false
 		return
 	}
-
 	runTask(c.ctx, task)
 	return true
 }
