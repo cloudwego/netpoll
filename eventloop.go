@@ -41,6 +41,11 @@ type EventLoop interface {
 |   Read first byte                    |    OnRequest      | Conn is ready for read or write
 |   Peer closed but conn is active     |    OnDisconnect   | Conn access will race with OnRequest function
 |   Self closed and conn is closed     |    CloseCallback  | Conn is destroyed
+
+Execution Order:
+  OnPrepare => OnConnect => OnRequest      => CloseCallback
+                            OnDisconnect
+Note: only OnRequest and OnDisconnect will be executed in parallel
 */
 
 // OnPrepare is used to inject custom preparation at connection initialization,

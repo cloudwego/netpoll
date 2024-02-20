@@ -137,14 +137,14 @@ func TestOnConnectWrite(t *testing.T) {
 }
 
 func TestOnDisconnect(t *testing.T) {
-	var ctxKey = struct{}{}
+	type ctxKey struct{}
 	var network, address = "tcp", ":8888"
 	var canceled, closed int32
 	var conns int32 = 100
 	req := "ping"
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
-			cancelFunc, _ := ctx.Value(ctxKey).(context.CancelFunc)
+			cancelFunc, _ := ctx.Value(ctxKey{}).(context.CancelFunc)
 			MustTrue(t, cancelFunc != nil)
 			Assert(t, ctx.Done() != nil)
 
@@ -164,10 +164,10 @@ func TestOnDisconnect(t *testing.T) {
 				return nil
 			})
 			ctx, cancel := context.WithCancel(ctx)
-			return context.WithValue(ctx, ctxKey, cancel)
+			return context.WithValue(ctx, ctxKey{}, cancel)
 		}),
 		WithOnDisconnect(func(ctx context.Context, conn Connection) {
-			cancelFunc, _ := ctx.Value(ctxKey).(context.CancelFunc)
+			cancelFunc, _ := ctx.Value(ctxKey{}).(context.CancelFunc)
 			MustTrue(t, cancelFunc != nil)
 			cancelFunc()
 		}),
@@ -192,6 +192,56 @@ func TestOnDisconnect(t *testing.T) {
 	Equal(t, atomic.LoadInt32(&closed), conns)
 	Equal(t, atomic.LoadInt32(&canceled), conns)
 
+	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestOnDisconnectWhenOnConnect(t *testing.T) {
+	type ctxPrepareKey struct{}
+	type ctxConnectKey struct{}
+	var network, address = "tcp", ":8888"
+	var conns int32 = 100
+	var wg sync.WaitGroup
+	wg.Add(int(conns) * 3)
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			_, _ = connection.Reader().Next(connection.Reader().Len())
+			return nil
+		},
+		WithOnPrepare(func(connection Connection) context.Context {
+			defer wg.Done()
+			var counter int32
+			return context.WithValue(context.Background(), ctxPrepareKey{}, &counter)
+		}),
+		WithOnConnect(func(ctx context.Context, conn Connection) context.Context {
+			defer wg.Done()
+			t.Logf("OnConnect: %v", conn.RemoteAddr())
+			time.Sleep(time.Millisecond * 10) // wait for closed called
+			counter := ctx.Value(ctxPrepareKey{}).(*int32)
+			ok := atomic.CompareAndSwapInt32(counter, 0, 1)
+			Assert(t, ok)
+			return context.WithValue(ctx, ctxConnectKey{}, "123")
+		}),
+		WithOnDisconnect(func(ctx context.Context, conn Connection) {
+			defer wg.Done()
+			t.Logf("OnDisconnect: %v", conn.RemoteAddr())
+			counter, _ := ctx.Value(ctxPrepareKey{}).(*int32)
+			ok := atomic.CompareAndSwapInt32(counter, 1, 2)
+			Assert(t, ok)
+			v := ctx.Value(ctxConnectKey{}).(string)
+			Equal(t, v, "123")
+		}),
+	)
+
+	for i := int32(0); i < conns; i++ {
+		var conn, err = DialConnection(network, address, time.Second)
+		MustNil(t, err)
+		err = conn.Close()
+		t.Logf("Close: %v", conn.LocalAddr())
+		MustNil(t, err)
+	}
+
+	wg.Wait()
 	err := loop.Shutdown(context.Background())
 	MustNil(t, err)
 }

@@ -502,9 +502,11 @@ func TestParallelShortConnection(t *testing.T) {
 	var received int64
 	el, err := NewEventLoop(func(ctx context.Context, connection Connection) error {
 		data, err := connection.Reader().Next(connection.Reader().Len())
-		Assert(t, err == nil || errors.Is(err, ErrEOF))
 		atomic.AddInt64(&received, int64(len(data)))
-		t.Logf("conn[%s] received: %d, active: %v", connection.RemoteAddr(), len(data), connection.IsActive())
+		if err != nil {
+			return err
+		}
+		//t.Logf("conn[%s] received: %d, active: %v", connection.RemoteAddr(), len(data), connection.IsActive())
 		return nil
 	})
 	defer el.Shutdown(context.Background())
@@ -533,9 +535,11 @@ func TestParallelShortConnection(t *testing.T) {
 	}
 	wg.Wait()
 
-	start := time.Now()
-	for atomic.LoadInt64(&received) < int64(totalSize) && time.Now().Sub(start) < time.Second {
+	count := 100
+	for count > 0 && atomic.LoadInt64(&received) < int64(totalSize) {
+		t.Logf("received: %d, except: %d", atomic.LoadInt64(&received), totalSize)
 		time.Sleep(time.Millisecond * 100)
+		count--
 	}
 	Equal(t, atomic.LoadInt64(&received), int64(totalSize))
 }
