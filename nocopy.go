@@ -108,9 +108,9 @@ type Reader interface {
 // The usage of the design is a two-step operation, first apply for a section of memory,
 // fill it and then submit. E.g:
 //
-//  var buf, _ = Malloc(n)
-//  buf = append(buf[:0], ...)
-//  Flush()
+//	var buf, _ = Malloc(n)
+//	buf = append(buf[:0], ...)
+//	Flush()
 //
 // Note that it is not recommended to submit self-managed buffers to Writer.
 // Since the writer is processed asynchronously, if the self-managed buffer is used and recycled after submission,

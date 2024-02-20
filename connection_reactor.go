@@ -84,6 +84,12 @@ func (c *connection) closeBuffer() {
 
 // inputs implements FDOperator.
 func (c *connection) inputs(vs [][]byte) (rs [][]byte) {
+	// trigger throttle
+	if c.readBufferThreshold > 0 && int64(c.inputBuffer.Len()) >= c.readBufferThreshold {
+		c.pauseRead()
+		return
+	}
+
 	vs[0] = c.inputBuffer.book(c.bookSize, c.maxSize)
 	return vs[:1]
 }
@@ -108,6 +114,11 @@ func (c *connection) inputAck(n int) (err error) {
 		c.maxSize = mallocMax
 	}
 
+	// trigger throttle
+	if c.readBufferThreshold > 0 && int64(length) >= c.readBufferThreshold {
+		c.pauseRead()
+	}
+
 	var needTrigger = true
 	if length == n { // first start onRequest
 		needTrigger = c.onRequest()
@@ -121,7 +132,8 @@ func (c *connection) inputAck(n int) (err error) {
 // outputs implements FDOperator.
 func (c *connection) outputs(vs [][]byte) (rs [][]byte, supportZeroCopy bool) {
 	if c.outputBuffer.IsEmpty() {
-		c.rw2r()
+		c.pauseWrite()
+		c.triggerWrite(nil)
 		return rs, c.supportZeroCopy
 	}
 	rs = c.outputBuffer.GetBytes(vs)
@@ -135,13 +147,44 @@ func (c *connection) outputAck(n int) (err error) {
 		c.outputBuffer.Release()
 	}
 	if c.outputBuffer.IsEmpty() {
-		c.rw2r()
+		c.pauseWrite()
+		c.triggerWrite(nil)
 	}
 	return nil
 }
 
-// rw2r removed the monitoring of write events.
-func (c *connection) rw2r() {
+/* The race description of operator event monitoring
+- Pause operation will remove old event monitor of operator
+- Resume operation will add new event monitor of operator
+- Only poller could use Pause to remove event monitor, and poller already hold the op.do() locker
+- Only user could use Resume, and user's operation maybe compete with poller's operation
+- If competition happen, because of all resume operation will monitor all events, it's safe to do that with a race condition.
+    * If resume first and pause latter, poller will monitor the accurate events it needs.
+    * If pause first and resume latter,  poller will monitor the duplicate events which will be removed after next poller triggered.
+      And poller will ensure to remove the duplicate events.
+- If there is no readBufferThreshold option, the code path will be more simple and efficient.
+*/
+
+// pauseWrite removed the monitoring of write events.
+// pauseWrite used in poller
+func (c *connection) pauseWrite() {
 	c.operator.Control(PollRW2R)
-	c.triggerWrite(nil)
+}
+
+// resumeWrite add the monitoring of write events.
+// resumeWrite used by users
+func (c *connection) resumeWrite() {
+	c.operator.Control(PollR2RW)
+}
+
+// pauseRead removed the monitoring of read events.
+// pauseRead used in poller
+func (c *connection) pauseRead() {
+	c.operator.Control(PollRW2W)
+}
+
+// resumeRead add the monitoring of read events.
+// resumeRead used by users
+func (c *connection) resumeRead() {
+	c.operator.Control(PollW2RW)
 }

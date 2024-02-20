@@ -113,6 +113,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 		c.SetReadTimeout(opts.readTimeout)
 		c.SetWriteTimeout(opts.writeTimeout)
 		c.SetIdleTimeout(opts.idleTimeout)
+		c.SetReadBufferThreshold(opts.readBufferThreshold)
 
 		// calling prepare first and then register.
 		if opts.onPrepare != nil {

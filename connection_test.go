@@ -499,8 +499,6 @@ func TestConnDetach(t *testing.T) {
 func TestParallelShortConnection(t *testing.T) {
 	ln, err := createTestListener("tcp", ":12345")
 	MustNil(t, err)
-	defer ln.Close()
-
 	var received int64
 	el, err := NewEventLoop(func(ctx context.Context, connection Connection) error {
 		data, err := connection.Reader().Next(connection.Reader().Len())
@@ -511,6 +509,7 @@ func TestParallelShortConnection(t *testing.T) {
 		//t.Logf("conn[%s] received: %d, active: %v", connection.RemoteAddr(), len(data), connection.IsActive())
 		return nil
 	})
+	defer el.Shutdown(context.Background())
 	go func() {
 		el.Serve(ln)
 	}()
@@ -646,8 +645,6 @@ func TestConnectionServerClose(t *testing.T) {
 func TestConnectionDailTimeoutAndClose(t *testing.T) {
 	ln, err := createTestListener("tcp", ":12345")
 	MustNil(t, err)
-	defer ln.Close()
-
 	el, err := NewEventLoop(
 		func(ctx context.Context, connection Connection) error {
 			_, err = connection.Reader().Next(connection.Reader().Len())
@@ -671,10 +668,156 @@ func TestConnectionDailTimeoutAndClose(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				conn, err := DialConnection("tcp", ":12345", time.Nanosecond)
-				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"))
+				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"), err)
 				_ = conn
 			}()
 		}
 		wg.Wait()
 	}
+}
+
+func TestConnectionReadOutOfThreshold(t *testing.T) {
+	var readThreshold = 1024 * 100
+	var readSize = readThreshold + 1
+	var opts = &options{}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if connection.Reader().Len() < readThreshold {
+			return nil
+		}
+		defer wg.Done()
+		// read throttled data
+		_, err := connection.Reader().Next(readSize)
+		Assert(t, errors.Is(err, ErrReadExceedThreshold), err)
+		connection.Close()
+		return nil
+	}
+
+	WithReadBufferThreshold(int64(readThreshold)).f(opts)
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+
+	msg := make([]byte, readThreshold)
+	_, err := wconn.Writer().WriteBinary(msg)
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+	wg.Wait()
+}
+
+func TestConnectionReadThreshold(t *testing.T) {
+	var readThreshold int64 = 1024 * 100
+	var opts = &options{}
+	var wg sync.WaitGroup
+	var throttled int32
+	wg.Add(1)
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if int64(connection.Reader().Len()) < readThreshold {
+			return nil
+		}
+		defer wg.Done()
+
+		atomic.StoreInt32(&throttled, 1)
+		// check if no more read data when throttled
+		inbuffered := connection.Reader().Len()
+		t.Logf("Inbuffered: %d", inbuffered)
+		time.Sleep(time.Millisecond * 100)
+		Equal(t, inbuffered, connection.Reader().Len())
+
+		// read non-throttled data
+		buf, err := connection.Reader().Next(int(readThreshold))
+		Equal(t, int64(len(buf)), readThreshold)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		t.Logf("read non-throttled data")
+
+		// continue read throttled data
+		buf, err = connection.Reader().Next(5)
+		MustNil(t, err)
+		t.Logf("read throttled data: [%s]", buf)
+		Equal(t, len(buf), 5)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		Equal(t, connection.Reader().Len(), 0)
+		return nil
+	}
+
+	WithReadBufferThreshold(readThreshold).f(opts)
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+	Assert(t, rconn.readBufferThreshold == readThreshold)
+
+	msg := make([]byte, readThreshold)
+	_, err := wconn.Writer().WriteBinary(msg)
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+	_, err = wconn.Writer().WriteString("hello")
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+	t.Logf("flush final msg")
+
+	wg.Wait()
+}
+
+func TestConnectionReadThresholdWithClosed(t *testing.T) {
+	var readThreshold int64 = 1024 * 100
+	var opts = &options{}
+	var trigger = make(chan struct{})
+	opts.onRequest = func(ctx context.Context, connection Connection) error {
+		if int64(connection.Reader().Len()) < readThreshold {
+			return nil
+		}
+		Equal(t, connection.Reader().Len(), int(readThreshold))
+		trigger <- struct{}{} // let client send final msg and close
+		<-trigger             // wait for client send and close
+
+		// read non-throttled data
+		buf, err := connection.Reader().Next(int(readThreshold))
+		Equal(t, int64(len(buf)), readThreshold)
+		MustNil(t, err)
+		err = connection.Reader().Release()
+		MustNil(t, err)
+		t.Logf("read non-throttled data")
+
+		// continue read throttled data with EOF
+		for !errors.Is(err, ErrEOF) {
+			buf, err = connection.Reader().Next(1)
+		}
+		trigger <- struct{}{}
+		return nil
+	}
+
+	WithReadBufferThreshold(readThreshold).f(opts)
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, opts)
+	wconn.init(&netFD{fd: w}, opts)
+	Assert(t, rconn.readBufferThreshold == readThreshold)
+
+	msg := make([]byte, readThreshold)
+	_, err := wconn.Writer().WriteBinary(msg)
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+
+	<-trigger
+	_, err = wconn.Writer().WriteString("hello")
+	MustNil(t, err)
+	err = wconn.Writer().Flush()
+	MustNil(t, err)
+	t.Logf("flush final msg")
+	err = wconn.Close()
+	MustNil(t, err)
+	trigger <- struct{}{}
+
+	<-trigger
 }

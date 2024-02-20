@@ -138,23 +138,16 @@ type TCPConnection struct {
 }
 
 // newTCPConnection wraps *TCPConnection.
-func newTCPConnection(conn Conn) (connection *TCPConnection, err error) {
+func newTCPConnection(conn Conn, opts *options) (connection *TCPConnection, err error) {
 	connection = &TCPConnection{}
-	err = connection.init(conn, nil)
+	err = connection.init(conn, opts)
 	if err != nil {
 		return nil, err
 	}
 	return connection, nil
 }
 
-// DialTCP acts like Dial for TCP networks.
-//
-// The network must be a TCP network name; see func Dial for details.
-//
-// If laddr is nil, a local address is automatically chosen.
-// If the IP field of raddr is nil or an unspecified IP address, the
-// local system is assumed.
-func DialTCP(ctx context.Context, network string, laddr, raddr *TCPAddr) (*TCPConnection, error) {
+func dialTCP(ctx context.Context, network string, laddr, raddr *TCPAddr, opts *options) (*TCPConnection, error) {
 	switch network {
 	case "tcp", "tcp4", "tcp6":
 	default:
@@ -167,14 +160,25 @@ func DialTCP(ctx context.Context, network string, laddr, raddr *TCPAddr) (*TCPCo
 		ctx = context.Background()
 	}
 	sd := &sysDialer{network: network, address: raddr.String()}
-	c, err := sd.dialTCP(ctx, laddr, raddr)
+	c, err := sd.dialTCP(ctx, laddr, raddr, opts)
 	if err != nil {
 		return nil, &net.OpError{Op: "dial", Net: network, Source: laddr.opAddr(), Addr: raddr.opAddr(), Err: err}
 	}
 	return c, nil
 }
 
-func (sd *sysDialer) dialTCP(ctx context.Context, laddr, raddr *TCPAddr) (*TCPConnection, error) {
+// DialTCP acts like Dial for TCP networks.
+//
+// The network must be a TCP network name; see func Dial for details.
+//
+// If laddr is nil, a local address is automatically chosen.
+// If the IP field of raddr is nil or an unspecified IP address, the
+// local system is assumed.
+func DialTCP(ctx context.Context, network string, laddr, raddr *TCPAddr) (*TCPConnection, error) {
+	return dialTCP(ctx, network, laddr, raddr, nil)
+}
+
+func (sd *sysDialer) dialTCP(ctx context.Context, laddr, raddr *TCPAddr, opts *options) (*TCPConnection, error) {
 	conn, err := internetSocket(ctx, sd.network, laddr, raddr, syscall.SOCK_STREAM, 0, "dial")
 
 	// TCP has a rarely used mechanism called a 'simultaneous connection' in
@@ -211,7 +215,7 @@ func (sd *sysDialer) dialTCP(ctx context.Context, laddr, raddr *TCPAddr) (*TCPCo
 	if err != nil {
 		return nil, err
 	}
-	return newTCPConnection(conn)
+	return newTCPConnection(conn, opts)
 }
 
 func selfConnect(conn *netFD, err error) bool {

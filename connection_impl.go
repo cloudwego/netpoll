@@ -33,21 +33,22 @@ type connection struct {
 	netFD
 	onEvent
 	locker
-	operator        *FDOperator
-	readTimeout     time.Duration
-	readTimer       *time.Timer
-	readTrigger     chan error
-	waitReadSize    int64
-	writeTimeout    time.Duration
-	writeTimer      *time.Timer
-	writeTrigger    chan error
-	inputBuffer     *LinkBuffer
-	outputBuffer    *LinkBuffer
-	outputBarrier   *barrier
-	supportZeroCopy bool
-	maxSize         int   // The maximum size of data between two Release().
-	bookSize        int   // The size of data that can be read at once.
-	state           int32 // 0: not connected, 1: connected, 2: disconnected. Connection state should be changed sequentially.
+	operator            *FDOperator
+	readTimeout         time.Duration
+	readTimer           *time.Timer
+	readTrigger         chan error
+	waitReadSize        int64
+	writeTimeout        time.Duration
+	writeTimer          *time.Timer
+	writeTrigger        chan error
+	inputBuffer         *LinkBuffer
+	outputBuffer        *LinkBuffer
+	outputBarrier       *barrier
+	supportZeroCopy     bool
+	maxSize             int   // The maximum size of data between two Release().
+	bookSize            int   // The size of data that can be read at once.
+	state               int32 // 0: not connected, 1: connected, 2: disconnected. Connection state should be changed sequentially.
+	readBufferThreshold int64 // The readBufferThreshold limit the size of connection inputBuffer. In bytes.
 }
 
 var (
@@ -92,6 +93,12 @@ func (c *connection) SetWriteTimeout(timeout time.Duration) error {
 	if timeout >= 0 {
 		c.writeTimeout = timeout
 	}
+	return nil
+}
+
+// SetReadBufferThreshold implements Connection.
+func (c *connection) SetReadBufferThreshold(threshold int64) error {
+	c.readBufferThreshold = threshold
 	return nil
 }
 
@@ -396,28 +403,41 @@ func (c *connection) triggerWrite(err error) {
 // waitRead will wait full n bytes.
 func (c *connection) waitRead(n int) (err error) {
 	if n <= c.inputBuffer.Len() {
-		return nil
+		goto CLEANUP
 	}
+	// cannot wait read with an out of threshold size
+	if c.readBufferThreshold > 0 && int64(n) > c.readBufferThreshold {
+		// just return error and dont do cleanup
+		return Exception(ErrReadExceedThreshold, "wait read")
+	}
+
 	atomic.StoreInt64(&c.waitReadSize, int64(n))
-	defer atomic.StoreInt64(&c.waitReadSize, 0)
 	if c.readTimeout > 0 {
-		return c.waitReadWithTimeout(n)
+		err = c.waitReadWithTimeout(n)
+		goto CLEANUP
 	}
 	// wait full n
-	for c.inputBuffer.Len() < n {
+	for c.inputBuffer.Len() < n && err == nil {
 		switch c.status(closing) {
 		case poller:
-			return Exception(ErrEOF, "wait read")
+			err = Exception(ErrEOF, "wait read")
 		case user:
-			return Exception(ErrConnClosed, "wait read")
+			err = Exception(ErrConnClosed, "wait read")
 		default:
 			err = <-c.readTrigger
-			if err != nil {
-				return err
-			}
 		}
 	}
-	return nil
+CLEANUP:
+	atomic.StoreInt64(&c.waitReadSize, 0)
+	if c.readBufferThreshold > 0 && err == nil {
+		// only resume read when current read size could make newBufferSize < readBufferThreshold
+		bufferSize := int64(c.inputBuffer.Len())
+		newBufferSize := bufferSize - int64(n)
+		if bufferSize >= c.readBufferThreshold && newBufferSize < c.readBufferThreshold {
+			c.resumeRead()
+		}
+	}
+	return err
 }
 
 // waitReadWithTimeout will wait full n bytes or until timeout.
@@ -485,11 +505,10 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	err = c.operator.Control(PollR2RW)
-	if err != nil {
-		return Exception(err, "when flush")
-	}
 
+	// no need to check if resume write successfully
+	// if resume failed, the connection will be triggered triggerWrite(err), and waitFlush will return err
+	c.resumeWrite()
 	return c.waitFlush()
 }
 
@@ -522,8 +541,8 @@ func (c *connection) waitFlush() (err error) {
 		default:
 		}
 		// if timeout, remove write event from poller
-		// we cannot flush it again, since we don't if the poller is still process outputBuffer
-		c.operator.Control(PollRW2R)
+		// we cannot flush it again, since we don't know if the poller is still processing outputBuffer
+		c.pauseWrite()
 		return Exception(ErrWriteTimeout, c.remoteAddr.String())
 	}
 }

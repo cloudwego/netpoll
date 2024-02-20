@@ -111,17 +111,26 @@ func WithIdleTimeout(timeout time.Duration) Option {
 	}}
 }
 
+// WithReadBufferThreshold sets the max read buffer threshold.
+// If connection already read the threshold bytes data, it will stop read more data.
+func WithReadBufferThreshold(threshold int64) Option {
+	return Option{func(op *options) {
+		op.readBufferThreshold = threshold
+	}}
+}
+
 // Option .
 type Option struct {
 	f func(*options)
 }
 
 type options struct {
-	onPrepare    OnPrepare
-	onConnect    OnConnect
-	onDisconnect OnDisconnect
-	onRequest    OnRequest
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	idleTimeout  time.Duration
+	onPrepare           OnPrepare
+	onConnect           OnConnect
+	onDisconnect        OnDisconnect
+	onRequest           OnRequest
+	readTimeout         time.Duration
+	writeTimeout        time.Duration
+	idleTimeout         time.Duration
+	readBufferThreshold int64 // bytes
 }

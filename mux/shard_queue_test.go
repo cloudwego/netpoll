@@ -19,6 +19,7 @@ package mux
 
 import (
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,28 +27,25 @@ import (
 )
 
 func TestShardQueue(t *testing.T) {
-	var svrConn net.Conn
 	accepted := make(chan struct{})
 
 	network, address := "tcp", ":18888"
 	ln, err := net.Listen("tcp", ":18888")
 	MustNil(t, err)
-	stop := make(chan int, 1)
-	defer close(stop)
+	count, pkgsize := 16, 11
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		var err error
-		for {
-			select {
-			case <-stop:
-				err = ln.Close()
-				MustNil(t, err)
-				return
-			default:
-			}
-			svrConn, err = ln.Accept()
-			MustNil(t, err)
-			accepted <- struct{}{}
-		}
+		defer wg.Done()
+		svrConn, err := ln.Accept()
+		MustNil(t, err)
+		accepted <- struct{}{}
+
+		total := count * pkgsize
+		recv := make([]byte, total)
+		rn, err := svrConn.Read(recv)
+		MustNil(t, err)
+		Equal(t, rn, total)
 	}()
 
 	conn, err := netpoll.DialConnection(network, address, time.Second)
@@ -56,8 +54,7 @@ func TestShardQueue(t *testing.T) {
 
 	// test
 	queue := NewShardQueue(4, conn)
-	count, pkgsize := 16, 11
-	for i := 0; i < int(count); i++ {
+	for i := 0; i < count; i++ {
 		var getter WriterGetter = func() (buf netpoll.Writer, isNil bool) {
 			buf = netpoll.NewLinkBuffer(pkgsize)
 			buf.Malloc(pkgsize)
@@ -68,14 +65,8 @@ func TestShardQueue(t *testing.T) {
 
 	err = queue.Close()
 	MustNil(t, err)
-	total := count * pkgsize
-	recv := make([]byte, total)
-	rn, err := svrConn.Read(recv)
-	MustNil(t, err)
-	Equal(t, rn, total)
-}
 
-// TODO: need mock flush
-func BenchmarkShardQueue(b *testing.B) {
-	b.Skip()
+	wg.Wait()
+	err = ln.Close()
+	MustNil(t, err)
 }

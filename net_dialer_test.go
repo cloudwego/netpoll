@@ -38,15 +38,14 @@ func TestDialerTCP(t *testing.T) {
 	ln, err := CreateListener("tcp", ":1234")
 	MustNil(t, err)
 
-	stop := make(chan int, 1)
-	defer close(stop)
-
+	stop := make(chan int)
 	go func() {
 		for {
 			select {
 			case <-stop:
 				err := ln.Close()
 				MustNil(t, err)
+				close(stop)
 				return
 			default:
 			}
@@ -61,6 +60,9 @@ func TestDialerTCP(t *testing.T) {
 	MustNil(t, err)
 	MustTrue(t, strings.HasPrefix(conn.LocalAddr().String(), "127.0.0.1:"))
 	Equal(t, conn.RemoteAddr().String(), "127.0.0.1:1234")
+
+	stop <- 0
+	<-stop
 }
 
 func TestDialerUnix(t *testing.T) {

@@ -74,13 +74,27 @@ type UnixConnection struct {
 }
 
 // newUnixConnection wraps UnixConnection.
-func newUnixConnection(conn Conn) (connection *UnixConnection, err error) {
+func newUnixConnection(conn Conn, opts *options) (connection *UnixConnection, err error) {
 	connection = &UnixConnection{}
-	err = connection.init(conn, nil)
+	err = connection.init(conn, opts)
 	if err != nil {
 		return nil, err
 	}
 	return connection, nil
+}
+
+func dialUnix(network string, laddr, raddr *UnixAddr, opts *options) (*UnixConnection, error) {
+	switch network {
+	case "unix", "unixgram", "unixpacket":
+	default:
+		return nil, &net.OpError{Op: "dial", Net: network, Source: laddr.opAddr(), Addr: raddr.opAddr(), Err: net.UnknownNetworkError(network)}
+	}
+	sd := &sysDialer{network: network, address: raddr.String()}
+	c, err := sd.dialUnix(context.Background(), laddr, raddr, opts)
+	if err != nil {
+		return nil, &net.OpError{Op: "dial", Net: network, Source: laddr.opAddr(), Addr: raddr.opAddr(), Err: err}
+	}
+	return c, nil
 }
 
 // DialUnix acts like Dial for Unix networks.
@@ -90,25 +104,15 @@ func newUnixConnection(conn Conn) (connection *UnixConnection, err error) {
 // If laddr is non-nil, it is used as the local address for the
 // connection.
 func DialUnix(network string, laddr, raddr *UnixAddr) (*UnixConnection, error) {
-	switch network {
-	case "unix", "unixgram", "unixpacket":
-	default:
-		return nil, &net.OpError{Op: "dial", Net: network, Source: laddr.opAddr(), Addr: raddr.opAddr(), Err: net.UnknownNetworkError(network)}
-	}
-	sd := &sysDialer{network: network, address: raddr.String()}
-	c, err := sd.dialUnix(context.Background(), laddr, raddr)
-	if err != nil {
-		return nil, &net.OpError{Op: "dial", Net: network, Source: laddr.opAddr(), Addr: raddr.opAddr(), Err: err}
-	}
-	return c, nil
+	return dialUnix(network, laddr, raddr, nil)
 }
 
-func (sd *sysDialer) dialUnix(ctx context.Context, laddr, raddr *UnixAddr) (*UnixConnection, error) {
+func (sd *sysDialer) dialUnix(ctx context.Context, laddr, raddr *UnixAddr, opts *options) (*UnixConnection, error) {
 	conn, err := unixSocket(ctx, sd.network, laddr, raddr, "dial")
 	if err != nil {
 		return nil, err
 	}
-	return newUnixConnection(conn)
+	return newUnixConnection(conn, opts)
 }
 
 func unixSocket(ctx context.Context, network string, laddr, raddr sockaddr, mode string) (conn *netFD, err error) {
