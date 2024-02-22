@@ -628,3 +628,18 @@ func BenchmarkCopyString(b *testing.B) {
 		}
 	})
 }
+
+func TestGetWriteBytes(t *testing.T) {
+	lb := NewLinkBuffer()
+	n := 10
+	buf, err := lb.Malloc(n)
+	MustNil(t, err)
+	for i := 0; i < n; i++ {
+		buf[i] = byte(i)
+	}
+	wb := lb.WrittenBytes()
+	Equal(t, len(wb), len(buf))
+	for i := 0; i < n; i++ {
+		Equal(t, buf[i], wb[i])
+	}
+}

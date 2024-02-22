@@ -537,6 +537,21 @@ func (b *LinkBuffer) Close() (err error) {
 	return nil
 }
 
+// WrittenBytes returns all the written bytes of this LinkBuffer.
+func (b *LinkBuffer) WrittenBytes() []byte {
+	node, write := b.flush, b.write
+	n := 0
+	p := make([]byte, b.MallocLen())
+	for ; node != write.next; node = node.next {
+		if node.malloc > 0 {
+			tmp := node.buf
+			tmp = node.buf[:node.malloc]
+			n += copy(p[n:], tmp)
+		}
+	}
+	return p[:n]
+}
+
 // ------------------------------------------ implement connection interface ------------------------------------------
 
 // Bytes returns all the readable bytes of this LinkBuffer.
