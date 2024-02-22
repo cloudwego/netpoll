@@ -21,9 +21,11 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -504,6 +506,78 @@ func TestClientWriteAndClose(t *testing.T) {
 		runtime.Gosched()
 	}
 	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestServerAcceptWhenTooManyOpenFiles(t *testing.T) {
+	if os.Getenv("N_LOCAL") == "" {
+		t.Skip("Only test for debug purpose")
+		return
+	}
+
+	var originalRlimit syscall.Rlimit
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &originalRlimit)
+	MustNil(t, err)
+	t.Logf("Original RLimit: %v", originalRlimit)
+
+	rlimit := syscall.Rlimit{Cur: 32, Max: originalRlimit.Max}
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	MustNil(t, err)
+	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	MustNil(t, err)
+	t.Logf("New RLimit: %v", rlimit)
+	defer func() { // reset
+		err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &originalRlimit)
+		MustNil(t, err)
+	}()
+
+	var network, address = "tcp", ":18888"
+	var connected int32
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			buf, err := connection.Reader().Next(connection.Reader().Len())
+			connection.Writer().WriteBinary(buf)
+			connection.Writer().Flush()
+			return err
+		},
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			atomic.AddInt32(&connected, 1)
+			t.Logf("Conn[%s] accpeted", connection.RemoteAddr())
+			return ctx
+		}),
+		WithOnDisconnect(func(ctx context.Context, connection Connection) {
+			t.Logf("Conn[%s] disconnected", connection.RemoteAddr())
+		}),
+	)
+	time.Sleep(time.Millisecond * 10)
+
+	// out of fds
+	files := make([]*os.File, 0)
+	for {
+		f, err := os.Open("/dev/null")
+		if err != nil {
+			Assert(t, isOutOfFdErr(errors.Unwrap(err)), err)
+			break
+		}
+		files = append(files, f)
+	}
+	go func() {
+		time.Sleep(time.Second * 10)
+		t.Logf("close all files")
+		for _, f := range files {
+			f.Close()
+		}
+	}()
+
+	// we should use telnet manually
+	var connections = 1
+	for atomic.LoadInt32(&connected) < int32(connections) {
+		t.Logf("connected=%d", atomic.LoadInt32(&connected))
+		time.Sleep(time.Second)
+	}
+	time.Sleep(time.Second * 10)
+
+	err = loop.Shutdown(context.Background())
 	MustNil(t, err)
 }
 
