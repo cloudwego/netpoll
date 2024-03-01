@@ -244,10 +244,17 @@ func NewIOReadWriter(rw ReadWriter) io.ReadWriter {
 }
 
 const (
-	block1k = 1 * 1024
-	block2k = 2 * 1024
-	block4k = 4 * 1024
-	block8k = 8 * 1024
-)
+	block1k  = 1 * 1024
+	block2k  = 2 * 1024
+	block4k  = 4 * 1024
+	block8k  = 8 * 1024
+	block32k = 32 * 1024
 
-const pagesize = block8k
+	pagesize = block8k
+
+	defaultLinkBufferMode = 1 << 0
+	// reuse mode, indicate weather reuse buffer node data, default true
+	reuseMask uint8 = 1 << 0 // 0000 0001
+	// read-only mode, introduced by Refer, WriteString, WriteBinary, etc., default false
+	readonlyMask uint8 = 1 << 1 // 0000 0010
+)

@@ -466,6 +466,20 @@ func TestWriteDirect(t *testing.T) {
 	}
 }
 
+func TestBufferMode(t *testing.T) {
+	bufnode := newLinkBufferNode(0)
+	MustTrue(t, bufnode.getMode(reuseMask))
+	MustTrue(t, bufnode.getMode(readonlyMask))
+
+	bufnode = newLinkBufferNode(1)
+	MustTrue(t, bufnode.getMode(reuseMask))
+	MustTrue(t, !bufnode.getMode(readonlyMask))
+	bufnode.setMode(reuseMask, false)
+	MustTrue(t, !bufnode.getMode(reuseMask))
+	bufnode.setMode(reuseMask, true)
+	MustTrue(t, bufnode.getMode(reuseMask))
+}
+
 func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {
 	b.StopTimer()
 
@@ -625,6 +639,30 @@ func BenchmarkCopyString(b *testing.B) {
 		var v = make([]byte, 1024)
 		for pb.Next() {
 			copy(v, s)
+		}
+	})
+}
+
+func BenchmarkNoCopyRead(b *testing.B) {
+	totalSize := 0
+	minSize := 32
+	maxSize := minSize << 10
+	for size := minSize; size <= maxSize; size = size << 1 {
+		totalSize += size
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		var buffer = NewLinkBuffer(pagesize)
+		for pb.Next() {
+			_, _ = buffer.Malloc(totalSize)
+			_ = buffer.MallocAck(totalSize)
+			_ = buffer.Flush()
+
+			for size := minSize; size <= maxSize; size = size << 1 {
+				_, _ = buffer.ReadBinary(size)
+			}
+			_ = buffer.Release()
 		}
 	})
 }
