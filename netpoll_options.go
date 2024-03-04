@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -39,13 +40,24 @@ func SetNumLoops(numLoops int) error {
 
 // SetLoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
 // to distribute the incoming connections between multiple polls.
-// This option only works when NumLoops is set.
+// This option only works when numLoops is set.
 func SetLoadBalance(lb LoadBalance) error {
 	return setLoadBalance(lb)
 }
 
+// Initialize the pollers actively. By default, it's lazy initialized.
+// It's safe to call it multi times.
+func Initialize() {
+	initialize()
+}
+
 func SetLoggerOutput(w io.Writer) {
 	setLoggerOutput(w)
+}
+
+// SetRunner set the runner function for every OnRequest/OnConnect callback
+func SetRunner(f func(ctx context.Context, f func())) {
+	setRunner(f)
 }
 
 // DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
@@ -68,6 +80,13 @@ func WithOnPrepare(onPrepare OnPrepare) Option {
 func WithOnConnect(onConnect OnConnect) Option {
 	return Option{func(op *options) {
 		op.onConnect = onConnect
+	}}
+}
+
+// WithOnDisconnect registers the OnDisconnect method to EventLoop.
+func WithOnDisconnect(onDisconnect OnDisconnect) Option {
+	return Option{func(op *options) {
+		op.onDisconnect = onDisconnect
 	}}
 }
 
@@ -100,6 +119,7 @@ type Option struct {
 type options struct {
 	onPrepare    OnPrepare
 	onConnect    OnConnect
+	onDisconnect OnDisconnect
 	onRequest    OnRequest
 	readTimeout  time.Duration
 	writeTimeout time.Duration

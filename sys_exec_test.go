@@ -105,18 +105,23 @@ func TestReadv(t *testing.T) {
 	w3, _ := syscall.Write(w, vs[2])
 	Equal(t, w1+w2+w3, 31)
 
-	var barrier = barrier{}
-	barrier.bs = [][]byte{
+	var barrier = barrier{
+		bs: make([][]byte, 4),
+	}
+	res := [][]byte{
 		make([]byte, 0),
 		make([]byte, 10),
 		make([]byte, 11),
 		make([]byte, 10),
 	}
+	for i := range res {
+		barrier.bs[i] = res[i]
+	}
 	barrier.ivs = make([]syscall.Iovec, len(barrier.bs))
 	rn, err := readv(r, barrier.bs, barrier.ivs)
 	MustNil(t, err)
 	Equal(t, rn, 31)
-	for i, v := range barrier.bs {
+	for i, v := range res {
 		t.Logf("READ [%d] %s", i, v)
 	}
 }
