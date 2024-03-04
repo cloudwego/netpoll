@@ -144,18 +144,16 @@ func (ln *listener) Fd() (fd int) {
 	return ln.fd
 }
 
+type filer interface {
+	File() (*os.File, error)
+}
+
 func (ln *listener) parseFD() (err error) {
-	switch netln := ln.ln.(type) {
-	case *net.TCPListener:
-		ln.file, err = netln.File()
-	case *net.UnixListener:
-		ln.file, err = netln.File()
-	default:
-		return errors.New("listener type can't support")
+	netln, ok := ln.ln.(filer)
+	if !ok {
+		return errors.New("listener type not supported (no File() method)")
 	}
-	if err != nil {
-		return err
-	}
+	ln.file, err = netln.File()
 	ln.fd = int(ln.file.Fd())
 	return nil
 }
