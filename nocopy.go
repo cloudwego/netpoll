@@ -16,6 +16,10 @@ package netpoll
 
 import (
 	"io"
+	"reflect"
+	"unsafe"
+
+	"github.com/bytedance/gopkg/lang/mcache"
 )
 
 // Reader is a collection of operations for nocopy reads.
@@ -250,11 +254,44 @@ const (
 	block8k  = 8 * 1024
 	block32k = 32 * 1024
 
-	pagesize = block8k
+	pagesize  = block8k
+	mallocMax = block8k * block1k // mallocMax is 8MB
 
 	defaultLinkBufferMode = 1 << 0
+	minReuseBytes         = 64 // only reuse bytes if n >= minReuseBytes
 	// reuse mode, indicate weather reuse buffer node data, default true
 	reuseMask uint8 = 1 << 0 // 0000 0001
 	// read-only mode, introduced by Refer, WriteString, WriteBinary, etc., default false
 	readonlyMask uint8 = 1 << 1 // 0000 0010
 )
+
+// zero-copy slice convert to string
+func unsafeSliceToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+// zero-copy slice convert to string
+func unsafeStringToSlice(s string) (b []byte) {
+	p := unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&s)).Data)
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	hdr.Data = uintptr(p)
+	hdr.Cap = len(s)
+	hdr.Len = len(s)
+	return b
+}
+
+// malloc limits the cap of the buffer from mcache.
+func malloc(size, capacity int) []byte {
+	if capacity > mallocMax {
+		return make([]byte, size, capacity)
+	}
+	return mcache.Malloc(size, capacity)
+}
+
+// free limits the cap of the buffer from mcache.
+func free(buf []byte) {
+	if cap(buf) > mallocMax {
+		return
+	}
+	mcache.Free(buf)
+}
