@@ -221,10 +221,10 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 		// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
 		// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
 		// no need to malloc 10 times and the string slice could have the compact memory allocation.
-		if b.read.getMode(reuseMask) {
+		if !b.read.getMode(reuseMask) {
 			return b.read.Next(n)
 		}
-		if n >= minReuseBytes && cap(b.read.buf) < block32k {
+		if n >= minReuseBytes && cap(b.read.buf) <= block32k {
 			b.read.setMode(reuseMask, false)
 			return b.read.Next(n)
 		}

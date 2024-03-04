@@ -646,7 +646,7 @@ func BenchmarkCopyString(b *testing.B) {
 func BenchmarkNoCopyRead(b *testing.B) {
 	totalSize := 0
 	minSize := 32
-	maxSize := minSize << 10
+	maxSize := minSize << 9
 	for size := minSize; size <= maxSize; size = size << 1 {
 		totalSize += size
 	}
@@ -655,14 +655,30 @@ func BenchmarkNoCopyRead(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		var buffer = NewLinkBuffer(pagesize)
 		for pb.Next() {
-			_, _ = buffer.Malloc(totalSize)
-			_ = buffer.MallocAck(totalSize)
-			_ = buffer.Flush()
+			buf, err := buffer.Malloc(totalSize)
+			if len(buf) != totalSize || err != nil {
+				b.Fatal(err)
+			}
+			err = buffer.MallocAck(totalSize)
+			if err != nil {
+				b.Fatal(err)
+			}
+			err = buffer.Flush()
+			if err != nil {
+				b.Fatal(err)
+			}
 
 			for size := minSize; size <= maxSize; size = size << 1 {
-				_, _ = buffer.ReadBinary(size)
+				buf, err = buffer.ReadBinary(size)
+				if len(buf) != size || err != nil {
+					b.Fatal(err)
+				}
 			}
-			_ = buffer.Release()
+			// buffer.Release will not reuse memory since we use no copy mode here
+			err = buffer.Release()
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
