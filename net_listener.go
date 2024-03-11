@@ -154,6 +154,12 @@ func (ln *listener) parseFD() (err error) {
 		return errors.New("listener type not supported (no File() method)")
 	}
 	ln.file, err = netln.File()
+	if err != nil {
+		return err
+	}
+	if ln.file == nil {
+		return errors.New("listener type not supported (no file handle)")
+	}
 	ln.fd = int(ln.file.Fd())
 	return nil
 }
