@@ -102,8 +102,34 @@ func (r *zcReader) ReadByte() (b byte, err error) {
 	return r.buf.ReadByte()
 }
 
-func (r *zcReader) Until(delim byte) (line []byte, err error) {
-	return r.buf.Until(delim)
+func (r *zcReader) Until(delim byte) (data []byte, err error) {
+	var l, skip int
+	for {
+		l = r.buf.Len()
+		data = r.buf.find(delim, skip)
+		if len(data) > 0 {
+			return data, nil
+		}
+
+		// try to read more data
+		skip = l
+		err = r.waitRead(skip + 1)
+		if err == nil {
+			continue
+		}
+
+		// try to check exist buf if there is a read error
+		if r.buf.Len() <= l {
+			return nil, err
+		}
+		data = r.buf.find(delim, skip)
+		// still cannot find delim
+		if len(data) == 0 {
+			return nil, err
+		}
+		// return both result and error
+		return data, err
+	}
 }
 
 func (r *zcReader) waitRead(n int) (err error) {
