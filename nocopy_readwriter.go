@@ -94,6 +94,11 @@ func (r *zcReader) ReadBinary(n int) (p []byte, err error) {
 	return r.buf.ReadBinary(n)
 }
 
+// ForEachByte implements Reader.
+func (r *zcReader) ForEachByte(processor ByteProcessor) (index int) {
+	return r.buf.ForEachByte(processor)
+}
+
 // ReadByte implements Reader.
 func (r *zcReader) ReadByte() (b byte, err error) {
 	if err = r.waitRead(1); err != nil {
