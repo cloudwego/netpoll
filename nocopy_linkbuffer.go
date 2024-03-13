@@ -25,8 +25,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/bytedance/gopkg/lang/mcache"
 )
 
 // BinaryInplaceThreshold marks the minimum value of the nocopy slice length,
@@ -836,7 +834,7 @@ func malloc(size, capacity int) []byte {
 	if capacity > mallocMax {
 		return make([]byte, size, capacity)
 	}
-	return mcache.Malloc(size, capacity)
+	return Malloc(size, capacity)
 }
 
 // free limits the cap of the buffer from mcache.
@@ -844,5 +842,5 @@ func free(buf []byte) {
 	if cap(buf) > mallocMax {
 		return
 	}
-	mcache.Free(buf)
+	Free(buf)
 }
