@@ -328,6 +328,112 @@ func TestEpollConnectSameFD(t *testing.T) {
 	Assert(t, n == 0)
 }
 
+func TestEpollWaitEpollFD(t *testing.T) {
+	epollfd1, err := EpollCreate(0) // monitor epollfd2
+	MustNil(t, err)
+	epollfd2, err := EpollCreate(0) // monitor io fds
+	MustNil(t, err)
+	MustNil(t, err)
+	defer syscall.Close(epollfd1)
+	defer syscall.Close(epollfd2)
+
+	rfd, wfd := GetSysFdPairs()
+	defer syscall.Close(wfd)
+	send := []byte("hello")
+	recv := make([]byte, 5)
+	events := make([]epollevent, 128)
+	n := 0
+
+	// register epollfd2 into epollfd1
+	epevent := &epollevent{
+		// netpollopen: runtime/netpoll_epoll.go
+		events: syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | EPOLLET,
+		data:   [8]byte{},
+	}
+	err = EpollCtl(epollfd1, syscall.EPOLL_CTL_ADD, epollfd2, epevent)
+	MustNil(t, err)
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// register rfd into epollfd2
+	ioevent := &epollevent{
+		events: syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR,
+		data:   [8]byte{},
+	}
+	err = EpollCtl(epollfd2, syscall.EPOLL_CTL_ADD, rfd, ioevent)
+	MustNil(t, err)
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// check epollfd2 readable
+	n, err = syscall.Write(wfd, send)
+	Equal(t, n, len(send))
+	MustNil(t, err)
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+
+	// check rfd readable
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+
+	// read rfd
+	n, err = syscall.Read(rfd, recv)
+	Equal(t, n, len(send))
+	MustTrue(t, err == nil && string(recv) == string(send))
+
+	// check epollfd1 non-readable
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// check epollfd2 non-readable
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// close wfd
+	err = syscall.Close(wfd)
+	MustNil(t, err)
+
+	// check epollfd1 notified when peer closed
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+
+	// check epollfd2 notified when peer closed
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+	Assert(t, events[0].events&syscall.EPOLLRDHUP != 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+
+	// close rfd
+	err = syscall.Close(rfd)
+	MustNil(t, err)
+
+	// check epollfd1 non-readable
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// check epollfd2 non-readable
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+}
+
 func TestRuntimeNetpoller(t *testing.T) {
 	pfd, err := openPollFile()
 	MustNil(t, err)
