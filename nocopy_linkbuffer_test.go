@@ -84,6 +84,31 @@ func TestLinkBuffer(t *testing.T) {
 	Equal(t, buf.Len(), 100)
 }
 
+func TestGetBytes(t *testing.T) {
+	buf := NewLinkBuffer()
+	var (
+		num         = 10
+		b           = 1
+		expectedLen = 0
+	)
+	for i := 0; i < num; i++ {
+		expectedLen += b
+		n, err := buf.WriteBinary(make([]byte, b))
+		MustNil(t, err)
+		Equal(t, n, b)
+		b *= 10
+	}
+	buf.Flush()
+	Equal(t, int(buf.length), expectedLen)
+	bs := buf.GetBytes(nil)
+	actualLen := 0
+	for i := 0; i < len(bs); i++ {
+		actualLen += len(bs[i])
+	}
+	Equal(t, actualLen, expectedLen)
+
+}
+
 // TestLinkBufferWithZero test more case with n is invalid.
 func TestLinkBufferWithInvalid(t *testing.T) {
 	// clean & new
