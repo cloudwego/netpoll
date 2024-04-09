@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func TestConnectionWrite(t *testing.T) {
@@ -180,6 +181,51 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	Equal(t, atomic.LoadInt64(&rconn.waitReadSize), int64(size))
 	syscall.Write(w, msg[size/2:])
 	wg.Wait()
+}
+
+func TestConnectionReadRepeatedlyAfterClosed(t *testing.T) {
+	buffers := map[uintptr][]byte{}
+	for i := 0; i < 1000; i++ {
+		msg1 := []byte(fmt.Sprintf("%5d", i))
+		msg2 := []byte(fmt.Sprintf("%5d", i+1))
+
+		r1, w1 := GetSysFdPairs()
+		r2, w2 := GetSysFdPairs()
+		rconn1, rconn2 := new(connection), new(connection)
+		rconn1.init(&netFD{fd: r1}, nil)
+		rconn2.init(&netFD{fd: r2}, nil)
+		rconn1.SetOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			return ctx
+		})
+		rconn2.SetOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			return ctx
+		})
+		trigger := make(chan struct{})
+		go func() {
+			syscall.Write(w1, msg1)
+			trigger <- struct{}{}
+			<-trigger // wait read msg1
+
+			syscall.Close(w1)
+			syscall.Write(w2, msg2)
+			trigger <- struct{}{}
+			//syscall.Close(w2)
+		}()
+
+		<-trigger // wait write msg1
+		buf1, _ := rconn1.Reader().Next(5)
+		Equal(t, string(buf1), string(msg1))
+		trigger <- struct{}{}
+
+		<-trigger // wait write msg2
+		buf2, _ := rconn2.Reader().Next(5)
+		Equal(t, string(buf2), string(msg2))
+		Equal(t, string(buf1), string(msg1))
+		Assert(t, buffers[uintptr(unsafe.Pointer(&buf1[0]))] == nil)
+		Assert(t, buffers[uintptr(unsafe.Pointer(&buf2[0]))] == nil)
+		buffers[uintptr(unsafe.Pointer(&buf1[0]))] = buf1
+		buffers[uintptr(unsafe.Pointer(&buf2[0]))] = buf2
+	}
 }
 
 func TestReadTimer(t *testing.T) {
