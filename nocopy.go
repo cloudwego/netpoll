@@ -112,9 +112,9 @@ type Reader interface {
 // The usage of the design is a two-step operation, first apply for a section of memory,
 // fill it and then submit. E.g:
 //
-//  var buf, _ = Malloc(n)
-//  buf = append(buf[:0], ...)
-//  Flush()
+//	var buf, _ = Malloc(n)
+//	buf = append(buf[:0], ...)
+//	Flush()
 //
 // Note that it is not recommended to submit self-managed buffers to Writer.
 // Since the writer is processed asynchronously, if the self-managed buffer is used and recycled after submission,
@@ -257,11 +257,11 @@ const (
 	pagesize  = block8k
 	mallocMax = block8k * block1k // mallocMax is 8MB
 
-	defaultLinkBufferMode = 1 << 0
-	minReuseBytes         = 64 // only reuse bytes if n >= minReuseBytes
-	// reuse mode, indicate weather reuse buffer node data, default true
-	reuseMask uint8 = 1 << 0 // 0000 0001
-	// read-only mode, introduced by Refer, WriteString, WriteBinary, etc., default false
+	minReuseBytes         = 64           // only reuse bytes if n >= minReuseBytes
+	defaultLinkBufferMode = reusableMask // default buffer mode is reusable but not readonly
+	// reusable mode indicate to whether reuse buffer node data, default value is true
+	reusableMask uint8 = 1 << 0 // 0000 0001
+	// read-only mode enable by Refer/WriteString/WriteBinary/etc. API, default value is false
 	readonlyMask uint8 = 1 << 1 // 0000 0010
 )
 

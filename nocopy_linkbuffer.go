@@ -221,11 +221,11 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 		// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
 		// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
 		// no need to malloc 10 times and the string slice could have the compact memory allocation.
-		if !b.read.getMode(reuseMask) {
+		if !b.read.getMode(reusableMask) {
 			return b.read.Next(n)
 		}
 		if n >= minReuseBytes && cap(b.read.buf) <= block32k {
-			b.read.setMode(reuseMask, false)
+			b.read.setMode(reusableMask, false)
 			return b.read.Next(n)
 		}
 		// if the underlying buffer too large, we shouldn't use no-copy mode
@@ -822,5 +822,5 @@ func (node *linkBufferNode) setMode(mask uint8, enable bool) {
 }
 
 func (node *linkBufferNode) reusable() bool {
-	return !(node.mode&reuseMask > 0 || node.mode&readonlyMask > 0)
+	return !(node.mode&reusableMask > 0 || node.mode&readonlyMask > 0)
 }

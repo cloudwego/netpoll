@@ -468,16 +468,16 @@ func TestWriteDirect(t *testing.T) {
 
 func TestBufferMode(t *testing.T) {
 	bufnode := newLinkBufferNode(0)
-	MustTrue(t, bufnode.getMode(reuseMask))
+	MustTrue(t, bufnode.getMode(reusableMask))
 	MustTrue(t, bufnode.getMode(readonlyMask))
 
 	bufnode = newLinkBufferNode(1)
-	MustTrue(t, bufnode.getMode(reuseMask))
+	MustTrue(t, bufnode.getMode(reusableMask))
 	MustTrue(t, !bufnode.getMode(readonlyMask))
-	bufnode.setMode(reuseMask, false)
-	MustTrue(t, !bufnode.getMode(reuseMask))
-	bufnode.setMode(reuseMask, true)
-	MustTrue(t, bufnode.getMode(reuseMask))
+	bufnode.setMode(reusableMask, false)
+	MustTrue(t, !bufnode.getMode(reusableMask))
+	bufnode.setMode(reusableMask, true)
+	MustTrue(t, bufnode.getMode(reusableMask))
 }
 
 func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {
