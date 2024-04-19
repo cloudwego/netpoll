@@ -562,8 +562,17 @@ func (b *UnsafeLinkBuffer) Bytes() []byte {
 }
 
 // GetBytes will read and fill the slice p as much as possible.
+// If p is not passed, return all readable bytes.
 func (b *UnsafeLinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 	node, flush := b.read, b.flush
+	if len(p) == 0 {
+		n := 0
+		for ; node != flush; node = node.next {
+			n++
+		}
+		node = b.read
+		p = make([][]byte, n)
+	}
 	var i int
 	for i = 0; node != flush && i < len(p); node = node.next {
 		if node.Len() > 0 {

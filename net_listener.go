@@ -91,7 +91,15 @@ func (ln *listener) Accept() (net.Conn, error) {
 	// tcp
 	var fd, sa, err = syscall.Accept(ln.fd)
 	if err != nil {
-		if err == syscall.EAGAIN {
+		/* https://man7.org/linux/man-pages/man2/accept.2.html
+		EAGAIN or EWOULDBLOCK
+		  The socket is marked nonblocking and no connections are
+		  present to be accepted.  POSIX.1-2001 and POSIX.1-2008
+		  allow either error to be returned for this case, and do
+		  not require these constants to have the same value, so a
+		  portable application should check for both possibilities.
+		*/
+		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
 			return nil, nil
 		}
 		return nil, err
