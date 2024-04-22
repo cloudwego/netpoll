@@ -471,8 +471,8 @@ func (b *UnsafeLinkBuffer) WriteBinary(p []byte) (n int, err error) {
 }
 
 // WriteDirect cannot be mixed with WriteString or WriteBinary functions.
-func (b *UnsafeLinkBuffer) WriteDirect(p []byte, remainLen int) error {
-	n := len(p)
+func (b *UnsafeLinkBuffer) WriteDirect(extra []byte, remainLen int) error {
+	n := len(extra)
 	if n == 0 || remainLen < 0 {
 		return nil
 	}
@@ -484,11 +484,16 @@ func (b *UnsafeLinkBuffer) WriteDirect(p []byte, remainLen int) error {
 		origin = origin.next
 	}
 	// Add the buf length of the original node
+	// `malloc` is the origin buffer offset that already malloced, the extra buffer should be inserted after that offset.
 	malloc += len(origin.buf)
 
 	// Create dataNode and newNode and insert them into the chain
-	dataNode := newLinkBufferNode(0)
-	dataNode.buf, dataNode.malloc = p[:0], n
+	// dataNode wrap the user buffer extra, and newNode wrap the origin left netpoll buffer
+	// - originNode{buf=origin, off=0, malloc=malloc, readonly=true} : non-reusable
+	// - dataNode{buf=extra, off=0, malloc=len(extra), readonly=true} : non-reusable
+	// - newNode{buf=origin, off=malloc, malloc=origin.malloc, readonly=false} : reusable
+	dataNode := newLinkBufferNode(0) // zero node will be set by readonly mode
+	dataNode.buf, dataNode.malloc = extra[:0], n
 
 	if remainLen > 0 {
 		newNode := newLinkBufferNode(0)
@@ -831,5 +836,5 @@ func (node *linkBufferNode) setMode(mask uint8, enable bool) {
 }
 
 func (node *linkBufferNode) reusable() bool {
-	return !(node.mode&reusableMask > 0 || node.mode&readonlyMask > 0)
+	return node.mode&reusableMask == 1 && node.mode&readonlyMask == 0
 }

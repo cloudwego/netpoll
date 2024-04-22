@@ -261,7 +261,7 @@ const (
 	defaultLinkBufferMode = reusableMask // default buffer mode is reusable but not readonly
 	// reusable mode indicate to whether reuse buffer node data, default value is true
 	reusableMask uint8 = 1 << 0 // 0000 0001
-	// read-only mode enable by Refer/WriteString/WriteBinary/etc. API, default value is false
+	// readonly mode enable by Refer/WriteString/WriteBinary/etc. API, default value is false
 	readonlyMask uint8 = 1 << 1 // 0000 0010
 )
 

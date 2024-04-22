@@ -491,10 +491,41 @@ func TestWriteDirect(t *testing.T) {
 	}
 }
 
+func TestNoCopyWriteAndRead(t *testing.T) {
+	// [512bytes] + [512bytes] + [1bytes]
+	buf := NewLinkBuffer()
+	userBuf := make([]byte, 512)
+	for i := 0; i < len(userBuf); i++ {
+		userBuf[i] = 'b'
+	}
+	bt, _ := buf.Malloc(1024)
+	for i := 0; i < 512; i++ {
+		bt[i] = 'a'
+	}
+	buf.WriteDirect(userBuf, 512) // nocopy write
+	bt[512] = 'c'
+	buf.MallocAck(1025)
+	buf.Flush()
+	Equal(t, buf.Len(), 1025)
+
+	bt, _ = buf.ReadBinary(512) // nocopy read
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'a')
+	}
+	MustTrue(t, !buf.read.reusable() && buf.read.getMode(readonlyMask)) // next read node must be read-only
+	bt, _ = buf.ReadBinary(512)                                         // nocopy read userBuf
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'b')
+	}
+	MustTrue(t, &bt[0] == &userBuf[0])
+	_ = buf.Release()
+}
+
 func TestBufferMode(t *testing.T) {
 	bufnode := newLinkBufferNode(0)
 	MustTrue(t, bufnode.getMode(reusableMask))
 	MustTrue(t, bufnode.getMode(readonlyMask))
+	MustTrue(t, !bufnode.reusable())
 
 	bufnode = newLinkBufferNode(1)
 	MustTrue(t, bufnode.getMode(reusableMask))
