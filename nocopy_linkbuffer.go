@@ -218,15 +218,18 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 
 	// single node
 	if b.isSingleNode(n) {
-		// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
-		// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
-		// no need to malloc 10 times and the string slice could have the compact memory allocation.
-		if !b.read.getMode(reusableMask) {
-			return b.read.Next(n)
-		}
-		if n >= minReuseBytes && cap(b.read.buf) <= block32k {
-			b.read.setMode(reusableMask, false)
-			return b.read.Next(n)
+		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not control by itself
+		if !b.read.getMode(readonlyMask) {
+			// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
+			// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
+			// no need to malloc 10 times and the string slice could have the compact memory allocation.
+			if b.read.getMode(nocopyReadMask) {
+				return b.read.Next(n)
+			}
+			if n >= minReuseBytes && cap(b.read.buf) <= block32k {
+				b.read.setMode(nocopyReadMask, true)
+				return b.read.Next(n)
+			}
 		}
 		// if the underlying buffer too large, we shouldn't use no-copy mode
 		p = make([]byte, n)
@@ -496,6 +499,7 @@ func (b *UnsafeLinkBuffer) WriteDirect(extra []byte, remainLen int) error {
 	dataNode.buf, dataNode.malloc = extra[:0], n
 
 	if remainLen > 0 {
+		// split a single buffer node to originNode and newNode
 		newNode := newLinkBufferNode(0)
 		newNode.off = malloc
 		newNode.buf = origin.buf[:malloc]
@@ -836,5 +840,5 @@ func (node *linkBufferNode) setMode(mask uint8, enable bool) {
 }
 
 func (node *linkBufferNode) reusable() bool {
-	return node.mode&reusableMask == 1 && node.mode&readonlyMask == 0
+	return node.mode&(nocopyReadMask|readonlyMask) == 0
 }

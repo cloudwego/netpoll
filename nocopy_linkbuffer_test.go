@@ -20,6 +20,7 @@ package netpoll
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"sync/atomic"
 	"testing"
 )
@@ -492,48 +493,104 @@ func TestWriteDirect(t *testing.T) {
 }
 
 func TestNoCopyWriteAndRead(t *testing.T) {
-	// [512bytes] + [512bytes] + [1bytes]
+	// [origin_node:4096B] + [data_node:512B] + [new_node:16B] + [normal_node:4096B]
+	const (
+		mallocLen = 4096 * 2
+		originLen = 4096
+		dataLen   = 512
+		newLen    = 16
+		normalLen = 4096
+	)
 	buf := NewLinkBuffer()
-	userBuf := make([]byte, 512)
+	bt, _ := buf.Malloc(mallocLen)
+	originBuf := bt[:originLen]
+	newBuf := bt[originLen : originLen+newLen]
+
+	// write origin_node
+	for i := 0; i < originLen; i++ {
+		bt[i] = 'a'
+	}
+	// write data_node
+	userBuf := make([]byte, dataLen)
 	for i := 0; i < len(userBuf); i++ {
 		userBuf[i] = 'b'
 	}
-	bt, _ := buf.Malloc(1024)
-	for i := 0; i < 512; i++ {
-		bt[i] = 'a'
+	buf.WriteDirect(userBuf, mallocLen-originLen) // nocopy write
+	// write new_node
+	for i := 0; i < newLen; i++ {
+		bt[originLen+i] = 'c'
 	}
-	buf.WriteDirect(userBuf, 512) // nocopy write
-	bt[512] = 'c'
-	buf.MallocAck(1025)
+	buf.MallocAck(originLen + dataLen + newLen)
 	buf.Flush()
-	Equal(t, buf.Len(), 1025)
+	// write normal_node
+	normalBuf, _ := buf.Malloc(normalLen)
+	for i := 0; i < normalLen; i++ {
+		normalBuf[i] = 'd'
+	}
+	buf.Flush()
+	Equal(t, buf.Len(), originLen+dataLen+newLen+normalLen)
 
-	bt, _ = buf.ReadBinary(512) // nocopy read
+	// copy read origin_node
+	bt, _ = buf.ReadBinary(originLen)
 	for i := 0; i < len(bt); i++ {
 		MustTrue(t, bt[i] == 'a')
 	}
-	MustTrue(t, !buf.read.reusable() && buf.read.getMode(readonlyMask)) // next read node must be read-only
-	bt, _ = buf.ReadBinary(512)                                         // nocopy read userBuf
+	MustTrue(t, &bt[0] != &originBuf[0])
+	// next read node is data node and must be readonly and non-reusable
+	MustTrue(t, buf.read.next.getMode(readonlyMask) && !buf.read.next.reusable())
+	// copy read data_node
+	bt, _ = buf.ReadBinary(dataLen)
 	for i := 0; i < len(bt); i++ {
 		MustTrue(t, bt[i] == 'b')
 	}
-	MustTrue(t, &bt[0] == &userBuf[0])
+	MustTrue(t, &bt[0] != &userBuf[0])
+	// copy read new_node
+	bt, _ = buf.ReadBinary(newLen)
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'c')
+	}
+	MustTrue(t, &bt[0] != &newBuf[0])
+	// current read node is the new node and must not be reusable
+	newnode := buf.read
+	t.Log("newnode", newnode.getMode(readonlyMask), newnode.getMode(nocopyReadMask))
+	MustTrue(t, newnode.reusable())
+	var nodeReleased int32
+	runtime.SetFinalizer(&newnode.buf[0], func(_ *byte) {
+		atomic.AddInt32(&nodeReleased, 1)
+	})
+	// nocopy read normal_node
+	bt, _ = buf.ReadBinary(normalLen)
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'd')
+	}
+	MustTrue(t, &bt[0] == &normalBuf[0])
+	// normal buffer never should be released
+	runtime.SetFinalizer(&bt[0], func(_ *byte) {
+		atomic.AddInt32(&nodeReleased, 1)
+	})
 	_ = buf.Release()
+	MustTrue(t, newnode.buf == nil)
+	for atomic.LoadInt32(&nodeReleased) == 0 {
+		runtime.GC()
+		t.Log("newnode release check failed")
+	}
+	Equal(t, atomic.LoadInt32(&nodeReleased), int32(1))
+	runtime.KeepAlive(normalBuf)
 }
 
 func TestBufferMode(t *testing.T) {
 	bufnode := newLinkBufferNode(0)
-	MustTrue(t, bufnode.getMode(reusableMask))
+	MustTrue(t, !bufnode.getMode(nocopyReadMask))
 	MustTrue(t, bufnode.getMode(readonlyMask))
 	MustTrue(t, !bufnode.reusable())
 
 	bufnode = newLinkBufferNode(1)
-	MustTrue(t, bufnode.getMode(reusableMask))
+	MustTrue(t, !bufnode.getMode(nocopyReadMask))
 	MustTrue(t, !bufnode.getMode(readonlyMask))
-	bufnode.setMode(reusableMask, false)
-	MustTrue(t, !bufnode.getMode(reusableMask))
-	bufnode.setMode(reusableMask, true)
-	MustTrue(t, bufnode.getMode(reusableMask))
+	bufnode.setMode(nocopyReadMask, false)
+	MustTrue(t, !bufnode.getMode(nocopyReadMask))
+	bufnode.setMode(nocopyReadMask, true)
+	MustTrue(t, bufnode.getMode(nocopyReadMask))
 }
 
 func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {

@@ -257,12 +257,14 @@ const (
 	pagesize  = block8k
 	mallocMax = block8k * block1k // mallocMax is 8MB
 
-	minReuseBytes         = 64           // only reuse bytes if n >= minReuseBytes
-	defaultLinkBufferMode = reusableMask // default buffer mode is reusable but not readonly
-	// reusable mode indicate to whether reuse buffer node data, default value is true
-	reusableMask uint8 = 1 << 0 // 0000 0001
-	// readonly mode enable by Refer/WriteString/WriteBinary/etc. API, default value is false
-	readonlyMask uint8 = 1 << 1 // 0000 0010
+	minReuseBytes = 64 // only reuse bytes if n >= minReuseBytes
+
+	defaultLinkBufferMode = 0
+	// readonly mode indicate that the buffer node memory is not controlled by itself,
+	// so we cannot reuse the buffer or nocopy read it, default value is false.
+	readonlyMask uint8 = 1 << 0 // 0000 0001
+	// nocopyRead mode indicate that the buffer node has been no copy read and cannot reuse the buffer, default value is false.
+	nocopyReadMask uint8 = 1 << 1 // 0000 0010
 )
 
 // zero-copy slice convert to string
