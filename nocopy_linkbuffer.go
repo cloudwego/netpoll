@@ -1,4 +1,4 @@
-// Copyright 2022 CloudWeGo Authors
+// Copyright 2024 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,21 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !race
-// +build !race
-
 package netpoll
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 	"sync/atomic"
-	"unsafe"
-
-	"github.com/bytedance/gopkg/lang/mcache"
 )
 
 // BinaryInplaceThreshold marks the minimum value of the nocopy slice length,
@@ -35,6 +28,9 @@ const BinaryInplaceThreshold = block4k
 
 // LinkBufferCap that can be modified marks the minimum value of each node of LinkBuffer.
 var LinkBufferCap = block4k
+
+var _ Reader = &LinkBuffer{}
+var _ Writer = &LinkBuffer{}
 
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
@@ -48,8 +44,8 @@ func NewLinkBuffer(size ...int) *LinkBuffer {
 	return buf
 }
 
-// LinkBuffer implements ReadWriter.
-type LinkBuffer struct {
+// UnsafeLinkBuffer implements ReadWriter.
+type UnsafeLinkBuffer struct {
 	length     int64
 	mallocSize int
 
@@ -61,24 +57,21 @@ type LinkBuffer struct {
 	caches [][]byte // buf allocated by Next when cross-package, which should be freed when release
 }
 
-var _ Reader = &LinkBuffer{}
-var _ Writer = &LinkBuffer{}
-
 // Len implements Reader.
-func (b *LinkBuffer) Len() int {
+func (b *UnsafeLinkBuffer) Len() int {
 	l := atomic.LoadInt64(&b.length)
 	return int(l)
 }
 
 // IsEmpty check if this LinkBuffer is empty.
-func (b *LinkBuffer) IsEmpty() (ok bool) {
+func (b *UnsafeLinkBuffer) IsEmpty() (ok bool) {
 	return b.Len() == 0
 }
 
 // ------------------------------------------ implement zero-copy reader ------------------------------------------
 
 // Next implements Reader.
-func (b *LinkBuffer) Next(n int) (p []byte, err error) {
+func (b *UnsafeLinkBuffer) Next(n int) (p []byte, err error) {
 	if n <= 0 {
 		return
 	}
@@ -117,7 +110,7 @@ func (b *LinkBuffer) Next(n int) (p []byte, err error) {
 
 // Peek does not have an independent lifecycle, and there is no signal to
 // indicate that Peek content can be released, so Peek will not introduce mcache for now.
-func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
+func (b *UnsafeLinkBuffer) Peek(n int) (p []byte, err error) {
 	if n <= 0 {
 		return
 	}
@@ -154,7 +147,7 @@ func (b *LinkBuffer) Peek(n int) (p []byte, err error) {
 }
 
 // Skip implements Reader.
-func (b *LinkBuffer) Skip(n int) (err error) {
+func (b *UnsafeLinkBuffer) Skip(n int) (err error) {
 	if n <= 0 {
 		return
 	}
@@ -178,7 +171,7 @@ func (b *LinkBuffer) Skip(n int) (err error) {
 
 // Release the node that has been read.
 // b.flush == nil indicates that this LinkBuffer is created by LinkBuffer.Slice
-func (b *LinkBuffer) Release() (err error) {
+func (b *UnsafeLinkBuffer) Release() (err error) {
 	for b.read != b.flush && b.read.Len() == 0 {
 		b.read = b.read.next
 	}
@@ -196,7 +189,7 @@ func (b *LinkBuffer) Release() (err error) {
 }
 
 // ReadString implements Reader.
-func (b *LinkBuffer) ReadString(n int) (s string, err error) {
+func (b *UnsafeLinkBuffer) ReadString(n int) (s string, err error) {
 	if n <= 0 {
 		return
 	}
@@ -208,7 +201,7 @@ func (b *LinkBuffer) ReadString(n int) (s string, err error) {
 }
 
 // ReadBinary implements Reader.
-func (b *LinkBuffer) ReadBinary(n int) (p []byte, err error) {
+func (b *UnsafeLinkBuffer) ReadBinary(n int) (p []byte, err error) {
 	if n <= 0 {
 		return
 	}
@@ -220,15 +213,30 @@ func (b *LinkBuffer) ReadBinary(n int) (p []byte, err error) {
 }
 
 // readBinary cannot use mcache, because the memory allocated by readBinary will not be recycled.
-func (b *LinkBuffer) readBinary(n int) (p []byte) {
+func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 	b.recalLen(-n) // re-cal length
 
 	// single node
-	p = make([]byte, n)
 	if b.isSingleNode(n) {
+		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not control by itself
+		if !b.read.getMode(readonlyMask) {
+			// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
+			// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
+			// no need to malloc 10 times and the string slice could have the compact memory allocation.
+			if b.read.getMode(nocopyReadMask) {
+				return b.read.Next(n)
+			}
+			if n >= minReuseBytes && cap(b.read.buf) <= block32k {
+				b.read.setMode(nocopyReadMask, true)
+				return b.read.Next(n)
+			}
+		}
+		// if the underlying buffer too large, we shouldn't use no-copy mode
+		p = make([]byte, n)
 		copy(p, b.read.Next(n))
 		return p
 	}
+	p = make([]byte, n)
 	// multiple nodes
 	var pIdx int
 	var l int
@@ -247,7 +255,7 @@ func (b *LinkBuffer) readBinary(n int) (p []byte) {
 }
 
 // ReadByte implements Reader.
-func (b *LinkBuffer) ReadByte() (p byte, err error) {
+func (b *UnsafeLinkBuffer) ReadByte() (p byte, err error) {
 	// check whether enough or not.
 	if b.Len() < 1 {
 		return p, errors.New("link buffer read byte is empty")
@@ -262,7 +270,7 @@ func (b *LinkBuffer) ReadByte() (p byte, err error) {
 }
 
 // Until returns a slice ends with the delim in the buffer.
-func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
+func (b *UnsafeLinkBuffer) Until(delim byte) (line []byte, err error) {
 	n := b.indexByte(delim, 0)
 	if n < 0 {
 		return nil, fmt.Errorf("link buffer read slice cannot find: '%b'", delim)
@@ -274,7 +282,7 @@ func (b *LinkBuffer) Until(delim byte) (line []byte, err error) {
 // and only holds the ability of Reader.
 //
 // Slice will automatically execute a Release.
-func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
+func (b *UnsafeLinkBuffer) Slice(n int) (r Reader, err error) {
 	if n <= 0 {
 		return NewLinkBuffer(0), nil
 	}
@@ -285,9 +293,9 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 	b.recalLen(-n) // re-cal length
 
 	// just use for range
-	p := &LinkBuffer{
-		length: int64(n),
-	}
+	p := new(LinkBuffer)
+	p.length = int64(n)
+
 	defer func() {
 		// set to read-only
 		p.flush = p.flush.next
@@ -324,7 +332,7 @@ func (b *LinkBuffer) Slice(n int) (r Reader, err error) {
 // ------------------------------------------ implement zero-copy writer ------------------------------------------
 
 // Malloc pre-allocates memory, which is not readable, and becomes readable data after submission(e.g. Flush).
-func (b *LinkBuffer) Malloc(n int) (buf []byte, err error) {
+func (b *UnsafeLinkBuffer) Malloc(n int) (buf []byte, err error) {
 	if n <= 0 {
 		return
 	}
@@ -334,12 +342,12 @@ func (b *LinkBuffer) Malloc(n int) (buf []byte, err error) {
 }
 
 // MallocLen implements Writer.
-func (b *LinkBuffer) MallocLen() (length int) {
+func (b *UnsafeLinkBuffer) MallocLen() (length int) {
 	return b.mallocSize
 }
 
 // MallocAck will keep the first n malloc bytes and discard the rest.
-func (b *LinkBuffer) MallocAck(n int) (err error) {
+func (b *UnsafeLinkBuffer) MallocAck(n int) (err error) {
 	if n < 0 {
 		return fmt.Errorf("link buffer malloc ack[%d] invalid", n)
 	}
@@ -363,7 +371,7 @@ func (b *LinkBuffer) MallocAck(n int) (err error) {
 }
 
 // Flush will submit all malloc data and must confirm that the allocated bytes have been correctly assigned.
-func (b *LinkBuffer) Flush() (err error) {
+func (b *UnsafeLinkBuffer) Flush() (err error) {
 	b.mallocSize = 0
 	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
 	if cap(b.write.buf) > pagesize {
@@ -385,7 +393,7 @@ func (b *LinkBuffer) Flush() (err error) {
 }
 
 // Append implements Writer.
-func (b *LinkBuffer) Append(w Writer) (err error) {
+func (b *UnsafeLinkBuffer) Append(w Writer) (err error) {
 	var buf, ok = w.(*LinkBuffer)
 	if !ok {
 		return errors.New("unsupported writer which is not LinkBuffer")
@@ -396,7 +404,7 @@ func (b *LinkBuffer) Append(w Writer) (err error) {
 // WriteBuffer will not submit(e.g. Flush) data to ensure normal use of MallocLen.
 // you must actively submit before read the data.
 // The argument buf can't be used after calling WriteBuffer. (set it to nil)
-func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
+func (b *UnsafeLinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 	if buf == nil {
 		return
 	}
@@ -435,7 +443,7 @@ func (b *LinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 }
 
 // WriteString implements Writer.
-func (b *LinkBuffer) WriteString(s string) (n int, err error) {
+func (b *UnsafeLinkBuffer) WriteString(s string) (n int, err error) {
 	if len(s) == 0 {
 		return
 	}
@@ -444,7 +452,7 @@ func (b *LinkBuffer) WriteString(s string) (n int, err error) {
 }
 
 // WriteBinary implements Writer.
-func (b *LinkBuffer) WriteBinary(p []byte) (n int, err error) {
+func (b *UnsafeLinkBuffer) WriteBinary(p []byte) (n int, err error) {
 	n = len(p)
 	if n == 0 {
 		return
@@ -466,8 +474,8 @@ func (b *LinkBuffer) WriteBinary(p []byte) (n int, err error) {
 }
 
 // WriteDirect cannot be mixed with WriteString or WriteBinary functions.
-func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
-	n := len(p)
+func (b *UnsafeLinkBuffer) WriteDirect(extra []byte, remainLen int) error {
+	n := len(extra)
 	if n == 0 || remainLen < 0 {
 		return nil
 	}
@@ -479,20 +487,26 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 		origin = origin.next
 	}
 	// Add the buf length of the original node
+	// `malloc` is the origin buffer offset that already malloced, the extra buffer should be inserted after that offset.
 	malloc += len(origin.buf)
 
 	// Create dataNode and newNode and insert them into the chain
-	dataNode := newLinkBufferNode(0)
-	dataNode.buf, dataNode.malloc = p[:0], n
+	// dataNode wrap the user buffer extra, and newNode wrap the origin left netpoll buffer
+	// - originNode{buf=origin, off=0, malloc=malloc, readonly=true} : non-reusable
+	// - dataNode{buf=extra, off=0, malloc=len(extra), readonly=true} : non-reusable
+	// - newNode{buf=origin, off=malloc, malloc=origin.malloc, readonly=false} : reusable
+	dataNode := newLinkBufferNode(0) // zero node will be set by readonly mode
+	dataNode.buf, dataNode.malloc = extra[:0], n
 
 	if remainLen > 0 {
+		// split a single buffer node to originNode and newNode
 		newNode := newLinkBufferNode(0)
 		newNode.off = malloc
 		newNode.buf = origin.buf[:malloc]
 		newNode.malloc = origin.malloc
-		newNode.readonly = false
+		newNode.setMode(readonlyMask, false)
 		origin.malloc = malloc
-		origin.readonly = true
+		origin.setMode(readonlyMask, true)
 
 		// link nodes
 		dataNode.next = newNode
@@ -514,7 +528,7 @@ func (b *LinkBuffer) WriteDirect(p []byte, remainLen int) error {
 }
 
 // WriteByte implements Writer.
-func (b *LinkBuffer) WriteByte(p byte) (err error) {
+func (b *UnsafeLinkBuffer) WriteByte(p byte) (err error) {
 	dst, err := b.Malloc(1)
 	if len(dst) == 1 {
 		dst[0] = p
@@ -523,7 +537,7 @@ func (b *LinkBuffer) WriteByte(p byte) (err error) {
 }
 
 // Close will recycle all buffer.
-func (b *LinkBuffer) Close() (err error) {
+func (b *UnsafeLinkBuffer) Close() (err error) {
 	atomic.StoreInt64(&b.length, 0)
 	b.mallocSize = 0
 	// just release all
@@ -540,7 +554,7 @@ func (b *LinkBuffer) Close() (err error) {
 // ------------------------------------------ implement connection interface ------------------------------------------
 
 // Bytes returns all the readable bytes of this LinkBuffer.
-func (b *LinkBuffer) Bytes() []byte {
+func (b *UnsafeLinkBuffer) Bytes() []byte {
 	node, flush := b.read, b.flush
 	if node == flush {
 		return node.buf[node.off:]
@@ -558,7 +572,7 @@ func (b *LinkBuffer) Bytes() []byte {
 
 // GetBytes will read and fill the slice p as much as possible.
 // If p is not passed, return all readable bytes.
-func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
+func (b *UnsafeLinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 	node, flush := b.read, b.flush
 	if len(p) == 0 {
 		n := 0
@@ -588,7 +602,7 @@ func (b *LinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 // maxSize: The maximum size of data between two Release(). In some cases, this can
 //
 //	guarantee all data allocated in one node to reduce copy.
-func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
+func (b *UnsafeLinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	l := cap(b.write.buf) - b.write.malloc
 	// grow linkBuffer
 	if l == 0 {
@@ -605,7 +619,7 @@ func (b *LinkBuffer) book(bookSize, maxSize int) (p []byte) {
 // bookAck will ack the first n malloc bytes and discard the rest.
 //
 // length: The size of data in inputBuffer. It is used to calculate the maxSize
-func (b *LinkBuffer) bookAck(n int) (length int, err error) {
+func (b *UnsafeLinkBuffer) bookAck(n int) (length int, err error) {
 	b.write.malloc = n + len(b.write.buf)
 	b.write.buf = b.write.buf[:b.write.malloc]
 	b.flush = b.write
@@ -616,7 +630,7 @@ func (b *LinkBuffer) bookAck(n int) (length int, err error) {
 }
 
 // calcMaxSize will calculate the data size between two Release()
-func (b *LinkBuffer) calcMaxSize() (sum int) {
+func (b *UnsafeLinkBuffer) calcMaxSize() (sum int) {
 	for node := b.head; node != b.read; node = node.next {
 		sum += len(node.buf)
 	}
@@ -624,8 +638,24 @@ func (b *LinkBuffer) calcMaxSize() (sum int) {
 	return sum
 }
 
+// resetTail will reset tail node or add an empty tail node to
+// guarantee the tail node is not larger than 8KB
+func (b *UnsafeLinkBuffer) resetTail(maxSize int) {
+	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
+	if maxSize <= pagesize {
+		b.write.Reset()
+		return
+	}
+
+	// set nil tail
+	b.write.next = newLinkBufferNode(0)
+	b.write = b.write.next
+	b.flush = b.write
+	return
+}
+
 // indexByte returns the index of the first instance of c in buffer, or -1 if c is not present in buffer.
-func (b *LinkBuffer) indexByte(c byte, skip int) int {
+func (b *UnsafeLinkBuffer) indexByte(c byte, skip int) int {
 	size := b.Len()
 	if skip >= size {
 		return -1
@@ -656,25 +686,41 @@ func (b *LinkBuffer) indexByte(c byte, skip int) int {
 	return -1
 }
 
-// resetTail will reset tail node or add an empty tail node to
-// guarantee the tail node is not larger than 8KB
-func (b *LinkBuffer) resetTail(maxSize int) {
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if maxSize <= pagesize {
-		b.write.Reset()
-		return
-	}
-
-	// set nil tail
-	b.write.next = newLinkBufferNode(0)
-	b.write = b.write.next
-	b.flush = b.write
-	return
-}
+// ------------------------------------------ private function ------------------------------------------
 
 // recalLen re-calculate the length
-func (b *LinkBuffer) recalLen(delta int) (length int) {
+func (b *UnsafeLinkBuffer) recalLen(delta int) (length int) {
 	return int(atomic.AddInt64(&b.length, int64(delta)))
+}
+
+// growth directly create the next node, when b.write is not enough.
+func (b *UnsafeLinkBuffer) growth(n int) {
+	if n <= 0 {
+		return
+	}
+	// the memory of readonly node if not malloc by us so should skip them
+	for b.write.getMode(readonlyMask) || cap(b.write.buf)-b.write.malloc < n {
+		if b.write.next == nil {
+			b.write.next = newLinkBufferNode(n)
+			b.write = b.write.next
+			return
+		}
+		b.write = b.write.next
+	}
+}
+
+// isSingleNode determines whether reading needs to cross nodes.
+// Must require b.Len() > 0
+func (b *UnsafeLinkBuffer) isSingleNode(readN int) (single bool) {
+	if readN <= 0 {
+		return true
+	}
+	l := b.read.Len()
+	for l == 0 && b.read != b.flush {
+		b.read = b.read.next
+		l = b.read.Len()
+	}
+	return l >= readN
 }
 
 // ------------------------------------------ implement link node ------------------------------------------
@@ -684,9 +730,9 @@ func (b *LinkBuffer) recalLen(delta int) (length int) {
 func newLinkBufferNode(size int) *linkBufferNode {
 	var node = linkedPool.Get().(*linkBufferNode)
 	// reset node offset
-	node.off, node.malloc, node.refer, node.readonly = 0, 0, 1, false
+	node.off, node.malloc, node.refer, node.mode = 0, 0, 1, defaultLinkBufferMode
 	if size <= 0 {
-		node.readonly = true
+		node.setMode(readonlyMask, true)
 		return node
 	}
 	if size < LinkBufferCap {
@@ -705,13 +751,13 @@ var linkedPool = sync.Pool{
 }
 
 type linkBufferNode struct {
-	buf      []byte          // buffer
-	off      int             // read-offset
-	malloc   int             // write-offset
-	refer    int32           // reference count
-	readonly bool            // read-only node, introduced by Refer, WriteString, WriteBinary, etc., default false
-	origin   *linkBufferNode // the root node of the extends
-	next     *linkBufferNode // the next node of the linked buffer
+	buf    []byte          // buffer
+	off    int             // read-offset
+	malloc int             // write-offset
+	refer  int32           // reference count
+	mode   uint8           // mode store all bool bit status
+	origin *linkBufferNode // the root node of the extends
+	next   *linkBufferNode // the next node of the linked buffer
 }
 
 func (node *linkBufferNode) Len() (l int) {
@@ -772,7 +818,7 @@ func (node *linkBufferNode) Release() (err error) {
 	// release self
 	if atomic.AddInt32(&node.refer, -1) == 0 {
 		// readonly nodes cannot recycle node.buf, other node.buf are recycled to mcache.
-		if !node.readonly {
+		if node.reusable() {
 			free(node.buf)
 		}
 		node.buf, node.origin, node.next = nil, nil, nil
@@ -781,68 +827,18 @@ func (node *linkBufferNode) Release() (err error) {
 	return nil
 }
 
-// ------------------------------------------ private function ------------------------------------------
+func (node *linkBufferNode) getMode(mask uint8) bool {
+	return node.mode&mask > 0
+}
 
-// growth directly create the next node, when b.write is not enough.
-func (b *LinkBuffer) growth(n int) {
-	if n <= 0 {
-		return
-	}
-	// Must skip read-only node.
-	for b.write.readonly || cap(b.write.buf)-b.write.malloc < n {
-		if b.write.next == nil {
-			b.write.next = newLinkBufferNode(n)
-			b.write = b.write.next
-			return
-		}
-		b.write = b.write.next
+func (node *linkBufferNode) setMode(mask uint8, enable bool) {
+	if enable {
+		node.mode = node.mode | mask
+	} else {
+		node.mode = node.mode & ^mask
 	}
 }
 
-// isSingleNode determines whether reading needs to cross nodes.
-// Must require b.Len() > 0
-func (b *LinkBuffer) isSingleNode(readN int) (single bool) {
-	if readN <= 0 {
-		return true
-	}
-	l := b.read.Len()
-	for l == 0 && b.read != b.flush {
-		b.read = b.read.next
-		l = b.read.Len()
-	}
-	return l >= readN
-}
-
-// zero-copy slice convert to string
-func unsafeSliceToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-// zero-copy slice convert to string
-func unsafeStringToSlice(s string) (b []byte) {
-	p := unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&s)).Data)
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	hdr.Data = uintptr(p)
-	hdr.Cap = len(s)
-	hdr.Len = len(s)
-	return b
-}
-
-// mallocMax is 8MB
-const mallocMax = block8k * block1k
-
-// malloc limits the cap of the buffer from mcache.
-func malloc(size, capacity int) []byte {
-	if capacity > mallocMax {
-		return make([]byte, size, capacity)
-	}
-	return mcache.Malloc(size, capacity)
-}
-
-// free limits the cap of the buffer from mcache.
-func free(buf []byte) {
-	if cap(buf) > mallocMax {
-		return
-	}
-	mcache.Free(buf)
+func (node *linkBufferNode) reusable() bool {
+	return node.mode&(nocopyReadMask|readonlyMask) == 0
 }

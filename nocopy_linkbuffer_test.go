@@ -20,6 +20,7 @@ package netpoll
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"sync/atomic"
 	"testing"
 )
@@ -491,6 +492,107 @@ func TestWriteDirect(t *testing.T) {
 	}
 }
 
+func TestNoCopyWriteAndRead(t *testing.T) {
+	// [origin_node:4096B] + [data_node:512B] + [new_node:16B] + [normal_node:4096B]
+	const (
+		mallocLen = 4096 * 2
+		originLen = 4096
+		dataLen   = 512
+		newLen    = 16
+		normalLen = 4096
+	)
+	buf := NewLinkBuffer()
+	bt, _ := buf.Malloc(mallocLen)
+	originBuf := bt[:originLen]
+	newBuf := bt[originLen : originLen+newLen]
+
+	// write origin_node
+	for i := 0; i < originLen; i++ {
+		bt[i] = 'a'
+	}
+	// write data_node
+	userBuf := make([]byte, dataLen)
+	for i := 0; i < len(userBuf); i++ {
+		userBuf[i] = 'b'
+	}
+	buf.WriteDirect(userBuf, mallocLen-originLen) // nocopy write
+	// write new_node
+	for i := 0; i < newLen; i++ {
+		bt[originLen+i] = 'c'
+	}
+	buf.MallocAck(originLen + dataLen + newLen)
+	buf.Flush()
+	// write normal_node
+	normalBuf, _ := buf.Malloc(normalLen)
+	for i := 0; i < normalLen; i++ {
+		normalBuf[i] = 'd'
+	}
+	buf.Flush()
+	Equal(t, buf.Len(), originLen+dataLen+newLen+normalLen)
+
+	// copy read origin_node
+	bt, _ = buf.ReadBinary(originLen)
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'a')
+	}
+	MustTrue(t, &bt[0] != &originBuf[0])
+	// next read node is data node and must be readonly and non-reusable
+	MustTrue(t, buf.read.next.getMode(readonlyMask) && !buf.read.next.reusable())
+	// copy read data_node
+	bt, _ = buf.ReadBinary(dataLen)
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'b')
+	}
+	MustTrue(t, &bt[0] != &userBuf[0])
+	// copy read new_node
+	bt, _ = buf.ReadBinary(newLen)
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'c')
+	}
+	MustTrue(t, &bt[0] != &newBuf[0])
+	// current read node is the new node and must not be reusable
+	newnode := buf.read
+	t.Log("newnode", newnode.getMode(readonlyMask), newnode.getMode(nocopyReadMask))
+	MustTrue(t, newnode.reusable())
+	var nodeReleased int32
+	runtime.SetFinalizer(&newnode.buf[0], func(_ *byte) {
+		atomic.AddInt32(&nodeReleased, 1)
+	})
+	// nocopy read normal_node
+	bt, _ = buf.ReadBinary(normalLen)
+	for i := 0; i < len(bt); i++ {
+		MustTrue(t, bt[i] == 'd')
+	}
+	MustTrue(t, &bt[0] == &normalBuf[0])
+	// normal buffer never should be released
+	runtime.SetFinalizer(&bt[0], func(_ *byte) {
+		atomic.AddInt32(&nodeReleased, 1)
+	})
+	_ = buf.Release()
+	MustTrue(t, newnode.buf == nil)
+	for atomic.LoadInt32(&nodeReleased) == 0 {
+		runtime.GC()
+		t.Log("newnode release check failed")
+	}
+	Equal(t, atomic.LoadInt32(&nodeReleased), int32(1))
+	runtime.KeepAlive(normalBuf)
+}
+
+func TestBufferMode(t *testing.T) {
+	bufnode := newLinkBufferNode(0)
+	MustTrue(t, !bufnode.getMode(nocopyReadMask))
+	MustTrue(t, bufnode.getMode(readonlyMask))
+	MustTrue(t, !bufnode.reusable())
+
+	bufnode = newLinkBufferNode(1)
+	MustTrue(t, !bufnode.getMode(nocopyReadMask))
+	MustTrue(t, !bufnode.getMode(readonlyMask))
+	bufnode.setMode(nocopyReadMask, false)
+	MustTrue(t, !bufnode.getMode(nocopyReadMask))
+	bufnode.setMode(nocopyReadMask, true)
+	MustTrue(t, bufnode.getMode(nocopyReadMask))
+}
+
 func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {
 	b.StopTimer()
 
@@ -650,6 +752,46 @@ func BenchmarkCopyString(b *testing.B) {
 		var v = make([]byte, 1024)
 		for pb.Next() {
 			copy(v, s)
+		}
+	})
+}
+
+func BenchmarkNoCopyRead(b *testing.B) {
+	totalSize := 0
+	minSize := 32
+	maxSize := minSize << 9
+	for size := minSize; size <= maxSize; size = size << 1 {
+		totalSize += size
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		var buffer = NewLinkBuffer(pagesize)
+		for pb.Next() {
+			buf, err := buffer.Malloc(totalSize)
+			if len(buf) != totalSize || err != nil {
+				b.Fatal(err)
+			}
+			err = buffer.MallocAck(totalSize)
+			if err != nil {
+				b.Fatal(err)
+			}
+			err = buffer.Flush()
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			for size := minSize; size <= maxSize; size = size << 1 {
+				buf, err = buffer.ReadBinary(size)
+				if len(buf) != size || err != nil {
+					b.Fatal(err)
+				}
+			}
+			// buffer.Release will not reuse memory since we use no copy mode here
+			err = buffer.Release()
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
