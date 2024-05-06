@@ -542,7 +542,7 @@ func TestServerAcceptWhenTooManyOpenFiles(t *testing.T) {
 		},
 		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
 			atomic.AddInt32(&connected, 1)
-			t.Logf("Conn[%s] accpeted", connection.RemoteAddr())
+			t.Logf("Conn[%s] accepted", connection.RemoteAddr())
 			return ctx
 		}),
 		WithOnDisconnect(func(ctx context.Context, connection Connection) {

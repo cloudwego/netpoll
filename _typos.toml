@@ -1,0 +1,10 @@
+# Typo check: https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = ["go.sum"]
+
+[default.extend-identifiers]
+# *sigh* this just isn't worth the cost of fixing
+nd = "nd"
+paniced = "paniced"
+write_datas = "write_datas"

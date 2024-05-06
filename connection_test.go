@@ -601,7 +601,7 @@ func TestConnectionServerClose(t *testing.T) {
 	go func() {
 		err := el.Serve(ln)
 		if err != nil {
-			t.Logf("servce end with error: %v", err)
+			t.Logf("service end with error: %v", err)
 		}
 	}()
 
@@ -658,7 +658,7 @@ func TestConnectionDailTimeoutAndClose(t *testing.T) {
 	go func() {
 		err := el.Serve(ln)
 		if err != nil {
-			t.Logf("servce end with error: %v", err)
+			t.Logf("service end with error: %v", err)
 		}
 	}()
 

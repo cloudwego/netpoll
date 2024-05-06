@@ -54,7 +54,7 @@ func (d *dialer) DialConnection(network, address string, timeout time.Duration) 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
 		return d.dialTCP(ctx, network, address)
-	// case "udp", "udp4", "udp6":  // TODO: unsupport now
+	// case "udp", "udp4", "udp6":  // TODO: unsupported now
 	case "unix", "unixgram", "unixpacket":
 		raddr := &UnixAddr{
 			UnixAddr: net.UnixAddr{Name: address, Net: network},
