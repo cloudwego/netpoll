@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/bytedance/gopkg/lang/dirtmake"
 )
 
 // BinaryInplaceThreshold marks the minimum value of the nocopy slice length,
@@ -91,7 +93,7 @@ func (b *UnsafeLinkBuffer) Next(n int) (p []byte, err error) {
 		p = malloc(n, n)
 		b.caches = append(b.caches, p)
 	} else {
-		p = make([]byte, n)
+		p = dirtmake.Bytes(n, n)
 	}
 	var l int
 	for ack := n; ack > 0; ack = ack - l {
@@ -128,7 +130,7 @@ func (b *UnsafeLinkBuffer) Peek(n int) (p []byte, err error) {
 		p = malloc(n, n)
 		b.caches = append(b.caches, p)
 	} else {
-		p = make([]byte, n)
+		p = dirtmake.Bytes(n, n)
 	}
 	var node = b.read
 	var l int
@@ -232,11 +234,11 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 			}
 		}
 		// if the underlying buffer too large, we shouldn't use no-copy mode
-		p = make([]byte, n)
+		p = dirtmake.Bytes(n, n)
 		copy(p, b.read.Next(n))
 		return p
 	}
-	p = make([]byte, n)
+	p = dirtmake.Bytes(n, n)
 	// multiple nodes
 	var pIdx int
 	var l int
@@ -560,7 +562,7 @@ func (b *UnsafeLinkBuffer) Bytes() []byte {
 		return node.buf[node.off:]
 	}
 	n := 0
-	p := make([]byte, b.Len())
+	p := dirtmake.Bytes(b.Len(), b.Len())
 	for ; node != flush; node = node.next {
 		if node.Len() > 0 {
 			n += copy(p[n:], node.buf[node.off:])

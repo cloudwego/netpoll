@@ -668,9 +668,12 @@ func TestLinkBufferIndexByte(t *testing.T) {
 	trigger := make(chan struct{}, 16)
 
 	lb := NewLinkBuffer()
+	empty := make([]byte, 1002)
 	go func() {
 		for i := 0; i < loopSize; i++ {
 			buf, err := lb.Malloc(1002)
+			// need clear buffer
+			copy(buf, empty)
 			buf[500] = '\n'
 			buf[1001] = '\n'
 			MustNil(t, err)
