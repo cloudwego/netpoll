@@ -228,7 +228,7 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 			if b.read.getMode(nocopyReadMask) {
 				return b.read.Next(n)
 			}
-			if n >= minReuseBytes && cap(b.read.buf) <= block32k {
+			if n >= minReuseBytes {
 				b.read.setMode(nocopyReadMask, true)
 				return b.read.Next(n)
 			}
