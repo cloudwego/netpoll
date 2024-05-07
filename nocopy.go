@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"unsafe"
 
+	"github.com/bytedance/gopkg/lang/dirtmake"
 	"github.com/bytedance/gopkg/lang/mcache"
 )
 
@@ -285,7 +286,7 @@ func unsafeStringToSlice(s string) (b []byte) {
 // malloc limits the cap of the buffer from mcache.
 func malloc(size, capacity int) []byte {
 	if capacity > mallocMax {
-		return make([]byte, size, capacity)
+		return dirtmake.Bytes(size, capacity)
 	}
 	return mcache.Malloc(size, capacity)
 }
