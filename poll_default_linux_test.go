@@ -18,6 +18,7 @@
 package netpoll
 
 import (
+	"context"
 	"errors"
 	"syscall"
 	"testing"
@@ -239,6 +240,18 @@ func TestEpollETDel(t *testing.T) {
 }
 
 func TestEpollConnectSameFD(t *testing.T) {
+	addr := syscall.SockaddrInet4{
+		Port: 12345,
+		Addr: [4]byte{127, 0, 0, 1},
+	}
+	var loop = newTestEventLoop("tcp", "127.0.0.1:12345",
+		func(ctx context.Context, connection Connection) error {
+			_, err := connection.Reader().Next(connection.Reader().Len())
+			return err
+		},
+	)
+	defer loop.Shutdown(context.Background())
+
 	var epollfd, err = EpollCreate(0)
 	MustNil(t, err)
 	defer syscall.Close(epollfd)
@@ -257,10 +270,6 @@ func TestEpollConnectSameFD(t *testing.T) {
 		events: syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR,
 		data:   eventdata1,
 	}
-	addr := syscall.SockaddrInet4{
-		Port: 53,
-		Addr: [4]byte{8, 8, 8, 8},
-	}
 
 	// connect non-block socket
 	fd1, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP)
@@ -271,12 +280,12 @@ func TestEpollConnectSameFD(t *testing.T) {
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd1, event1)
 	MustNil(t, err)
 	err = syscall.Connect(fd1, &addr)
-	t.Log(err)
+	t.Log(err) // EINPROGRESS
 	_, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
-	//Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
-	//Assert(t, events[0].events&syscall.EPOLLERR == 0)
+	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
 	// forget to del fd
 	//err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, fd1, event1)
 	//MustNil(t, err)
@@ -292,7 +301,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd2, event2)
 	MustNil(t, err)
 	err = syscall.Connect(fd2, &addr)
-	t.Log(err)
+	t.Log(err) // EINPROGRESS
 	_, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
@@ -313,7 +322,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd3, event1)
 	MustNil(t, err)
 	err = syscall.Connect(fd3, &addr)
-	t.Log(err)
+	t.Log(err) // EINPROGRESS
 	_, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
