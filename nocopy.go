@@ -261,10 +261,12 @@ const (
 	minReuseBytes = 64 // only reuse bytes if n >= minReuseBytes
 
 	defaultLinkBufferMode = 0
-	// readonly mode indicate that the buffer node memory is not controlled by itself,
-	// so we cannot reuse the buffer or nocopy read it, default value is false.
+	// readonlyMask is used to set readonly mode,
+	// which indicate that the buffer node memory is not controlled by itself,
+	// so we cannot reuse the buffer or nocopy read it.
 	readonlyMask uint8 = 1 << 0 // 0000 0001
-	// nocopyRead mode indicate that the buffer node has been no copy read and cannot reuse the buffer, default value is false.
+	// readonlyMask is used to set nocopyRead mode,
+	// which indicate that the buffer node has been no copy read and cannot reuse the buffer.
 	nocopyReadMask uint8 = 1 << 1 // 0000 0010
 )
 
