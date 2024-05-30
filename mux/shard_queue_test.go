@@ -18,7 +18,10 @@
 package mux
 
 import (
+	"io"
 	"net"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,18 +30,22 @@ import (
 
 func TestShardQueue(t *testing.T) {
 	var svrConn net.Conn
+	var cliConn netpoll.Connection
 	accepted := make(chan struct{})
+	stopped := make(chan struct{})
+	streams, framesize := 128, 1024
+	totalsize := int32(streams * framesize)
+	var send, read int32
 
+	// create server connection
 	network, address := "tcp", ":18888"
 	ln, err := net.Listen("tcp", ":18888")
 	MustNil(t, err)
-	stop := make(chan int, 1)
-	defer close(stop)
 	go func() {
 		var err error
 		for {
 			select {
-			case <-stop:
+			case <-stopped:
 				err = ln.Close()
 				MustNil(t, err)
 				return
@@ -47,35 +54,56 @@ func TestShardQueue(t *testing.T) {
 			svrConn, err = ln.Accept()
 			MustNil(t, err)
 			accepted <- struct{}{}
+			go func() {
+				recv := make([]byte, 10240)
+				for {
+					n, err := svrConn.Read(recv)
+					atomic.AddInt32(&read, int32(n))
+					for i := 0; i < n; i++ {
+						MustTrue(t, recv[i] == 'a')
+					}
+					if err == io.EOF {
+						return
+					}
+					MustNil(t, err)
+				}
+			}()
 		}
 	}()
 
-	conn, err := netpoll.DialConnection(network, address, time.Second)
+	// create client connection
+	cliConn, err = netpoll.DialConnection(network, address, time.Second)
 	MustNil(t, err)
-	<-accepted
+	<-accepted // wait svrConn accepted
 
-	// test
-	queue := NewShardQueue(4, conn)
-	count, pkgsize := 16, 11
-	for i := 0; i < int(count); i++ {
-		var getter WriterGetter = func() (buf netpoll.Writer, isNil bool) {
-			buf = netpoll.NewLinkBuffer(pkgsize)
-			buf.Malloc(pkgsize)
-			return buf, false
-		}
-		queue.Add(getter)
+	// cliConn flush packets to svrConn with ShardQueue
+	queue := NewShardQueue(4, cliConn)
+	for i := 0; i < streams; i++ {
+		go func() {
+			var getter WriterGetter = func() (buf netpoll.Writer, isNil bool) {
+				buf = netpoll.NewLinkBuffer(framesize)
+				data, err := buf.Malloc(framesize)
+				MustNil(t, err)
+				for b := 0; b < framesize; b++ {
+					data[b] = 'a'
+				}
+				return buf, false
+			}
+			if queue.Add(getter) {
+				atomic.AddInt32(&send, int32(framesize))
+			}
+		}()
 	}
 
+	//cliConn graceful close, shardQueue should flush all data correctly
+	for atomic.LoadInt32(&send) < totalsize/2 {
+		t.Logf("waiting send all packets: send=%d", atomic.LoadInt32(&send))
+		runtime.Gosched()
+	}
 	err = queue.Close()
 	MustNil(t, err)
-	total := count * pkgsize
-	recv := make([]byte, total)
-	rn, err := svrConn.Read(recv)
-	MustNil(t, err)
-	Equal(t, rn, total)
-}
-
-// TODO: need mock flush
-func BenchmarkShardQueue(b *testing.B) {
-	b.Skip()
+	for atomic.LoadInt32(&read) != atomic.LoadInt32(&send) {
+		t.Logf("waiting read all packets: read=%d", atomic.LoadInt32(&read))
+		runtime.Gosched()
+	}
 }
