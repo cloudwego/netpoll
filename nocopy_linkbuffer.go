@@ -142,8 +142,9 @@ func (b *UnsafeLinkBuffer) Peek(n int) (p []byte, err error) {
 	}
 	p = b.cachePeek
 	if len(p) >= n {
-		// in case we peek smaller than last time
-		// we will reset cachePeek when Next or Skip
+		// in case we peek smaller than last time,
+		// we can return cache data directly.
+		// we will reset cachePeek when Next or Skip, no worries about stale data
 		return p[:n], nil
 	}
 
