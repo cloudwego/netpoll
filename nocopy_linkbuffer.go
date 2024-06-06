@@ -56,7 +56,12 @@ type UnsafeLinkBuffer struct {
 	flush *linkBufferNode // malloc head
 	write *linkBufferNode // malloc tail
 
-	caches [][]byte // buf allocated by Next when cross-package, which should be freed when release
+	// buf allocated by Next when cross-package, which should be freed when release
+	caches [][]byte
+
+	// for `Peek` only, avoid creating too many []byte in `caches`
+	// fix the issue when we have a large buffer and we call `Peek` multiple times
+	cachePeek []byte
 }
 
 // Len implements Reader.
@@ -124,28 +129,49 @@ func (b *UnsafeLinkBuffer) Peek(n int) (p []byte, err error) {
 	if b.isSingleNode(n) {
 		return b.read.Peek(n), nil
 	}
+
 	// multiple nodes
-	var pIdx int
-	if block1k < n && n <= mallocMax {
-		p = malloc(n, n)
-		b.caches = append(b.caches, p)
-	} else {
-		p = dirtmake.Bytes(n, n)
+	// always use malloc, since we will reuse b.cachePeek
+	if b.cachePeek != nil && cap(b.cachePeek) < n {
+		free(b.cachePeek)
+		b.cachePeek = nil
 	}
-	var node = b.read
-	var l int
-	for ack := n; ack > 0; ack = ack - l {
-		l = node.Len()
-		if l >= ack {
-			pIdx += copy(p[pIdx:], node.Peek(ack))
-			break
-		} else if l > 0 {
-			pIdx += copy(p[pIdx:], node.Peek(l))
+	if b.cachePeek == nil {
+		b.cachePeek = malloc(n, n)
+		b.cachePeek = b.cachePeek[:0] // init with zero len, will append later
+	}
+	p = b.cachePeek
+	if len(p) >= n {
+		// in case we peek smaller than last time
+		// we will reset cachePeek when Next or Skip
+		return p[:n], nil
+	}
+
+	// How it works >>>>>>
+	// [ -------- node0 -------- ][ --------- node1 --------- ]  <- b.read
+	// [ --------------- p --------------- ]
+	//                                     ^ len(p)     ^ n here
+	//                           ^ scanned
+	// `scanned` var is the len of last nodes which we scanned and already copied to p
+	// `len(p) - scanned` is the start pos of current node for p to copy from
+	// `n - len(p)` is the len of bytes we're going to append to p
+	// 		we copy `len(node1)` - `len(p) - scanned` bytes in case node1 doesn't have enough data
+	for scanned, node := 0, b.read; len(p) < n; node = node.next {
+		l := node.Len()
+		if scanned+l <= len(p) { // already copied in p, skip
+			scanned += l
+			continue
 		}
-		node = node.next
+		start := len(p) - scanned // `start` must be smaller than l coz `scanned+l <= len(p)` is false
+		copyn := n - len(p)
+		if nodeLeftN := l - start; copyn > nodeLeftN {
+			copyn = nodeLeftN
+		}
+		p = append(p, node.Peek(l)[start:start+copyn]...)
+		scanned += l
 	}
-	_ = pIdx
-	return p, nil
+	b.cachePeek = p
+	return p[:n], nil
 }
 
 // Skip implements Reader.
@@ -187,6 +213,10 @@ func (b *UnsafeLinkBuffer) Release() (err error) {
 		b.caches[i] = nil
 	}
 	b.caches = b.caches[:0]
+	if b.cachePeek != nil {
+		free(b.cachePeek)
+		b.cachePeek = nil
+	}
 	return nil
 }
 
@@ -692,6 +722,11 @@ func (b *UnsafeLinkBuffer) indexByte(c byte, skip int) int {
 
 // recalLen re-calculate the length
 func (b *UnsafeLinkBuffer) recalLen(delta int) (length int) {
+	if delta < 0 && len(b.cachePeek) > 0 {
+		// b.cachePeek will contain stale data if we read out even a single byte from buffer,
+		// so we need to reset it or the next Peek call will return invalid bytes.
+		b.cachePeek = b.cachePeek[:0]
+	}
 	return int(atomic.AddInt64(&b.length, int64(delta)))
 }
 
