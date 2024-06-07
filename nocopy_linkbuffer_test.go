@@ -85,7 +85,7 @@ func TestLinkBuffer(t *testing.T) {
 	Equal(t, buf.Len(), 100)
 }
 
-func TestGetBytes(t *testing.T) {
+func TestLinkBufferGetBytes(t *testing.T) {
 	buf := NewLinkBuffer()
 	var (
 		num         = 10
@@ -195,8 +195,7 @@ func TestLinkBufferWithInvalid(t *testing.T) {
 	}
 }
 
-// cross-block operation test
-func TestLinkBufferIndex(t *testing.T) {
+func TestLinkBufferMultiNode(t *testing.T) {
 	// clean & new
 	LinkBufferCap = 8
 
@@ -206,6 +205,9 @@ func TestLinkBufferIndex(t *testing.T) {
 	var p []byte
 
 	p, _ = buf.Malloc(15)
+	for i := 0; i < len(p); i++ { // updates p[0] - p[14] to 0 - 14
+		p[i] = byte(i)
+	}
 	Equal(t, len(p), 15)
 	MustTrue(t, buf.read == buf.flush)
 	Equal(t, buf.read.off, 0)
@@ -215,6 +217,9 @@ func TestLinkBufferIndex(t *testing.T) {
 	Equal(t, cap(buf.write.buf), 16) // mcache up-aligned to the power of 2
 
 	p, _ = buf.Malloc(7)
+	for i := 0; i < len(p); i++ { // updates p[0] - p[6] to 15 - 21
+		p[i] = byte(i + 15)
+	}
 	Equal(t, len(p), 7)
 	MustTrue(t, buf.read == buf.flush)
 	Equal(t, buf.read.off, 0)
@@ -236,19 +241,44 @@ func TestLinkBufferIndex(t *testing.T) {
 
 	p, _ = buf.Next(13)
 	Equal(t, len(p), 13)
+	Equal(t, p[0], byte(0))
+	Equal(t, p[12], byte(12))
 	MustTrue(t, buf.read != buf.flush)
 	Equal(t, buf.read.off, 13)
 	Equal(t, buf.read.Len(), 2)
+	Equal(t, buf.read.next.Len(), 7)
 	Equal(t, buf.flush.off, 0)
 	Equal(t, buf.flush.malloc, 7)
 
+	// Peek
 	p, _ = buf.Peek(4)
 	Equal(t, len(p), 4)
+	Equal(t, p[0], byte(13))
+	Equal(t, p[1], byte(14))
+	Equal(t, p[2], byte(15))
+	Equal(t, p[3], byte(16))
+	Equal(t, len(buf.cachePeek), 4)
+	p, _ = buf.Peek(3) // case: smaller than the last call
+	Equal(t, len(p), 3)
+	Equal(t, p[0], byte(13))
+	Equal(t, p[2], byte(15))
+	Equal(t, len(buf.cachePeek), 4)
+	p, _ = buf.Peek(5) // case: Peek than the max call, and cap(buf.cachePeek) < n
+	Equal(t, len(p), 5)
+	Equal(t, p[0], byte(13))
+	Equal(t, p[4], byte(17))
+	Equal(t, len(buf.cachePeek), 5)
+	p, _ = buf.Peek(6) // case: Peek than the last call, and cap(buf.cachePeek) > n
+	Equal(t, len(p), 6)
+	Equal(t, p[0], byte(13))
+	Equal(t, p[5], byte(18))
+	Equal(t, len(buf.cachePeek), 6)
 	MustTrue(t, buf.read != buf.flush)
 	Equal(t, buf.read.off, 13)
 	Equal(t, buf.read.Len(), 2)
 	Equal(t, buf.flush.off, 0)
 	Equal(t, buf.flush.malloc, 7)
+	// Peek ends
 
 	buf.book(block8k, block8k)
 	MustTrue(t, buf.flush == buf.write)
@@ -377,7 +407,7 @@ func TestLinkBufferResetTail(t *testing.T) {
 	Equal(t, got, except)
 }
 
-func TestWriteBuffer(t *testing.T) {
+func TestLinkBufferWriteBuffer(t *testing.T) {
 	buf1 := NewLinkBuffer()
 	buf2 := NewLinkBuffer()
 	b2, _ := buf2.Malloc(1)
@@ -414,7 +444,7 @@ func TestLinkBufferCheckSingleNode(t *testing.T) {
 	buf.isSingleNode(1)
 }
 
-func TestWriteMultiFlush(t *testing.T) {
+func TestLinkBufferWriteMultiFlush(t *testing.T) {
 	buf := NewLinkBuffer()
 	b1, _ := buf.Malloc(4)
 	b1[0] = 1
@@ -444,7 +474,7 @@ func TestWriteMultiFlush(t *testing.T) {
 	MustTrue(t, len(buf.Bytes()) == 4)
 }
 
-func TestWriteBinary(t *testing.T) {
+func TestLinkBufferWriteBinary(t *testing.T) {
 	// clean & new
 	LinkBufferCap = 8
 
@@ -465,7 +495,7 @@ func TestWriteBinary(t *testing.T) {
 	Equal(t, b[9], byte(0))
 }
 
-func TestWriteDirect(t *testing.T) {
+func TestLinkBufferWriteDirect(t *testing.T) {
 	// clean & new
 	LinkBufferCap = 32
 
@@ -492,7 +522,7 @@ func TestWriteDirect(t *testing.T) {
 	}
 }
 
-func TestNoCopyWriteAndRead(t *testing.T) {
+func TestLinkBufferNoCopyWriteAndRead(t *testing.T) {
 	// [origin_node:4096B] + [data_node:512B] + [new_node:16B] + [normal_node:4096B]
 	const (
 		mallocLen = 4096 * 2
@@ -578,7 +608,7 @@ func TestNoCopyWriteAndRead(t *testing.T) {
 	runtime.KeepAlive(normalBuf)
 }
 
-func TestBufferMode(t *testing.T) {
+func TestLinkBufferBufferMode(t *testing.T) {
 	bufnode := newLinkBufferNode(0)
 	MustTrue(t, !bufnode.getMode(nocopyReadMask))
 	MustTrue(t, bufnode.getMode(readonlyMask))
@@ -726,7 +756,7 @@ func BenchmarkStringToCopy(b *testing.B) {
 	_ = bs
 }
 
-func BenchmarkPoolGet(b *testing.B) {
+func BenchmarkLinkBufferPoolGet(b *testing.B) {
 	var v *linkBufferNode
 	if false {
 		b.Logf("bs = %v", v)
@@ -759,7 +789,7 @@ func BenchmarkCopyString(b *testing.B) {
 	})
 }
 
-func BenchmarkNoCopyRead(b *testing.B) {
+func BenchmarkLinkBufferNoCopyRead(b *testing.B) {
 	totalSize := 0
 	minSize := 32
 	maxSize := minSize << 9
