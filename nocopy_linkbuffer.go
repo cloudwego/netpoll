@@ -131,14 +131,14 @@ func (b *UnsafeLinkBuffer) Peek(n int) (p []byte, err error) {
 	}
 
 	// multiple nodes
-	// always use malloc, since we will reuse b.cachePeek
+
+	// try to make use of the cap of b.cachePeek, if can't, free it.
 	if b.cachePeek != nil && cap(b.cachePeek) < n {
 		free(b.cachePeek)
 		b.cachePeek = nil
 	}
 	if b.cachePeek == nil {
-		b.cachePeek = malloc(n, n)
-		b.cachePeek = b.cachePeek[:0] // init with zero len, will append later
+		b.cachePeek = malloc(0, n) // init with zero len, will append later
 	}
 	p = b.cachePeek
 	if len(p) >= n {
