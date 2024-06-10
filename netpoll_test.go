@@ -20,6 +20,7 @@ package netpoll
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"runtime"
@@ -64,6 +65,13 @@ func Assert(t *testing.T, cond bool, val ...interface{}) {
 	}
 }
 
+var testPort int32 = 10000
+
+// getTestAddress return a unique port for every tests, so all tests will not share a same listerner
+func getTestAddress() string {
+	return fmt.Sprintf("127.0.0.1:%d", atomic.AddInt32(&testPort, 1))
+}
+
 func TestEqual(t *testing.T) {
 	var err error
 	MustNil(t, err)
@@ -73,7 +81,7 @@ func TestEqual(t *testing.T) {
 }
 
 func TestOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	req, resp := "ping", "pong"
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
@@ -117,7 +125,7 @@ func TestOnConnect(t *testing.T) {
 }
 
 func TestOnConnectWrite(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			return nil
@@ -140,7 +148,7 @@ func TestOnConnectWrite(t *testing.T) {
 
 func TestOnDisconnect(t *testing.T) {
 	type ctxKey struct{}
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var canceled, closed int32
 	var conns int32 = 100
 	req := "ping"
@@ -201,7 +209,7 @@ func TestOnDisconnect(t *testing.T) {
 func TestOnDisconnectWhenOnConnect(t *testing.T) {
 	type ctxPrepareKey struct{}
 	type ctxConnectKey struct{}
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var conns int32 = 100
 	var wg sync.WaitGroup
 	wg.Add(int(conns) * 3)
@@ -249,7 +257,7 @@ func TestOnDisconnectWhenOnConnect(t *testing.T) {
 }
 
 func TestGracefulExit(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 
 	// exit without processing connections
 	var eventLoop1 = newTestEventLoop(network, address,
@@ -306,7 +314,7 @@ func TestGracefulExit(t *testing.T) {
 }
 
 func TestCloseCallbackWhenOnRequest(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var requested, closed = make(chan struct{}), make(chan struct{})
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
@@ -337,7 +345,7 @@ func TestCloseCallbackWhenOnRequest(t *testing.T) {
 }
 
 func TestCloseCallbackWhenOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var connected, closed = make(chan struct{}), make(chan struct{})
 	var loop = newTestEventLoop(network, address,
 		nil,
@@ -364,7 +372,7 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 }
 
 func TestCloseConnWhenOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", "localhost:8888"
 	conns := 10
 	var wg sync.WaitGroup
 	wg.Add(conns)
@@ -399,7 +407,7 @@ func TestCloseConnWhenOnConnect(t *testing.T) {
 }
 
 func TestServerReadAndClose(t *testing.T) {
-	var network, address = "tcp", ":18888"
+	var network, address = "tcp", getTestAddress()
 	var sendMsg = []byte("hello")
 	var closed int32
 	var loop = newTestEventLoop(network, address,
@@ -435,7 +443,7 @@ func TestServerReadAndClose(t *testing.T) {
 }
 
 func TestServerPanicAndClose(t *testing.T) {
-	var network, address = "tcp", ":18888"
+	var network, address = "tcp", getTestAddress()
 	var sendMsg = []byte("hello")
 	var paniced int32
 	var loop = newTestEventLoop(network, address,
@@ -467,7 +475,7 @@ func TestServerPanicAndClose(t *testing.T) {
 
 func TestClientWriteAndClose(t *testing.T) {
 	var (
-		network, address            = "tcp", ":18889"
+		network, address            = "tcp", getTestAddress()
 		connnum                     = 10
 		packetsize, packetnum       = 1000 * 5, 1
 		recvbytes             int32 = 0
@@ -531,7 +539,7 @@ func TestServerAcceptWhenTooManyOpenFiles(t *testing.T) {
 		MustNil(t, err)
 	}()
 
-	var network, address = "tcp", ":18888"
+	var network, address = "tcp", getTestAddress()
 	var connected int32
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {

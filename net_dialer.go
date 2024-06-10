@@ -75,7 +75,7 @@ func (d *dialer) dialTCP(ctx context.Context, network, address string) (connecti
 		return nil, err
 	}
 	var ipaddrs []net.IPAddr
-	// host maybe empty if address is ":1234"
+	// host maybe empty if address is :12345
 	if host == "" {
 		ipaddrs = []net.IPAddr{{}}
 	} else {
