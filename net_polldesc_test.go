@@ -27,7 +27,8 @@ func TestZeroTimer(t *testing.T) {
 }
 
 func TestRuntimePoll(t *testing.T) {
-	ln, err := CreateListener("tcp", ":1234")
+	address := getTestAddress()
+	ln, err := CreateListener("tcp", address)
 	MustNil(t, err)
 
 	stop := make(chan int, 1)
@@ -50,7 +51,7 @@ func TestRuntimePoll(t *testing.T) {
 	}()
 
 	for i := 0; i < 10; i++ {
-		conn, err := DialConnection("tcp", ":1234", time.Second)
+		conn, err := DialConnection("tcp", address, time.Second)
 		MustNil(t, err)
 		conn.Close()
 	}
