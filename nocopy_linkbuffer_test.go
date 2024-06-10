@@ -19,6 +19,7 @@ package netpoll
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"runtime"
 	"sync/atomic"
@@ -721,6 +722,53 @@ func TestLinkBufferIndexByte(t *testing.T) {
 		Equal(t, n, 500+last)
 		n = lb.indexByte('\n', 501+last)
 		Equal(t, n, 1001+last)
+	}
+}
+
+func TestLinkBufferPeekOutOfMemory(t *testing.T) {
+	bufCap := 1024 * 8
+	bufNodes := 100
+	magicN := uint64(2024)
+	buf := NewLinkBuffer(bufCap)
+	MustTrue(t, buf.IsEmpty())
+	Equal(t, cap(buf.write.buf), bufCap)
+	Equal(t, buf.memorySize(), bufCap)
+
+	var p []byte
+	var err error
+	// write data that cross multi nodes
+	for n := 0; n < bufNodes; n++ {
+		p, err = buf.Malloc(bufCap)
+		MustNil(t, err)
+		Equal(t, len(p), bufCap)
+		binary.BigEndian.PutUint64(p, magicN)
+	}
+	Equal(t, buf.MallocLen(), bufCap*bufNodes)
+	buf.Flush()
+	Equal(t, buf.MallocLen(), 0)
+
+	// peak data that in single node
+	for i := 0; i < 10; i++ {
+		p, err = buf.Peek(bufCap)
+		Equal(t, binary.BigEndian.Uint64(p), magicN)
+		MustNil(t, err)
+		Equal(t, len(p), bufCap)
+		Equal(t, buf.memorySize(), bufCap*bufNodes)
+	}
+
+	// peak data that cross nodes
+	memorySize := 0
+	for i := 0; i < 1024; i++ {
+		p, err = buf.Peek(bufCap + 1)
+		MustNil(t, err)
+		Equal(t, binary.BigEndian.Uint64(p), magicN)
+		Equal(t, len(p), bufCap+1)
+		if memorySize == 0 {
+			memorySize = buf.memorySize()
+			t.Logf("after Peek: memorySize=%d", memorySize)
+		} else {
+			Equal(t, buf.memorySize(), memorySize)
+		}
 	}
 }
 

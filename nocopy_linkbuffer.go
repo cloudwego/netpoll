@@ -761,6 +761,18 @@ func (b *UnsafeLinkBuffer) isSingleNode(readN int) (single bool) {
 	return l >= readN
 }
 
+// memorySize return the real memory size in bytes the LinkBuffer occupied
+func (b *LinkBuffer) memorySize() (bytes int) {
+	for node := b.head; node != nil; node = node.next {
+		bytes += cap(node.buf)
+	}
+	for _, c := range b.caches {
+		bytes += cap(c)
+	}
+	bytes += cap(b.cachePeek)
+	return bytes
+}
+
 // ------------------------------------------ implement link node ------------------------------------------
 
 // newLinkBufferNode create or reuse linkBufferNode.
