@@ -28,10 +28,12 @@ func TestFDOperatorRacedAccess(t *testing.T) {
 	op := poll.Alloc()
 	fd := op.FD
 
+	// epoll_ctl register fd
+	poll.setOperator(dataptr, op)
+
 	go func() {
+		// epoll_wait get fd
 		nop := poll.getOperator(fd, dataptr)
 		MustTrue(t, nop.FD == fd)
 	}()
-
-	poll.setOperator(dataptr, op)
 }
