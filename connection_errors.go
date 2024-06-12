@@ -36,6 +36,8 @@ const (
 	ErrEOF = syscall.Errno(0x106)
 	// Write I/O buffer timeout, calling by Connection.Writer
 	ErrWriteTimeout = syscall.Errno(0x107)
+	// Concurrent connection access error
+	ErrConcurrentAccess = syscall.Errno(0x108)
 )
 
 const ErrnoMask = 0xFF
@@ -110,11 +112,12 @@ func (e *exception) Temporary() bool {
 
 // Errors defined in netpoll
 var errnos = [...]string{
-	ErrnoMask & ErrConnClosed:     "connection has been closed",
-	ErrnoMask & ErrReadTimeout:    "connection read timeout",
-	ErrnoMask & ErrDialTimeout:    "dial wait timeout",
-	ErrnoMask & ErrDialNoDeadline: "dial no deadline",
-	ErrnoMask & ErrUnsupported:    "netpoll dose not support",
-	ErrnoMask & ErrEOF:            "EOF",
-	ErrnoMask & ErrWriteTimeout:   "connection write timeout",
+	ErrnoMask & ErrConnClosed:       "connection has been closed",
+	ErrnoMask & ErrReadTimeout:      "connection read timeout",
+	ErrnoMask & ErrDialTimeout:      "dial wait timeout",
+	ErrnoMask & ErrDialNoDeadline:   "dial no deadline",
+	ErrnoMask & ErrUnsupported:      "netpoll does not support",
+	ErrnoMask & ErrEOF:              "EOF",
+	ErrnoMask & ErrWriteTimeout:     "connection write timeout",
+	ErrnoMask & ErrConcurrentAccess: "concurrent connection access",
 }

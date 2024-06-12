@@ -16,6 +16,11 @@ package netpoll
 
 import (
 	"io"
+	"reflect"
+	"unsafe"
+
+	"github.com/bytedance/gopkg/lang/dirtmake"
+	"github.com/bytedance/gopkg/lang/mcache"
 )
 
 // Reader is a collection of operations for nocopy reads.
@@ -108,9 +113,9 @@ type Reader interface {
 // The usage of the design is a two-step operation, first apply for a section of memory,
 // fill it and then submit. E.g:
 //
-//  var buf, _ = Malloc(n)
-//  buf = append(buf[:0], ...)
-//  Flush()
+//	var buf, _ = Malloc(n)
+//	buf = append(buf[:0], ...)
+//	Flush()
 //
 // Note that it is not recommended to submit self-managed buffers to Writer.
 // Since the writer is processed asynchronously, if the self-managed buffer is used and recycled after submission,
@@ -244,10 +249,54 @@ func NewIOReadWriter(rw ReadWriter) io.ReadWriter {
 }
 
 const (
-	block1k = 1 * 1024
-	block2k = 2 * 1024
-	block4k = 4 * 1024
-	block8k = 8 * 1024
+	block1k  = 1 * 1024
+	block2k  = 2 * 1024
+	block4k  = 4 * 1024
+	block8k  = 8 * 1024
+	block32k = 32 * 1024
+
+	pagesize  = block8k
+	mallocMax = block8k * block1k // mallocMax is 8MB
+
+	minReuseBytes = 64 // only reuse bytes if n >= minReuseBytes
+
+	defaultLinkBufferMode = 0
+	// readonlyMask is used to set readonly mode,
+	// which indicate that the buffer node memory is not controlled by itself,
+	// so we cannot reuse the buffer or nocopy read it.
+	readonlyMask uint8 = 1 << 0 // 0000 0001
+	// readonlyMask is used to set nocopyRead mode,
+	// which indicate that the buffer node has been no copy read and cannot reuse the buffer.
+	nocopyReadMask uint8 = 1 << 1 // 0000 0010
 )
 
-const pagesize = block8k
+// zero-copy slice convert to string
+func unsafeSliceToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+// zero-copy slice convert to string
+func unsafeStringToSlice(s string) (b []byte) {
+	p := unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&s)).Data)
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	hdr.Data = uintptr(p)
+	hdr.Cap = len(s)
+	hdr.Len = len(s)
+	return b
+}
+
+// malloc limits the cap of the buffer from mcache.
+func malloc(size, capacity int) []byte {
+	if capacity > mallocMax {
+		return dirtmake.Bytes(size, capacity)
+	}
+	return mcache.Malloc(size, capacity)
+}
+
+// free limits the cap of the buffer from mcache.
+func free(buf []byte) {
+	if cap(buf) > mallocMax {
+		return
+	}
+	mcache.Free(buf)
+}

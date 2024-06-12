@@ -22,6 +22,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -92,39 +93,86 @@ func (s *server) Close(ctx context.Context) error {
 func (s *server) OnRead(p Poll) error {
 	// accept socket
 	conn, err := s.ln.Accept()
-	if err != nil {
-		// shut down
-		if strings.Contains(err.Error(), "closed") {
-			s.operator.Control(PollDetach)
-			s.onQuit(err)
+	if err == nil {
+		if conn != nil {
+			s.onAccept(conn.(Conn))
+		}
+		// EAGAIN | EWOULDBLOCK if conn and err both nil
+		return nil
+	}
+	logger.Printf("NETPOLL: accept conn failed: %v", err)
+
+	// delay accept when too many open files
+	if isOutOfFdErr(err) {
+		// since we use Epoll LT, we have to detach listener fd from epoll first
+		// and re-register it when accept successfully or there is no available connection
+		cerr := s.operator.Control(PollDetach)
+		if cerr != nil {
+			logger.Printf("NETPOLL: detach listener fd failed: %v", cerr)
 			return err
 		}
-		logger.Println("NETPOLL: accept conn failed:", err.Error())
+		go func() {
+			retryTimes := []time.Duration{0, 10, 50, 100, 200, 500, 1000} // ms
+			retryTimeIndex := 0
+			for {
+				if retryTimeIndex > 0 {
+					time.Sleep(retryTimes[retryTimeIndex] * time.Millisecond)
+				}
+				conn, err := s.ln.Accept()
+				if err == nil {
+					if conn == nil {
+						// recovery accept poll loop
+						s.operator.Control(PollReadable)
+						return
+					}
+					s.onAccept(conn.(Conn))
+					logger.Println("NETPOLL: re-accept conn success:", conn.RemoteAddr())
+					retryTimeIndex = 0
+					continue
+				}
+				if retryTimeIndex+1 < len(retryTimes) {
+					retryTimeIndex++
+				}
+				logger.Printf("NETPOLL: re-accept conn failed, err=[%s] and next retrytime=%dms", err.Error(), retryTimes[retryTimeIndex])
+			}
+		}()
+	}
+
+	// shut down
+	if strings.Contains(err.Error(), "closed") {
+		s.operator.Control(PollDetach)
+		s.onQuit(err)
 		return err
 	}
-	if conn == nil {
-		return nil
-	}
-	// store & register connection
-	var connection = &connection{}
-	connection.init(conn.(Conn), s.opts)
-	if !connection.IsActive() {
-		return nil
-	}
-	var fd = conn.(Conn).Fd()
-	connection.AddCloseCallback(func(connection Connection) error {
-		s.connections.Delete(fd)
-		return nil
-	})
-	s.connections.Store(fd, connection)
 
-	// trigger onConnect asynchronously
-	connection.onConnect()
-	return nil
+	return err
 }
 
 // OnHup implements FDOperator.
 func (s *server) OnHup(p Poll) error {
 	s.onQuit(errors.New("listener close"))
 	return nil
+}
+
+func (s *server) onAccept(conn Conn) {
+	// store & register connection
+	var nconn = new(connection)
+	nconn.init(conn, s.opts)
+	if !nconn.IsActive() {
+		return
+	}
+	var fd = conn.Fd()
+	nconn.AddCloseCallback(func(connection Connection) error {
+		s.connections.Delete(fd)
+		return nil
+	})
+	s.connections.Store(fd, nconn)
+
+	// trigger onConnect asynchronously
+	nconn.onConnect()
+}
+
+func isOutOfFdErr(err error) bool {
+	se, ok := err.(syscall.Errno)
+	return ok && (se == syscall.EMFILE || se == syscall.ENFILE)
 }

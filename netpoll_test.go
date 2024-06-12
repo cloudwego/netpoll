@@ -20,10 +20,13 @@ package netpoll
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -62,6 +65,13 @@ func Assert(t *testing.T, cond bool, val ...interface{}) {
 	}
 }
 
+var testPort int32 = 10000
+
+// getTestAddress return a unique port for every tests, so all tests will not share a same listerner
+func getTestAddress() string {
+	return fmt.Sprintf("127.0.0.1:%d", atomic.AddInt32(&testPort, 1))
+}
+
 func TestEqual(t *testing.T) {
 	var err error
 	MustNil(t, err)
@@ -71,7 +81,7 @@ func TestEqual(t *testing.T) {
 }
 
 func TestOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	req, resp := "ping", "pong"
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
@@ -115,7 +125,7 @@ func TestOnConnect(t *testing.T) {
 }
 
 func TestOnConnectWrite(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			return nil
@@ -138,7 +148,7 @@ func TestOnConnectWrite(t *testing.T) {
 
 func TestOnDisconnect(t *testing.T) {
 	type ctxKey struct{}
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var canceled, closed int32
 	var conns int32 = 100
 	req := "ping"
@@ -199,7 +209,7 @@ func TestOnDisconnect(t *testing.T) {
 func TestOnDisconnectWhenOnConnect(t *testing.T) {
 	type ctxPrepareKey struct{}
 	type ctxConnectKey struct{}
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var conns int32 = 100
 	var wg sync.WaitGroup
 	wg.Add(int(conns) * 3)
@@ -247,7 +257,7 @@ func TestOnDisconnectWhenOnConnect(t *testing.T) {
 }
 
 func TestGracefulExit(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 
 	// exit without processing connections
 	var eventLoop1 = newTestEventLoop(network, address,
@@ -304,7 +314,7 @@ func TestGracefulExit(t *testing.T) {
 }
 
 func TestCloseCallbackWhenOnRequest(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var requested, closed = make(chan struct{}), make(chan struct{})
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
@@ -335,7 +345,7 @@ func TestCloseCallbackWhenOnRequest(t *testing.T) {
 }
 
 func TestCloseCallbackWhenOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", getTestAddress()
 	var connected, closed = make(chan struct{}), make(chan struct{})
 	var loop = newTestEventLoop(network, address,
 		nil,
@@ -362,7 +372,7 @@ func TestCloseCallbackWhenOnConnect(t *testing.T) {
 }
 
 func TestCloseConnWhenOnConnect(t *testing.T) {
-	var network, address = "tcp", ":8888"
+	var network, address = "tcp", "localhost:8888"
 	conns := 10
 	var wg sync.WaitGroup
 	wg.Add(conns)
@@ -397,7 +407,7 @@ func TestCloseConnWhenOnConnect(t *testing.T) {
 }
 
 func TestServerReadAndClose(t *testing.T) {
-	var network, address = "tcp", ":18888"
+	var network, address = "tcp", getTestAddress()
 	var sendMsg = []byte("hello")
 	var closed int32
 	var loop = newTestEventLoop(network, address,
@@ -433,7 +443,7 @@ func TestServerReadAndClose(t *testing.T) {
 }
 
 func TestServerPanicAndClose(t *testing.T) {
-	var network, address = "tcp", ":18888"
+	var network, address = "tcp", getTestAddress()
 	var sendMsg = []byte("hello")
 	var paniced int32
 	var loop = newTestEventLoop(network, address,
@@ -465,7 +475,7 @@ func TestServerPanicAndClose(t *testing.T) {
 
 func TestClientWriteAndClose(t *testing.T) {
 	var (
-		network, address            = "tcp", ":18889"
+		network, address            = "tcp", getTestAddress()
 		connnum                     = 10
 		packetsize, packetnum       = 1000 * 5, 1
 		recvbytes             int32 = 0
@@ -504,6 +514,78 @@ func TestClientWriteAndClose(t *testing.T) {
 		runtime.Gosched()
 	}
 	err := loop.Shutdown(context.Background())
+	MustNil(t, err)
+}
+
+func TestServerAcceptWhenTooManyOpenFiles(t *testing.T) {
+	if os.Getenv("N_LOCAL") == "" {
+		t.Skip("Only test for debug purpose")
+		return
+	}
+
+	var originalRlimit syscall.Rlimit
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &originalRlimit)
+	MustNil(t, err)
+	t.Logf("Original RLimit: %v", originalRlimit)
+
+	rlimit := syscall.Rlimit{Cur: 32, Max: originalRlimit.Max}
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	MustNil(t, err)
+	err = syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rlimit)
+	MustNil(t, err)
+	t.Logf("New RLimit: %v", rlimit)
+	defer func() { // reset
+		err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &originalRlimit)
+		MustNil(t, err)
+	}()
+
+	var network, address = "tcp", getTestAddress()
+	var connected int32
+	var loop = newTestEventLoop(network, address,
+		func(ctx context.Context, connection Connection) error {
+			buf, err := connection.Reader().Next(connection.Reader().Len())
+			connection.Writer().WriteBinary(buf)
+			connection.Writer().Flush()
+			return err
+		},
+		WithOnConnect(func(ctx context.Context, connection Connection) context.Context {
+			atomic.AddInt32(&connected, 1)
+			t.Logf("Conn[%s] accepted", connection.RemoteAddr())
+			return ctx
+		}),
+		WithOnDisconnect(func(ctx context.Context, connection Connection) {
+			t.Logf("Conn[%s] disconnected", connection.RemoteAddr())
+		}),
+	)
+	time.Sleep(time.Millisecond * 10)
+
+	// out of fds
+	files := make([]*os.File, 0)
+	for {
+		f, err := os.Open("/dev/null")
+		if err != nil {
+			Assert(t, isOutOfFdErr(errors.Unwrap(err)), err)
+			break
+		}
+		files = append(files, f)
+	}
+	go func() {
+		time.Sleep(time.Second * 10)
+		t.Logf("close all files")
+		for _, f := range files {
+			f.Close()
+		}
+	}()
+
+	// we should use telnet manually
+	var connections = 1
+	for atomic.LoadInt32(&connected) < int32(connections) {
+		t.Logf("connected=%d", atomic.LoadInt32(&connected))
+		time.Sleep(time.Second)
+	}
+	time.Sleep(time.Second * 10)
+
+	err = loop.Shutdown(context.Background())
 	MustNil(t, err)
 }
 

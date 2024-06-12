@@ -212,7 +212,8 @@ func writeAll(fd int, buf []byte) error {
 // Large packet write test. The socket buffer is 2MB by default, here to verify
 // whether Connection.Close can be executed normally after socket output buffer is full.
 func TestLargeBufferWrite(t *testing.T) {
-	ln, err := createTestListener("tcp", ":12345")
+	address := getTestAddress()
+	ln, err := createTestListener("tcp", address)
 	MustNil(t, err)
 
 	trigger := make(chan int)
@@ -231,7 +232,7 @@ func TestLargeBufferWrite(t *testing.T) {
 		}
 	}()
 
-	conn, err := DialConnection("tcp", ":12345", time.Second)
+	conn, err := DialConnection("tcp", address, time.Second)
 	MustNil(t, err)
 	rfd := <-trigger
 
@@ -267,7 +268,8 @@ func TestLargeBufferWrite(t *testing.T) {
 }
 
 func TestWriteTimeout(t *testing.T) {
-	ln, err := createTestListener("tcp", ":1234")
+	address := getTestAddress()
+	ln, err := createTestListener("tcp", address)
 	MustNil(t, err)
 
 	interval := time.Millisecond * 100
@@ -296,7 +298,7 @@ func TestWriteTimeout(t *testing.T) {
 		}
 	}()
 
-	conn, err := DialConnection("tcp", ":1234", time.Second)
+	conn, err := DialConnection("tcp", address, time.Second)
 	MustNil(t, err)
 
 	_, err = conn.Writer().Malloc(1024)
@@ -440,7 +442,8 @@ func TestBookSizeLargerThanMaxSize(t *testing.T) {
 }
 
 func TestConnDetach(t *testing.T) {
-	ln, err := createTestListener("tcp", ":1234")
+	address := getTestAddress()
+	ln, err := createTestListener("tcp", address)
 	MustNil(t, err)
 
 	go func() {
@@ -470,7 +473,7 @@ func TestConnDetach(t *testing.T) {
 		}
 	}()
 
-	c, err := DialConnection("tcp", ":1234", time.Second)
+	c, err := DialConnection("tcp", address, time.Second)
 	MustNil(t, err)
 
 	conn := c.(*TCPConnection)
@@ -497,7 +500,8 @@ func TestConnDetach(t *testing.T) {
 }
 
 func TestParallelShortConnection(t *testing.T) {
-	ln, err := createTestListener("tcp", ":12345")
+	address := getTestAddress()
+	ln, err := createTestListener("tcp", address)
 	MustNil(t, err)
 	defer ln.Close()
 
@@ -523,7 +527,7 @@ func TestParallelShortConnection(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			conn, err := DialConnection("tcp", ":12345", time.Second)
+			conn, err := DialConnection("tcp", address, time.Second)
 			MustNil(t, err)
 			n, err := conn.Writer().WriteBinary(make([]byte, sizePerConn))
 			MustNil(t, err)
@@ -546,7 +550,8 @@ func TestParallelShortConnection(t *testing.T) {
 }
 
 func TestConnectionServerClose(t *testing.T) {
-	ln, err := createTestListener("tcp", ":12345")
+	address := getTestAddress()
+	ln, err := createTestListener("tcp", address)
 	MustNil(t, err)
 	defer ln.Close()
 
@@ -601,7 +606,7 @@ func TestConnectionServerClose(t *testing.T) {
 	go func() {
 		err := el.Serve(ln)
 		if err != nil {
-			t.Logf("servce end with error: %v", err)
+			t.Logf("service end with error: %v", err)
 		}
 	}()
 
@@ -628,7 +633,7 @@ func TestConnectionServerClose(t *testing.T) {
 	wg.Add(conns * 6)
 	for i := 0; i < conns; i++ {
 		go func() {
-			conn, err := DialConnection("tcp", ":12345", time.Second)
+			conn, err := DialConnection("tcp", address, time.Second)
 			MustNil(t, err)
 			err = conn.SetOnRequest(clientOnRequest)
 			MustNil(t, err)
@@ -644,7 +649,8 @@ func TestConnectionServerClose(t *testing.T) {
 }
 
 func TestConnectionDailTimeoutAndClose(t *testing.T) {
-	ln, err := createTestListener("tcp", ":12345")
+	address := getTestAddress()
+	ln, err := createTestListener("tcp", address)
 	MustNil(t, err)
 	defer ln.Close()
 
@@ -658,7 +664,7 @@ func TestConnectionDailTimeoutAndClose(t *testing.T) {
 	go func() {
 		err := el.Serve(ln)
 		if err != nil {
-			t.Logf("servce end with error: %v", err)
+			t.Logf("service end with error: %v", err)
 		}
 	}()
 
@@ -670,7 +676,7 @@ func TestConnectionDailTimeoutAndClose(t *testing.T) {
 		for i := 0; i < conns; i++ {
 			go func() {
 				defer wg.Done()
-				conn, err := DialConnection("tcp", ":12345", time.Nanosecond)
+				conn, err := DialConnection("tcp", address, time.Nanosecond)
 				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"))
 				_ = conn
 			}()
