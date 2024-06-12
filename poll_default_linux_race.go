@@ -19,6 +19,12 @@ package netpoll
 
 import "unsafe"
 
+// Race Detector Notes:
+// In a real world, it's safe to make epoll_ctl and epoll_wait threads run in parallel,
+// and they can share the same operator address as long as our code logic can control their lifecycle correct.
+// But go race detector will report error for thus self-confident memory unsafe operation.
+// So, to avoid go race detector failed, we use the safe-path for operator access.
+
 type eventdata struct {
 	fd  int32
 	pad int32
