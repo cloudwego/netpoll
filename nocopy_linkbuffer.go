@@ -26,7 +26,10 @@ import (
 
 // BinaryInplaceThreshold marks the minimum value of the nocopy slice length,
 // which is the threshold to use copy to minimize overhead.
-const BinaryInplaceThreshold = block4k
+const BinaryInplaceThreshold = block2k
+
+// maxCacheNodes limits the max number of cacheNodes in a LinkBuffer.
+const maxCacheNodes = 32
 
 // LinkBufferCap that can be modified marks the minimum value of each node of LinkBuffer.
 var LinkBufferCap = block4k
@@ -62,6 +65,10 @@ type UnsafeLinkBuffer struct {
 	// for `Peek` only, avoid creating too many []byte in `caches`
 	// fix the issue when we have a large buffer and we call `Peek` multiple times
 	cachePeek []byte
+
+	// for caching linkBufferNodes
+	cacheNodesNum int
+	cacheNodes    [maxCacheNodes]*linkBufferNode
 }
 
 // Len implements Reader.
@@ -207,7 +214,9 @@ func (b *UnsafeLinkBuffer) Release() (err error) {
 	for b.head != b.read {
 		node := b.head
 		b.head = b.head.next
-		node.Release()
+		if node.Release() {
+			b.appendCacheNodes(node)
+		}
 	}
 	for i := range b.caches {
 		free(b.caches[i])
@@ -408,7 +417,7 @@ func (b *UnsafeLinkBuffer) Flush() (err error) {
 	b.mallocSize = 0
 	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
 	if cap(b.write.buf) > pagesize {
-		b.write.next = newLinkBufferNode(0)
+		b.write.next = b.newLinkBufferNode(0)
 		b.write = b.write.next
 	}
 	var n int
@@ -452,12 +461,16 @@ func (b *UnsafeLinkBuffer) WriteBuffer(buf *LinkBuffer) (err error) {
 	for buf.head != buf.read {
 		nd := buf.head
 		buf.head = buf.head.next
-		nd.Release()
+		if nd.Release() {
+			linkedPool.Put(nd)
+		}
 	}
 	for buf.write = buf.write.next; buf.write != nil; {
 		nd := buf.write
 		buf.write = buf.write.next
-		nd.Release()
+		if nd.Release() {
+			linkedPool.Put(nd)
+		}
 	}
 	buf.length, buf.mallocSize, buf.head, buf.read, buf.flush, buf.write = 0, 0, nil, nil, nil, nil
 
@@ -495,7 +508,7 @@ func (b *UnsafeLinkBuffer) WriteBinary(p []byte) (n int, err error) {
 	// TODO: Verify that all nocopy is possible under mcache.
 	if n > BinaryInplaceThreshold {
 		// expand buffer directly with nocopy
-		b.write.next = newLinkBufferNode(0)
+		b.write.next = b.newLinkBufferNode(0)
 		b.write = b.write.next
 		b.write.buf, b.write.malloc = p[:0], n
 		return n, nil
@@ -528,12 +541,12 @@ func (b *UnsafeLinkBuffer) WriteDirect(extra []byte, remainLen int) error {
 	// - originNode{buf=origin, off=0, malloc=malloc, readonly=true} : non-reusable
 	// - dataNode{buf=extra, off=0, malloc=len(extra), readonly=true} : non-reusable
 	// - newNode{buf=origin, off=malloc, malloc=origin.malloc, readonly=false} : reusable
-	dataNode := newLinkBufferNode(0) // zero node will be set by readonly mode
+	dataNode := b.newLinkBufferNode(0) // zero node will be set by readonly mode
 	dataNode.buf, dataNode.malloc = extra[:0], n
 
 	if remainLen > 0 {
 		// split a single buffer node to originNode and newNode
-		newNode := newLinkBufferNode(0)
+		newNode := b.newLinkBufferNode(0)
 		newNode.off = malloc
 		newNode.buf = origin.buf[:malloc]
 		newNode.malloc = origin.malloc
@@ -578,7 +591,13 @@ func (b *UnsafeLinkBuffer) Close() (err error) {
 	for node := b.head; node != nil; {
 		nd := node
 		node = node.next
-		nd.Release()
+		if nd.Release() {
+			linkedPool.Put(nd)
+		}
+	}
+	for i := 0; i < b.cacheNodesNum; i++ {
+		linkedPool.Put(b.cacheNodes[i])
+		b.cacheNodes[i] = nil
 	}
 	b.head, b.read, b.flush, b.write = nil, nil, nil, nil
 	return nil
@@ -640,7 +659,7 @@ func (b *UnsafeLinkBuffer) book(bookSize, maxSize int) (p []byte) {
 	// grow linkBuffer
 	if l == 0 {
 		l = maxSize
-		b.write.next = newLinkBufferNode(maxSize)
+		b.write.next = b.newLinkBufferNode(maxSize)
 		b.write = b.write.next
 	}
 	if l > bookSize {
@@ -681,7 +700,7 @@ func (b *UnsafeLinkBuffer) resetTail(maxSize int) {
 	}
 
 	// set nil tail
-	b.write.next = newLinkBufferNode(0)
+	b.write.next = b.newLinkBufferNode(0)
 	b.write = b.write.next
 	b.flush = b.write
 	return
@@ -719,6 +738,25 @@ func (b *UnsafeLinkBuffer) indexByte(c byte, skip int) int {
 	return -1
 }
 
+func (b *UnsafeLinkBuffer) newLinkBufferNode(size int) (node *linkBufferNode) {
+	if b.cacheNodesNum > 0 {
+		b.cacheNodesNum--
+		node = b.cacheNodes[b.cacheNodesNum]
+		b.cacheNodes[b.cacheNodesNum] = nil
+		node.initialize(size)
+		return node
+	}
+	return newLinkBufferNode(size)
+}
+
+func (b *UnsafeLinkBuffer) appendCacheNodes(node *linkBufferNode) {
+	if b.cacheNodesNum >= maxCacheNodes {
+		return
+	}
+	b.cacheNodes[b.cacheNodesNum] = node
+	b.cacheNodesNum++
+}
+
 // ------------------------------------------ private function ------------------------------------------
 
 // recalLen re-calculate the length
@@ -739,7 +777,7 @@ func (b *UnsafeLinkBuffer) growth(n int) {
 	// the memory of readonly node if not malloc by us so should skip them
 	for b.write.getMode(readonlyMask) || cap(b.write.buf)-b.write.malloc < n {
 		if b.write.next == nil {
-			b.write.next = newLinkBufferNode(n)
+			b.write.next = b.newLinkBufferNode(n)
 			b.write = b.write.next
 			return
 		}
@@ -779,16 +817,7 @@ func (b *LinkBuffer) memorySize() (bytes int) {
 // Nodes with size <= 0 are marked as readonly, which means the node.buf is not allocated by this mcache.
 func newLinkBufferNode(size int) *linkBufferNode {
 	var node = linkedPool.Get().(*linkBufferNode)
-	// reset node offset
-	node.off, node.malloc, node.refer, node.mode = 0, 0, 1, defaultLinkBufferMode
-	if size <= 0 {
-		node.setMode(readonlyMask, true)
-		return node
-	}
-	if size < LinkBufferCap {
-		size = LinkBufferCap
-	}
-	node.buf = malloc(0, size)
+	node.initialize(size)
 	return node
 }
 
@@ -808,6 +837,19 @@ type linkBufferNode struct {
 	mode   uint8           // mode store all bool bit status
 	origin *linkBufferNode // the root node of the extends
 	next   *linkBufferNode // the next node of the linked buffer
+}
+
+func (node *linkBufferNode) initialize(size int) {
+	// reset node offset
+	node.off, node.malloc, node.refer, node.mode = 0, 0, 1, defaultLinkBufferMode
+	if size <= 0 {
+		node.setMode(readonlyMask, true)
+		return
+	}
+	if size < LinkBufferCap {
+		size = LinkBufferCap
+	}
+	node.buf = malloc(0, size)
 }
 
 func (node *linkBufferNode) Len() (l int) {
@@ -861,7 +903,7 @@ func (node *linkBufferNode) Refer(n int) (p *linkBufferNode) {
 // Release consists of two parts:
 // 1. reduce the reference count of itself and origin.
 // 2. recycle the buf when the reference count is 0.
-func (node *linkBufferNode) Release() (err error) {
+func (node *linkBufferNode) Release() (needFree bool) {
 	if node.origin != nil {
 		node.origin.Release()
 	}
@@ -872,9 +914,9 @@ func (node *linkBufferNode) Release() (err error) {
 			free(node.buf)
 		}
 		node.buf, node.origin, node.next = nil, nil, nil
-		linkedPool.Put(node)
+		needFree = true
 	}
-	return nil
+	return
 }
 
 func (node *linkBufferNode) getMode(mask uint8) bool {
