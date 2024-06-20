@@ -251,19 +251,20 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 
 	// single node
 	if b.isSingleNode(n) {
-		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not control by itself
-		if !b.read.getMode(readonlyMask) {
-			// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
-			// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
-			// no need to malloc 10 times and the string slice could have the compact memory allocation.
-			if b.read.getMode(nocopyReadMask) {
-				return b.read.Next(n)
-			}
-			if n >= minReuseBytes && cap(b.read.buf) <= block32k {
-				b.read.setMode(nocopyReadMask, true)
-				return b.read.Next(n)
-			}
-		}
+		// TODO: enable nocopy read mode when ensure no legacy depend on copy-read
+		//// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not control by itself
+		//if !b.read.getMode(readonlyMask) {
+		//	// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
+		//	// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
+		//	// no need to malloc 10 times and the string slice could have the compact memory allocation.
+		//	if b.read.getMode(nocopyReadMask) {
+		//		return b.read.Next(n)
+		//	}
+		//	if n >= minReuseBytes && cap(b.read.buf) <= block32k {
+		//		b.read.setMode(nocopyReadMask, true)
+		//		return b.read.Next(n)
+		//	}
+		//}
 		// if the underlying buffer too large, we shouldn't use no-copy mode
 		p = dirtmake.Bytes(n, n)
 		copy(p, b.read.Next(n))
@@ -674,12 +675,11 @@ func (b *UnsafeLinkBuffer) calcMaxSize() (sum int) {
 // resetTail will reset tail node or add an empty tail node to
 // guarantee the tail node is not larger than 8KB
 func (b *UnsafeLinkBuffer) resetTail(maxSize int) {
-	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
+	// FIXME: Reset should be removed when find a decent way to reuse buffer
 	if maxSize <= pagesize {
 		b.write.Reset()
 		return
 	}
-
 	// set nil tail
 	b.write.next = newLinkBufferNode(0)
 	b.write = b.write.next
@@ -748,6 +748,7 @@ func (b *UnsafeLinkBuffer) growth(n int) {
 }
 
 // isSingleNode determines whether reading needs to cross nodes.
+// isSingleNode will move b.read to latest non-empty node if there is a zero-size node
 // Must require b.Len() > 0
 func (b *UnsafeLinkBuffer) isSingleNode(readN int) (single bool) {
 	if readN <= 0 {
@@ -830,17 +831,17 @@ func (node *linkBufferNode) Reset() {
 func (node *linkBufferNode) Next(n int) (p []byte) {
 	off := node.off
 	node.off += n
-	return node.buf[off:node.off]
+	return node.buf[off:node.off:node.off]
 }
 
 func (node *linkBufferNode) Peek(n int) (p []byte) {
-	return node.buf[node.off : node.off+n]
+	return node.buf[node.off : node.off+n : node.off+n]
 }
 
 func (node *linkBufferNode) Malloc(n int) (buf []byte) {
 	malloc := node.malloc
 	node.malloc += n
-	return node.buf[malloc:node.malloc]
+	return node.buf[malloc:node.malloc:node.malloc]
 }
 
 // Refer holds a reference count at the same time as Next, and releases the real buffer after Release.
@@ -878,17 +879,18 @@ func (node *linkBufferNode) Release() (err error) {
 }
 
 func (node *linkBufferNode) getMode(mask uint8) bool {
-	return node.mode&mask > 0
+	return (node.mode & mask) > 0
 }
 
 func (node *linkBufferNode) setMode(mask uint8, enable bool) {
 	if enable {
 		node.mode = node.mode | mask
 	} else {
-		node.mode = node.mode & ^mask
+		node.mode = node.mode &^ mask
 	}
 }
 
+// only non-readonly and copied-read node should be reusable
 func (node *linkBufferNode) reusable() bool {
-	return node.mode&(nocopyReadMask|readonlyMask) == 0
+	return node.mode&(readonlyMask|nocopyReadMask) == 0
 }
