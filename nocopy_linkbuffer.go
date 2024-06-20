@@ -250,26 +250,11 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 	b.recalLen(-n) // re-cal length
 
 	// single node
+	p = dirtmake.Bytes(n, n)
 	if b.isSingleNode(n) {
-		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not control by itself
-		if !b.read.getMode(readonlyMask) {
-			// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
-			// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
-			// no need to malloc 10 times and the string slice could have the compact memory allocation.
-			if b.read.getMode(nocopyReadMask) {
-				return b.read.Next(n)
-			}
-			if n >= minReuseBytes && cap(b.read.buf) <= block32k {
-				b.read.setMode(nocopyReadMask, true)
-				return b.read.Next(n)
-			}
-		}
-		// if the underlying buffer too large, we shouldn't use no-copy mode
-		p = dirtmake.Bytes(n, n)
 		copy(p, b.read.Next(n))
 		return p
 	}
-	p = dirtmake.Bytes(n, n)
 	// multiple nodes
 	var pIdx int
 	var l int
