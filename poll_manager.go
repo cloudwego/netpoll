@@ -48,7 +48,7 @@ var pollmanager *manager
 var logger *log.Logger
 
 func init() {
-	pollmanager = newManager(runtime.GOMAXPROCS(0)/20 + 1)
+	pollmanager = newManager(defaultPollNum())
 	setLoggerOutput(os.Stderr)
 }
 

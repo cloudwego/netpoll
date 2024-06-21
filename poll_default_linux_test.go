@@ -22,8 +22,7 @@ import (
 	"errors"
 	"syscall"
 	"testing"
-
-	"golang.org/x/sys/unix"
+	"time"
 )
 
 func TestEpollEvent(t *testing.T) {
@@ -55,11 +54,11 @@ func TestEpollEvent(t *testing.T) {
 	}
 
 	// EPOLL: add ,del and add
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event1)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event1)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event1)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, rfd, event1)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event2)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event2)
 	MustNil(t, err)
 	_, err = syscall.Write(wfd, send)
 	MustNil(t, err)
@@ -69,15 +68,15 @@ func TestEpollEvent(t *testing.T) {
 	Equal(t, events[0].data, eventdata2)
 	_, err = syscall.Read(rfd, recv)
 	MustTrue(t, err == nil && string(recv) == string(send))
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event2)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, rfd, event2)
 	MustNil(t, err)
 
 	// EPOLL: add ,mod and mod
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event1)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event1)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_MOD, rfd, event2)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_MOD, rfd, event2)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_MOD, rfd, event3)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_MOD, rfd, event3)
 	MustNil(t, err)
 	_, err = syscall.Write(wfd, send)
 	MustNil(t, err)
@@ -89,7 +88,7 @@ func TestEpollEvent(t *testing.T) {
 	Assert(t, events[0].events&syscall.EPOLLIN != 0)
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
 
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event2)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, rfd, event2)
 	MustNil(t, err)
 }
 
@@ -111,7 +110,7 @@ func TestEpollWait(t *testing.T) {
 		events: syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR,
 		data:   eventdata,
 	}
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event)
 	MustNil(t, err)
 	_, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
@@ -147,7 +146,7 @@ func TestEpollWait(t *testing.T) {
 	// EPOLL: close current fd
 	rfd2, wfd2 := GetSysFdPairs()
 	defer syscall.Close(wfd2)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd2, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd2, event)
 	err = syscall.Close(rfd2)
 	MustNil(t, err)
 	_, err = epollWaitUntil(epollfd, events, -1)
@@ -157,7 +156,7 @@ func TestEpollWait(t *testing.T) {
 	Assert(t, events[0].events&syscall.EPOLLRDHUP != 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
 
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, rfd, event)
 	MustNil(t, err)
 }
 
@@ -174,7 +173,7 @@ func TestEpollETClose(t *testing.T) {
 	}
 
 	// EPOLL: init state
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event)
 	_, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
 	Assert(t, events[0].events&syscall.EPOLLIN == 0)
@@ -195,7 +194,7 @@ func TestEpollETClose(t *testing.T) {
 	// EPOLL: close peer fd
 	// EPOLLIN and EPOLLOUT
 	rfd, wfd = GetSysFdPairs()
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event)
 	err = syscall.Close(wfd)
 	MustNil(t, err)
 	n, err = epollWaitUntil(epollfd, events, 100)
@@ -225,10 +224,10 @@ func TestEpollETDel(t *testing.T) {
 	}
 
 	// EPOLL: del partly
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, rfd, event)
 	MustNil(t, err)
 	event.events = syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | syscall.EPOLLERR
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, rfd, event)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, rfd, event)
 	MustNil(t, err)
 	_, err = syscall.Write(wfd, send)
 	MustNil(t, err)
@@ -277,7 +276,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	t.Logf("create fd: %d", fd1)
 	err = syscall.SetNonblock(fd1, true)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd1, event1)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, fd1, event1)
 	MustNil(t, err)
 	err = syscall.Connect(fd1, &addr)
 	t.Log(err) // EINPROGRESS
@@ -287,7 +286,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
 	// forget to del fd
-	//err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, fd1, event1)
+	//err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, fd1, event1)
 	//MustNil(t, err)
 	err = syscall.Close(fd1) // close fd1
 	MustNil(t, err)
@@ -298,7 +297,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	t.Logf("create fd: %d", fd2)
 	err = syscall.SetNonblock(fd2, true)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd2, event2)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, fd2, event2)
 	MustNil(t, err)
 	err = syscall.Connect(fd2, &addr)
 	t.Log(err) // EINPROGRESS
@@ -307,7 +306,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	Assert(t, events[0].events&syscall.EPOLLOUT != 0)
 	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, fd2, event2)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_DEL, fd2, event2)
 	MustNil(t, err)
 	err = syscall.Close(fd2) // close fd2
 	MustNil(t, err)
@@ -319,7 +318,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	t.Logf("create fd: %d", fd3)
 	err = syscall.SetNonblock(fd3, true)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd3, event1)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_ADD, fd3, event1)
 	MustNil(t, err)
 	err = syscall.Connect(fd3, &addr)
 	t.Log(err) // EINPROGRESS
@@ -329,13 +328,168 @@ func TestEpollConnectSameFD(t *testing.T) {
 	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
 	MustNil(t, err)
-	err = EpollCtl(epollfd, unix.EPOLL_CTL_MOD, fd3, eventin)
+	err = EpollCtl(epollfd, syscall.EPOLL_CTL_MOD, fd3, eventin)
 	MustNil(t, err)
 	err = syscall.Close(fd3) // close fd3
 	MustNil(t, err)
 	n, err := epollWaitUntil(epollfd, events, 100)
 	MustNil(t, err)
 	Assert(t, n == 0)
+}
+
+func TestEpollWaitEpollFD(t *testing.T) {
+	epollfd1, err := EpollCreate(0) // monitor epollfd2
+	MustNil(t, err)
+	epollfd2, err := EpollCreate(0) // monitor io fds
+	MustNil(t, err)
+	MustNil(t, err)
+	defer syscall.Close(epollfd1)
+	defer syscall.Close(epollfd2)
+
+	rfd, wfd := GetSysFdPairs()
+	defer syscall.Close(wfd)
+	send := []byte("hello")
+	recv := make([]byte, 5)
+	events := make([]epollevent, 128)
+	n := 0
+
+	// register epollfd2 into epollfd1
+	epevent := &epollevent{
+		// netpollopen: runtime/netpoll_epoll.go
+		events: syscall.EPOLLIN | syscall.EPOLLOUT | syscall.EPOLLRDHUP | EPOLLET,
+		data:   [8]byte{},
+	}
+	err = EpollCtl(epollfd1, syscall.EPOLL_CTL_ADD, epollfd2, epevent)
+	MustNil(t, err)
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// register rfd into epollfd2
+	ioevent := &epollevent{
+		events: syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR,
+		data:   [8]byte{},
+	}
+	err = EpollCtl(epollfd2, syscall.EPOLL_CTL_ADD, rfd, ioevent)
+	MustNil(t, err)
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// check epollfd2 readable
+	n, err = syscall.Write(wfd, send)
+	Equal(t, n, len(send))
+	MustNil(t, err)
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+
+	// check rfd readable
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+
+	// read rfd
+	n, err = syscall.Read(rfd, recv)
+	Equal(t, n, len(send))
+	MustTrue(t, err == nil && string(recv) == string(send))
+
+	// check epollfd1 non-readable
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// check epollfd2 non-readable
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// close wfd
+	err = syscall.Close(wfd)
+	MustNil(t, err)
+
+	// check epollfd1 notified when peer closed
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+
+	// check epollfd2 notified when peer closed
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 1)
+	MustNil(t, err)
+	Assert(t, events[0].events&syscall.EPOLLIN != 0)
+	Assert(t, events[0].events&syscall.EPOLLRDHUP != 0)
+	Assert(t, events[0].events&syscall.EPOLLERR == 0)
+
+	// close rfd
+	err = syscall.Close(rfd)
+	MustNil(t, err)
+
+	// check epollfd1 non-readable
+	n, err = epollWaitUntil(epollfd1, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+
+	// check epollfd2 non-readable
+	n, err = epollWaitUntil(epollfd2, events, 0)
+	Equal(t, n, 0)
+	MustNil(t, err)
+}
+
+func TestRuntimeNetpoller(t *testing.T) {
+	pfd, err := openPollFile()
+	MustNil(t, err)
+
+	pd, errno := runtime_pollOpen(uintptr(pfd))
+	Assert(t, errno == 0, errno)
+	t.Logf("poll open success: pd=%d", pd)
+
+	var rfd, wfd = GetSysFdPairs()
+
+	eventin := &epollevent{
+		events: syscall.EPOLLIN | syscall.EPOLLRDHUP | syscall.EPOLLERR,
+		data:   [8]byte{0, 0, 0, 0, 0, 0, 0, 1},
+	}
+	err = EpollCtl(pfd, syscall.EPOLL_CTL_ADD, rfd, eventin)
+	MustNil(t, err)
+
+	go func() {
+		time.Sleep(time.Millisecond * 100)
+
+		iovec := [1]syscall.Iovec{}
+		buf := []byte("hello")
+		n, err := writev(wfd, [][]byte{buf}, iovec[:])
+		MustNil(t, err)
+		Equal(t, n, 5)
+		t.Logf("poll read success: %s", string(buf[:n]))
+	}()
+
+	begin := time.Now()
+	errno = runtime_pollWait(pd, 'r'+'w')
+	Assert(t, errno == 0, errno)
+	cost := time.Since(begin)
+	Assert(t, cost.Milliseconds() >= 100)
+
+	events := make([]epollevent, 1)
+	n, err := EpollWait(pfd, events, 0)
+	MustNil(t, err)
+	Equal(t, n, 1)
+	t.Logf("poll wait success")
+
+	iovec := [1]syscall.Iovec{}
+	buf := make([]byte, 1024)
+	bs := [1][]byte{buf}
+	n, err = readv(rfd, bs[:], iovec[:])
+	MustNil(t, err)
+	Equal(t, n, 5)
+	t.Logf("poll read success: %s", string(buf[:n]))
 }
 
 func epollWaitUntil(epfd int, events []epollevent, msec int) (n int, err error) {

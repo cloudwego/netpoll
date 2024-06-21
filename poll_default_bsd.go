@@ -19,11 +19,20 @@ package netpoll
 
 import (
 	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
+
+func defaultPollNum() int {
+	return runtime.GOMAXPROCS(0)/20 + 1
+}
+
+func openPollFile() (int, error) {
+	return syscall.Kqueue()
+}
 
 func openPoll() (Poll, error) {
 	return openDefaultPoll()
@@ -31,7 +40,7 @@ func openPoll() (Poll, error) {
 
 func openDefaultPoll() (*defaultPoll, error) {
 	l := new(defaultPoll)
-	p, err := syscall.Kqueue()
+	p, err := openPollFile()
 	if err != nil {
 		return nil, err
 	}

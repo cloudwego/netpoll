@@ -16,12 +16,23 @@ package netpoll
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
+
+func defaultPollNum() int {
+	// more pollers could help poller schedule user work to different P to increase parallelism,
+	// but also will decrease poller's epoll efficiency, so it's a trade-off
+	return runtime.GOMAXPROCS(0) / 2
+}
+
+func openPollFile() (int, error) {
+	return EpollCreate(0)
+}
 
 func openPoll() (Poll, error) {
 	return openDefaultPoll()
@@ -31,11 +42,17 @@ func openDefaultPoll() (*defaultPoll, error) {
 	var poll = new(defaultPoll)
 
 	poll.buf = make([]byte, 8)
-	var p, err = EpollCreate(0)
+	var p, err = openPollFile()
 	if err != nil {
 		return nil, err
 	}
 	poll.fd = p
+	// register epollfd into runtime's netpoller
+	pd, errno := runtime_pollOpen(uintptr(poll.fd))
+	if errno != 0 {
+		return nil, Exception(ErrUnsupported, fmt.Sprintf("when poll open: errno=%d", errno))
+	}
+	poll.pd = pd
 
 	var r0, _, e0 = syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
 	if e0 != 0 {
@@ -60,6 +77,7 @@ func openDefaultPoll() (*defaultPoll, error) {
 type defaultPoll struct {
 	pollArgs
 	fd      int            // epoll fd
+	pd      uintptr        // the pollDesc of epoll fd in runtime's netpoller
 	wop     *FDOperator    // eventfd, wake epoll_wait
 	buf     []byte         // read wfd trigger msg
 	trigger uint32         // trigger flag
@@ -90,23 +108,28 @@ func (a *pollArgs) reset(size, caps int) {
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
 	// init
-	var caps, msec, n = barriercap, -1, 0
+	var caps, n = barriercap, 0
 	p.Reset(128, caps)
 	// wait
 	for {
 		if n == p.size && p.size < 128*1024 {
 			p.Reset(p.size<<1, caps)
 		}
-		n, err = EpollWait(p.fd, p.events, msec)
+		n, err = EpollWait(p.fd, p.events, 0)
 		if err != nil && err != syscall.EINTR {
 			return err
 		}
-		if n <= 0 {
-			msec = -1
-			runtime.Gosched()
+		if n == 0 {
+			errno := runtime_pollReset(p.pd, 'r')
+			if errno != 0 {
+				return Exception(ErrUnsupported, fmt.Sprintf("when poll reset: errno=%d", errno))
+			}
+			errno = runtime_pollWait(p.pd, 'r')
+			if errno != 0 {
+				return Exception(ErrUnsupported, fmt.Sprintf("when poll wait: errno=%d", errno))
+			}
 			continue
 		}
-		msec = 0
 		if p.Handler(p.events[:n]) {
 			return nil
 		}
