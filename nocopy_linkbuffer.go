@@ -675,7 +675,7 @@ func (b *UnsafeLinkBuffer) calcMaxSize() (sum int) {
 // guarantee the tail node is not larger than 8KB
 func (b *UnsafeLinkBuffer) resetTail(maxSize int) {
 	// FIXME: The tail node must not be larger than 8KB to prevent Out Of Memory.
-	if maxSize <= pagesize {
+	if maxSize <= pagesize && b.write.reusable() {
 		b.write.Reset()
 		return
 	}
