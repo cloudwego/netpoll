@@ -231,8 +231,8 @@ func selfConnect(conn *netFD, err error) bool {
 	if conn.localAddr == nil || conn.remoteAddr == nil {
 		return true
 	}
-	l := conn.localAddr.(*net.TCPAddr)
-	r := conn.remoteAddr.(*net.TCPAddr)
+	l := conn.localAddr.(*CachedAddr).Addr.(*net.TCPAddr)
+	r := conn.remoteAddr.(*CachedAddr).Addr.(*net.TCPAddr)
 	return l.Port == r.Port && l.IP.Equal(r.IP)
 }
 
