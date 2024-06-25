@@ -26,6 +26,14 @@ import (
 // UnixAddr represents the address of a Unix domain socket end point.
 type UnixAddr struct {
 	net.UnixAddr
+	cachedAddr string
+}
+
+func (a *UnixAddr) String() string {
+	if a.cachedAddr == "" {
+		a.cachedAddr = a.UnixAddr.String()
+	}
+	return a.cachedAddr
 }
 
 func (a *UnixAddr) isWildcard() bool {
@@ -65,7 +73,7 @@ func ResolveUnixAddr(network, address string) (*UnixAddr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &UnixAddr{*addr}, nil
+	return &UnixAddr{UnixAddr: *addr}, nil
 }
 
 // UnixConnection implements Connection.

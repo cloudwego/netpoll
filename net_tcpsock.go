@@ -20,6 +20,14 @@ import (
 // TCPAddr represents the address of a TCP end point.
 type TCPAddr struct {
 	net.TCPAddr
+	cachedAddr string
+}
+
+func (a *TCPAddr) String() string {
+	if a.cachedAddr == "" {
+		a.cachedAddr = a.TCPAddr.String()
+	}
+	return a.cachedAddr
 }
 
 func (a *TCPAddr) isWildcard() bool {
@@ -129,7 +137,7 @@ func ResolveTCPAddr(network, address string) (*TCPAddr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TCPAddr{*addr}, nil
+	return &TCPAddr{TCPAddr: *addr}, nil
 }
 
 // TCPConnection implements Connection.
@@ -231,8 +239,8 @@ func selfConnect(conn *netFD, err error) bool {
 	if conn.localAddr == nil || conn.remoteAddr == nil {
 		return true
 	}
-	l := conn.localAddr.(*CachedAddr).Addr.(*net.TCPAddr)
-	r := conn.remoteAddr.(*CachedAddr).Addr.(*net.TCPAddr)
+	l := conn.localAddr.(*TCPAddr).TCPAddr
+	r := conn.remoteAddr.(*TCPAddr).TCPAddr
 	return l.Port == r.Port && l.IP.Equal(r.IP)
 }
 

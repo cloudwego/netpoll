@@ -129,9 +129,11 @@ func sockaddrToAddr(sa syscall.Sockaddr) net.Addr {
 	var a net.Addr
 	switch sa := sa.(type) {
 	case *syscall.SockaddrInet4:
-		a = &net.TCPAddr{
-			IP:   sa.Addr[0:],
-			Port: sa.Port,
+		a = &TCPAddr{
+			TCPAddr: net.TCPAddr{
+				IP:   sa.Addr[0:],
+				Port: sa.Port,
+			},
 		}
 	case *syscall.SockaddrInet6:
 		var zone string
@@ -142,25 +144,17 @@ func sockaddrToAddr(sa syscall.Sockaddr) net.Addr {
 		}
 		// if zone == "" && sa.ZoneId != 0 {
 		// }
-		a = &net.TCPAddr{
-			IP:   sa.Addr[0:],
-			Port: sa.Port,
-			Zone: zone,
+		a = &TCPAddr{
+			TCPAddr: net.TCPAddr{
+				IP:   sa.Addr[0:],
+				Port: sa.Port,
+				Zone: zone,
+			},
 		}
 	case *syscall.SockaddrUnix:
-		a = &net.UnixAddr{Net: "unix", Name: sa.Name}
+		a = &UnixAddr{
+			UnixAddr: net.UnixAddr{Net: "unix", Name: sa.Name},
+		}
 	}
-	return &CachedAddr{Addr: a}
-}
-
-type CachedAddr struct {
-	net.Addr
-	cachedString string
-}
-
-func (a *CachedAddr) String() string {
-	if a.cachedString == "" {
-		a.cachedString = a.Addr.String()
-	}
-	return a.cachedString
+	return a
 }
