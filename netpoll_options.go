@@ -20,8 +20,74 @@ package netpoll
 import (
 	"context"
 	"io"
+	"log"
+	"os"
+	"runtime"
 	"time"
 )
+
+var (
+	pollmanager = newManager(runtime.GOMAXPROCS(0)/20 + 1) // pollmanager manage all pollers
+	logger      = log.New(os.Stderr, "", log.LstdFlags)
+
+	// global config
+	defaultLinkBufferSize   = pagesize
+	featureAlwaysNoCopyRead = false
+)
+
+// Config expose some tuning parameters to control the internal behaviors of netpoll.
+// Every parameter with the default zero value should keep the default behavior of netpoll.
+type Config struct {
+	PollerNum    int                                 // number of pollers
+	BufferSize   int                                 // default size of a new connection's LinkBuffer
+	Runner       func(ctx context.Context, f func()) // runner for event handler, most of the time use a goroutine pool.
+	LoggerOutput io.Writer                           // logger output
+	LoadBalance  LoadBalance                         // load balance for poller picker
+	Feature                                          // define all features that not enable by default
+}
+
+// Feature expose some new features maybe promoted as a default behavior but not yet.
+type Feature struct {
+	// AlwaysNoCopyRead allows some copy Read functions like ReadBinary/ReadString
+	// will use NoCopy read and will not reuse the underlying buffer.
+	// It gains more performance benefits when need read much big string/bytes in codec.
+	AlwaysNoCopyRead bool
+}
+
+// Configure the internal behaviors of netpoll.
+// Configure must called in init() function, because the poller will read some global variable after init() finished
+func Configure(config Config) (err error) {
+	if config.PollerNum > 0 {
+		if err = pollmanager.SetNumLoops(config.PollerNum); err != nil {
+			return err
+		}
+	}
+	if config.BufferSize > 0 {
+		defaultLinkBufferSize = config.BufferSize
+	}
+
+	if config.Runner != nil {
+		setRunner(config.Runner)
+	}
+	if config.LoggerOutput != nil {
+		logger = log.New(config.LoggerOutput, "", log.LstdFlags)
+	}
+	if config.LoadBalance >= 0 {
+		if err = pollmanager.SetLoadBalance(config.LoadBalance); err != nil {
+			return err
+		}
+	}
+
+	featureAlwaysNoCopyRead = config.AlwaysNoCopyRead
+	return nil
+}
+
+// Initialize the pollers actively. By default, it's lazy initialized.
+// It's safe to call it multi times.
+func Initialize() {
+	// The first call of Pick() will init pollers
+	_ = pollmanager.Pick()
+}
 
 // SetNumLoops is used to set the number of pollers, generally do not need to actively set.
 // By default, the number of pollers is equal to runtime.GOMAXPROCS(0)/20+1.
@@ -34,28 +100,28 @@ import (
 //	func init() {
 //	    netpoll.SetNumLoops(...)
 //	}
+//
+// Deprecated: use Configure instead.
 func SetNumLoops(numLoops int) error {
-	return setNumLoops(numLoops)
+	return pollmanager.SetNumLoops(numLoops)
 }
 
 // SetLoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
 // to distribute the incoming connections between multiple polls.
 // This option only works when numLoops is set.
+// Deprecated: use Configure instead.
 func SetLoadBalance(lb LoadBalance) error {
-	return setLoadBalance(lb)
+	return pollmanager.SetLoadBalance(lb)
 }
 
-// Initialize the pollers actively. By default, it's lazy initialized.
-// It's safe to call it multi times.
-func Initialize() {
-	initialize()
-}
-
+// SetLoggerOutput sets the logger output target.
+// Deprecated: use Configure instead.
 func SetLoggerOutput(w io.Writer) {
-	setLoggerOutput(w)
+	logger = log.New(w, "", log.LstdFlags)
 }
 
 // SetRunner set the runner function for every OnRequest/OnConnect callback
+// Deprecated: use Configure instead.
 func SetRunner(f func(ctx context.Context, f func())) {
 	setRunner(f)
 }
@@ -65,6 +131,7 @@ func SetRunner(f func(ctx context.Context, f func())) {
 // Usually, OnRequest will cause stack expansion, which can be solved by reusing goroutine.
 // But if you can confirm that the OnRequest will not cause stack expansion,
 // it is recommended to use DisableGopool to reduce redundancy and improve performance.
+// Deprecated: use Configure instead.
 func DisableGopool() error {
 	return disableGopool()
 }

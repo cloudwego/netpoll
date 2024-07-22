@@ -19,38 +19,9 @@ package netpoll
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"os"
 	"runtime"
 	"sync/atomic"
 )
-
-func setNumLoops(numLoops int) error {
-	return pollmanager.SetNumLoops(numLoops)
-}
-
-func setLoadBalance(lb LoadBalance) error {
-	return pollmanager.SetLoadBalance(lb)
-}
-
-func initialize() {
-	// The first call of Pick() will init pollers
-	_ = pollmanager.Pick()
-}
-
-func setLoggerOutput(w io.Writer) {
-	logger = log.New(w, "", log.LstdFlags)
-}
-
-// pollmanager manage all pollers
-var pollmanager *manager
-var logger *log.Logger
-
-func init() {
-	pollmanager = newManager(runtime.GOMAXPROCS(0)/20 + 1)
-	setLoggerOutput(os.Stderr)
-}
 
 const (
 	managerUninitialized = iota
