@@ -129,6 +129,13 @@ func TestConnectionRead(t *testing.T) {
 }
 
 func TestConnectionNoCopyReadString(t *testing.T) {
+	err := Configure(Config{Feature: Feature{AlwaysNoCopyRead: true}})
+	MustNil(t, err)
+	defer func() {
+		err = Configure(Config{Feature: Feature{AlwaysNoCopyRead: false}})
+		MustNil(t, err)
+	}()
+
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)

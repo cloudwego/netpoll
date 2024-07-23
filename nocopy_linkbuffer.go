@@ -675,9 +675,8 @@ func (b *UnsafeLinkBuffer) calcMaxSize() (sum int) {
 // resetTail will reset tail node or add an empty tail node to
 // guarantee the tail node is not larger than 8KB
 func (b *UnsafeLinkBuffer) resetTail(maxSize int) {
-	// FIXME: Reset should be removed when find a decent way to reuse buffer
 	if maxSize <= pagesize {
-		b.write.Reset()
+		// no need to reset a small buffer tail node
 		return
 	}
 	// set nil tail
