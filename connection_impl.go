@@ -330,8 +330,8 @@ func (c *connection) init(conn Conn, opts *options) (err error) {
 	// init buffer, barrier, finalizer
 	c.readTrigger = make(chan error, 1)
 	c.writeTrigger = make(chan error, 1)
-	c.bookSize, c.maxSize = pagesize, pagesize
-	c.inputBuffer, c.outputBuffer = NewLinkBuffer(pagesize), NewLinkBuffer()
+	c.bookSize, c.maxSize = defaultLinkBufferSize, defaultLinkBufferSize
+	c.inputBuffer, c.outputBuffer = NewLinkBuffer(defaultLinkBufferSize), NewLinkBuffer()
 	c.outputBarrier = barrierPool.Get().(*barrier)
 	c.state = 0
 

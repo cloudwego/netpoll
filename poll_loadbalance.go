@@ -24,17 +24,17 @@ import (
 type LoadBalance int
 
 const (
-	// Random requests that connections are randomly distributed.
-	Random LoadBalance = iota
 	// RoundRobin requests that connections are distributed to a Poll
 	// in a round-robin fashion.
-	RoundRobin
+	RoundRobin LoadBalance = iota
+	// Random requests that connections are randomly distributed.
+	Random
 )
 
 // loadbalance sets the load balancing method for []*polls
 type loadbalance interface {
 	LoadBalance() LoadBalance
-	// Choose the most qualified Poll
+	// Pick choose the most qualified Poll
 	Pick() (poll Poll)
 
 	Rebalance(polls []Poll)
@@ -42,10 +42,10 @@ type loadbalance interface {
 
 func newLoadbalance(lb LoadBalance, polls []Poll) loadbalance {
 	switch lb {
-	case Random:
-		return newRandomLB(polls)
 	case RoundRobin:
 		return newRoundRobinLB(polls)
+	case Random:
+		return newRandomLB(polls)
 	}
 	return newRoundRobinLB(polls)
 }
