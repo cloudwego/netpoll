@@ -17,12 +17,14 @@ package netpoll
 import (
 	"context"
 	"io"
+	"time"
 )
 
 // global config
 var (
-	defaultLinkBufferSize   = pagesize
-	featureAlwaysNoCopyRead = false
+	defaultLinkBufferSize                = pagesize
+	defaultGracefulShutdownCheckInterval = time.Second
+	featureAlwaysNoCopyRead              = false
 )
 
 // Config expose some tuning parameters to control the internal behaviors of netpoll.

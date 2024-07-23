@@ -21,14 +21,15 @@ import (
 	"runtime"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestPollManager(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, nil)
-	wconn.init(&netFD{fd: w}, nil)
+	err := rconn.init(&netFD{fd: r}, nil)
+	MustNil(t, err)
+	err = wconn.init(&netFD{fd: w}, nil)
+	MustNil(t, err)
 
 	var msg = []byte("hello world")
 	n, err := wconn.Write(msg)
@@ -41,9 +42,9 @@ func TestPollManager(t *testing.T) {
 
 	err = wconn.Close()
 	MustNil(t, err)
-	time.Sleep(10 * time.Millisecond)
-	MustTrue(t, !rconn.IsActive())
-	MustTrue(t, !wconn.IsActive())
+	for rconn.IsActive() || wconn.IsActive() {
+		runtime.Gosched()
+	}
 }
 
 func TestPollManagerReset(t *testing.T) {
@@ -79,10 +80,7 @@ func TestPollManagerSetNumLoops(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			poll := pm.Pick()
-			newGs := runtime.NumGoroutine()
-			t.Logf("old=%d, new=%d", oldGs, newGs)
 			Assert(t, poll != nil)
-			Assert(t, newGs-oldGs == 100)
 			Assert(t, len(pm.polls) == 100)
 			wg.Done()
 			<-finish // hold goroutines

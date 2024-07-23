@@ -63,7 +63,7 @@ func (s *server) Close(ctx context.Context) error {
 	s.operator.Control(PollDetach)
 	s.ln.Close()
 
-	var ticker = time.NewTicker(time.Second)
+	var ticker = time.NewTicker(defaultGracefulShutdownCheckInterval)
 	defer ticker.Stop()
 	var hasConn bool
 	for {
