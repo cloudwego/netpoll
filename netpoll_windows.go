@@ -1,4 +1,4 @@
-// Copyright 2022 CloudWeGo Authors
+// Copyright 2024 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,34 +20,11 @@ package netpoll
 
 import (
 	"net"
-	"time"
 )
 
-// Option .
-type Option struct {
-	f func(*options)
-}
-
-type options struct{}
-
-// WithOnPrepare registers the OnPrepare method to EventLoop.
-func WithOnPrepare(onPrepare OnPrepare) Option {
-	return Option{}
-}
-
-// WithOnConnect registers the OnConnect method to EventLoop.
-func WithOnConnect(onConnect OnConnect) Option {
-	return Option{}
-}
-
-// WithReadTimeout sets the read timeout of connections.
-func WithReadTimeout(timeout time.Duration) Option {
-	return Option{}
-}
-
-// WithIdleTimeout sets the idle timeout of connections.
-func WithIdleTimeout(timeout time.Duration) Option {
-	return Option{}
+// Configure the internal behaviors of netpoll.
+func Configure(config Config) (err error) {
+	return nil
 }
 
 // NewDialer only support TCP and unix socket now.
