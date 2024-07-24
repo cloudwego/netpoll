@@ -7,8 +7,11 @@ jobs:
     strategy:
       matrix:
         go: [ 1.15, 1.22 ]
-        # ubuntu-latest is for Linux with ARM CPU
-        # ARM64 is for Linux with X64 CPU
+        # - "ubuntu-latest" is for Linux with X64 CPU, hosted by GitHub,
+        # fewer CPUs but high speed international network
+        # - "ARM64" is for Linux with ARM64 CPU, hosted by bytedance,
+        # more CPUs but inside CN internet which may download go cache slowly.
+        # GitHub don't have free runner with ARM CPU.
         os: [ ubuntu-latest, ARM64 ]
     runs-on: ${{ matrix.os }}
     steps:
