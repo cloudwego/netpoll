@@ -238,6 +238,12 @@ func (p *defaultPoll) Trigger() error {
 
 // Control implements Poll.
 func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
+	// DON'T move `fd=operator.FD` behind inuse() call, we can only access operator before op.inuse() for avoid race
+	// G1:              G2:
+	// op.inuse()       op.unused()
+	// op.FD  -- T1     op.FD = 0  -- T2
+	// T1 and T2 may happen together
+	var fd = operator.FD
 	var op int
 	var evt epollevent
 	p.setOperator(unsafe.Pointer(&evt.data), operator)
@@ -256,5 +262,5 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	case PollRW2R: // connection wait read
 		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
-	return EpollCtl(p.fd, op, operator.FD, &evt)
+	return EpollCtl(p.fd, op, fd, &evt)
 }
