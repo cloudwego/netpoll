@@ -101,11 +101,13 @@ func TestConnectionLargeWrite(t *testing.T) {
 func TestConnectionRead(t *testing.T) {
 	r, w := GetSysFdPairs()
 	var rconn, wconn = &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, nil)
-	wconn.init(&netFD{fd: w}, nil)
+	err := rconn.init(&netFD{fd: r}, nil)
+	MustNil(t, err)
+	err = wconn.init(&netFD{fd: w}, nil)
+	MustNil(t, err)
 
 	var size = 256
-	var cycleTime = 100000
+	var cycleTime = 1000
 	var msg = make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)

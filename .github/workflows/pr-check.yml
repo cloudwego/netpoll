@@ -7,6 +7,8 @@ jobs:
     strategy:
       matrix:
         go: [ 1.15, 1.22 ]
+        # ubuntu-latest is for Linux with ARM CPU
+        # ARM64 is for Linux with X64 CPU
         os: [ ubuntu-latest, ARM64 ]
     runs-on: ${{ matrix.os }}
     steps:
