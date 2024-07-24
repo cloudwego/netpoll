@@ -420,15 +420,12 @@ func TestCloseConnWhenOnConnect(t *testing.T) {
 func TestServerReadAndClose(t *testing.T) {
 	var network, address = "tcp", getTestAddress()
 	var sendMsg = []byte("hello")
-	var closed int32
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(len(sendMsg))
 			MustNil(t, err)
-
 			err = connection.Close()
 			MustNil(t, err)
-			atomic.AddInt32(&closed, 1)
 			return nil
 		},
 	)
@@ -440,14 +437,13 @@ func TestServerReadAndClose(t *testing.T) {
 	err = conn.Writer().Flush()
 	MustNil(t, err)
 
-	for atomic.LoadInt32(&closed) == 0 {
+	for conn.IsActive() {
 		runtime.Gosched() // wait for poller close connection
 	}
-	time.Sleep(time.Millisecond * 50)
 	_, err = conn.Writer().WriteBinary(sendMsg)
 	MustNil(t, err)
 	err = conn.Writer().Flush()
-	MustTrue(t, errors.Is(err, ErrConnClosed))
+	Assert(t, errors.Is(err, ErrConnClosed), err)
 
 	err = loop.Shutdown(context.Background())
 	MustNil(t, err)

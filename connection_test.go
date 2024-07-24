@@ -630,7 +630,7 @@ func TestConnectionServerClose(t *testing.T) {
 	var wg sync.WaitGroup
 	el, err := NewEventLoop(
 		func(ctx context.Context, connection Connection) error {
-			t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
+			//t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			buf, err := connection.Reader().Next(len(PONG)) // pong
 			Equal(t, string(buf), PONG)
@@ -653,14 +653,14 @@ func TestConnectionServerClose(t *testing.T) {
 			err = connection.Writer().Flush()
 			MustNil(t, err)
 			connection.AddCloseCallback(func(connection Connection) error {
-				t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
+				//t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
 				wg.Done()
 				return nil
 			})
 			return ctx
 		}),
 		WithOnPrepare(func(connection Connection) context.Context {
-			t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
+			//t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			return context.WithValue(context.Background(), "prepare", "true")
 		}),
@@ -701,7 +701,7 @@ func TestConnectionServerClose(t *testing.T) {
 			err = conn.SetOnRequest(clientOnRequest)
 			MustNil(t, err)
 			conn.AddCloseCallback(func(connection Connection) error {
-				t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
+				//t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
 				defer wg.Done()
 				return nil
 			})
