@@ -1,4 +1,4 @@
-// Copyright 2022 CloudWeGo Authors
+// Copyright 2024 CloudWeGo Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,61 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !windows
-// +build !windows
-
 package netpoll
 
-import (
-	"context"
-	"io"
-	"time"
-)
+import "time"
 
-// SetNumLoops is used to set the number of pollers, generally do not need to actively set.
-// By default, the number of pollers is equal to runtime.GOMAXPROCS(0)/20+1.
-// If the number of cores in your service process is less than 20c, theoretically only one poller is needed.
-// Otherwise you may need to adjust the number of pollers to achieve the best results.
-// Experience recommends assigning a poller every 20c.
-//
-// You can only use SetNumLoops before any connection is created. An example usage:
-//
-//	func init() {
-//	    netpoll.SetNumLoops(...)
-//	}
-func SetNumLoops(numLoops int) error {
-	return setNumLoops(numLoops)
+// Option .
+type Option struct {
+	f func(*options)
 }
 
-// SetLoadBalance sets the load balancing method. Load balancing is always a best effort to attempt
-// to distribute the incoming connections between multiple polls.
-// This option only works when numLoops is set.
-func SetLoadBalance(lb LoadBalance) error {
-	return setLoadBalance(lb)
-}
-
-// Initialize the pollers actively. By default, it's lazy initialized.
-// It's safe to call it multi times.
-func Initialize() {
-	initialize()
-}
-
-func SetLoggerOutput(w io.Writer) {
-	setLoggerOutput(w)
-}
-
-// SetRunner set the runner function for every OnRequest/OnConnect callback
-func SetRunner(f func(ctx context.Context, f func())) {
-	setRunner(f)
-}
-
-// DisableGopool will remove gopool(the goroutine pool used to run OnRequest),
-// which means that OnRequest will be run via `go OnRequest(...)`.
-// Usually, OnRequest will cause stack expansion, which can be solved by reusing goroutine.
-// But if you can confirm that the OnRequest will not cause stack expansion,
-// it is recommended to use DisableGopool to reduce redundancy and improve performance.
-func DisableGopool() error {
-	return disableGopool()
+type options struct {
+	onPrepare    OnPrepare
+	onConnect    OnConnect
+	onDisconnect OnDisconnect
+	onRequest    OnRequest
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
 }
 
 // WithOnPrepare registers the OnPrepare method to EventLoop.
@@ -109,19 +71,4 @@ func WithIdleTimeout(timeout time.Duration) Option {
 	return Option{func(op *options) {
 		op.idleTimeout = timeout
 	}}
-}
-
-// Option .
-type Option struct {
-	f func(*options)
-}
-
-type options struct {
-	onPrepare    OnPrepare
-	onConnect    OnConnect
-	onDisconnect OnDisconnect
-	onRequest    OnRequest
-	readTimeout  time.Duration
-	writeTimeout time.Duration
-	idleTimeout  time.Duration
 }

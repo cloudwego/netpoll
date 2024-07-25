@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os"
 	"runtime"
 	"sync"
@@ -63,6 +62,15 @@ func Assert(t *testing.T, cond bool, val ...interface{}) {
 			t.Fatal("assertion failed")
 		}
 	}
+}
+
+func TestMain(m *testing.M) {
+	// defaultGracefulShutdownCheckInterval will affect shutdown function running time,
+	// so for speed up tests, we change it to 10ms here
+	oldGracefulShutdownCheckInterval := defaultGracefulShutdownCheckInterval
+	defaultGracefulShutdownCheckInterval = time.Millisecond * 10
+	m.Run()
+	defaultGracefulShutdownCheckInterval = oldGracefulShutdownCheckInterval
 }
 
 var testPort int32 = 10000
@@ -270,40 +278,43 @@ func TestGracefulExit(t *testing.T) {
 	MustNil(t, err)
 
 	// exit with processing connections
+	trigger := make(chan struct{})
 	var eventLoop2 = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
-			time.Sleep(10 * time.Second)
+			<-trigger
 			return nil
 		})
 	for i := 0; i < 10; i++ {
-		if i%2 == 0 {
-			var conn, err = DialConnection(network, address, time.Second)
-			MustNil(t, err)
-			_, err = conn.Write(make([]byte, 16))
-			MustNil(t, err)
-		}
+		// connect success
+		var conn, err = DialConnection(network, address, time.Second)
+		MustNil(t, err)
+		_, err = conn.Write(make([]byte, 16))
+		MustNil(t, err)
 	}
-	var ctx2, cancel2 = context.WithTimeout(context.Background(), 5*time.Second)
+	// shutdown timeout
+	var ctx2, cancel2 = context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel2()
 	err = eventLoop2.Shutdown(ctx2)
 	MustTrue(t, err != nil)
 	Equal(t, err.Error(), ctx2.Err().Error())
+	// shutdown success
+	close(trigger)
+	err = eventLoop2.Shutdown(ctx2)
+	MustTrue(t, err == nil)
 
-	// exit with some processing connections
+	// exit with read connections
+	size := 16
 	var eventLoop3 = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
-			time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
-			if l := connection.Reader().Len(); l > 0 {
-				var _, err = connection.Reader().Next(l)
-				MustNil(t, err)
-			}
+			_, err := connection.Reader().Next(size)
+			MustNil(t, err)
 			return nil
 		})
 	for i := 0; i < 10; i++ {
 		var conn, err = DialConnection(network, address, time.Second)
 		MustNil(t, err)
 		if i%2 == 0 {
-			_, err = conn.Write(make([]byte, 16))
+			_, err := conn.Write(make([]byte, size))
 			MustNil(t, err)
 		}
 	}
@@ -409,15 +420,12 @@ func TestCloseConnWhenOnConnect(t *testing.T) {
 func TestServerReadAndClose(t *testing.T) {
 	var network, address = "tcp", getTestAddress()
 	var sendMsg = []byte("hello")
-	var closed int32
 	var loop = newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(len(sendMsg))
 			MustNil(t, err)
-
 			err = connection.Close()
 			MustNil(t, err)
-			atomic.AddInt32(&closed, 1)
 			return nil
 		},
 	)
@@ -429,14 +437,13 @@ func TestServerReadAndClose(t *testing.T) {
 	err = conn.Writer().Flush()
 	MustNil(t, err)
 
-	for atomic.LoadInt32(&closed) == 0 {
+	for conn.IsActive() {
 		runtime.Gosched() // wait for poller close connection
 	}
-	time.Sleep(time.Millisecond * 50)
 	_, err = conn.Writer().WriteBinary(sendMsg)
 	MustNil(t, err)
 	err = conn.Writer().Flush()
-	MustTrue(t, errors.Is(err, ErrConnClosed))
+	Assert(t, errors.Is(err, ErrConnClosed), err)
 
 	err = loop.Shutdown(context.Background())
 	MustNil(t, err)
