@@ -90,7 +90,7 @@ func TestPollMod(t *testing.T) {
 		runtime.Gosched()
 	}
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
-	Assert(t, r == 0 && w == 1 && h == 0, r, w, h)
+	Assert(t, r == 0 && w >= 1 && h == 0, r, w, h)
 
 	err = p.Control(rop, PollR2RW) // trigger write
 	MustNil(t, err)

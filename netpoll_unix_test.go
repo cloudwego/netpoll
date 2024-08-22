@@ -64,15 +64,6 @@ func Assert(t *testing.T, cond bool, val ...interface{}) {
 	}
 }
 
-func TestMain(m *testing.M) {
-	// defaultGracefulShutdownCheckInterval will affect shutdown function running time,
-	// so for speed up tests, we change it to 10ms here
-	oldGracefulShutdownCheckInterval := defaultGracefulShutdownCheckInterval
-	defaultGracefulShutdownCheckInterval = time.Millisecond * 10
-	m.Run()
-	defaultGracefulShutdownCheckInterval = oldGracefulShutdownCheckInterval
-}
-
 var testPort int32 = 10000
 
 // getTestAddress return a unique port for every tests, so all tests will not share a same listerner
