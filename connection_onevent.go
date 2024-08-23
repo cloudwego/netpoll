@@ -234,7 +234,7 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 		var closedBy who
 		for {
 			closedBy = c.status(closing)
-			// close by user or no processable
+			// close by user or not processable
 			if closedBy == user || onRequest == nil || c.Reader().Len() == 0 {
 				break
 			}
@@ -269,6 +269,7 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 		}
 		// task exits
 		panicked = false
+		return
 	}
 	// add new task
 	runTask(c.ctx, task)
