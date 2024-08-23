@@ -134,7 +134,7 @@ func (c *connection) onPrepare(opts *options) (err error) {
 func (c *connection) onConnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
-		atomic.StoreInt32(&c.state, 1)
+		c.changeState(connStateNone, connStateConnected)
 		return
 	}
 	if !c.lock(connecting) {
@@ -142,35 +142,7 @@ func (c *connection) onConnect() {
 		return
 	}
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
-	c.onProcess(
-		// only process when conn active and have unread data
-		func(c *connection) bool {
-			// if onConnect not called
-			if atomic.LoadInt32(&c.state) == 0 {
-				return true
-			}
-			// check for onRequest
-			return onRequest != nil && c.Reader().Len() > 0
-		},
-		func(c *connection) {
-			if atomic.CompareAndSwapInt32(&c.state, 0, 1) {
-				c.ctx = onConnect(c.ctx, c)
-
-				if !c.IsActive() && atomic.CompareAndSwapInt32(&c.state, 1, 2) {
-					// since we hold connecting lock, so we should help to call onDisconnect here
-					var onDisconnect, _ = c.onDisconnectCallback.Load().(OnDisconnect)
-					if onDisconnect != nil {
-						onDisconnect(c.ctx, c)
-					}
-				}
-				c.unlock(connecting)
-				return
-			}
-			if onRequest != nil {
-				_ = onRequest(c.ctx, c)
-			}
-		},
-	)
+	c.onProcess(onConnect, onRequest)
 }
 
 // when onDisconnect called, c.IsActive() must return false
@@ -182,15 +154,15 @@ func (c *connection) onDisconnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
 		// no need lock if onConnect is nil
-		atomic.StoreInt32(&c.state, 2)
+		c.changeState(connStateNone, connStateDisconnected)
 		onDisconnect(c.ctx, c)
 		return
 	}
 	// check if OnConnect finished when onConnect != nil && onDisconnect != nil
-	if atomic.LoadInt32(&c.state) > 0 && c.lock(connecting) { // means OnConnect already finished
+	if c.getState() != connStateNone && c.lock(connecting) { // means OnConnect already finished
 		// protect onDisconnect run once
 		// if CAS return false, means OnConnect already helps to run onDisconnect
-		if atomic.CompareAndSwapInt32(&c.state, 1, 2) {
+		if c.changeState(connStateConnected, connStateDisconnected) {
 			onDisconnect(c.ctx, c)
 		}
 		c.unlock(connecting)
@@ -207,63 +179,66 @@ func (c *connection) onRequest() (needTrigger bool) {
 		return true
 	}
 	// wait onConnect finished first
-	if atomic.LoadInt32(&c.state) == 0 && c.onConnectCallback.Load() != nil {
+	if c.getState() == connStateNone && c.onConnectCallback.Load() != nil {
 		// let onConnect to call onRequest
 		return
 	}
-	processed := c.onProcess(
-		// only process when conn active and have unread data
-		func(c *connection) bool {
-			return c.Reader().Len() > 0
-		},
-		func(c *connection) {
-			_ = onRequest(c.ctx, c)
-		},
-	)
+	processed := c.onProcess(nil, onRequest)
 	// if not processed, should trigger read
 	return !processed
 }
 
-// onProcess is responsible for executing the process function serially,
-// and make sure the connection has been closed correctly if user call c.Close() in process function.
-func (c *connection) onProcess(isProcessable func(c *connection) bool, process func(c *connection)) (processed bool) {
-	if process == nil {
-		return false
-	}
+// onProcess is responsible for executing the onConnect/onRequest function serially,
+// and make sure the connection has been closed correctly if user call c.Close() in onConnect/onRequest function.
+func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (processed bool) {
 	// task already exists
 	if !c.lock(processing) {
 		return false
 	}
-	// add new task
-	var task = func() {
+
+	task := func() {
 		panicked := true
 		defer func() {
+			if !panicked {
+				return
+			}
 			// cannot use recover() here, since we don't want to break the panic stack
-			if panicked {
-				c.unlock(processing)
-				if c.IsActive() {
-					c.Close()
-				} else {
-					c.closeCallback(false, false)
-				}
+			c.unlock(processing)
+			if c.IsActive() {
+				c.Close()
+			} else {
+				c.closeCallback(false, false)
 			}
 		}()
-	START:
-		// `process` must be executed at least once if `isProcessable` in order to cover the `send & close by peer` case.
-		// Then the loop processing must ensure that the connection `IsActive`.
-		if isProcessable(c) {
-			process(c)
+		// trigger onConnect first
+		if onConnect != nil && c.changeState(connStateNone, connStateConnected) {
+			c.ctx = onConnect(c.ctx, c)
+			if !c.IsActive() && c.changeState(connStateConnected, connStateDisconnected) {
+				// since we hold connecting lock, so we should help to call onDisconnect here
+				onDisconnect, _ := c.onDisconnectCallback.Load().(OnDisconnect)
+				if onDisconnect != nil {
+					onDisconnect(c.ctx, c)
+				}
+			}
+			c.unlock(connecting)
 		}
-		// `process` must either eventually read all the input data or actively Close the connection,
+	START:
+		// The `onRequest` must be executed at least once if conn have any readable data,
+		// which is in order to cover the `send & close by peer` case.
+		if onRequest != nil && c.Reader().Len() > 0 {
+			_ = onRequest(c.ctx, c)
+		}
+		// The processing loop must ensure that the connection meets `IsActive`.
+		// `onRequest` must either eventually read all the input data or actively Close the connection,
 		// otherwise the goroutine will fall into a dead loop.
 		var closedBy who
 		for {
 			closedBy = c.status(closing)
 			// close by user or no processable
-			if closedBy == user || !isProcessable(c) {
+			if closedBy == user || onRequest == nil || c.Reader().Len() == 0 {
 				break
 			}
-			process(c)
+			_ = onRequest(c.ctx, c)
 		}
 		// handling callback if connection has been closed.
 		if closedBy != none {
@@ -288,14 +263,14 @@ func (c *connection) onProcess(isProcessable func(c *connection) bool, process f
 			panicked = false
 			return
 		}
-		// double check isProcessable
-		if isProcessable(c) && c.lock(processing) {
+		// double check is processable
+		if onRequest != nil && c.Reader().Len() > 0 && c.lock(processing) {
 			goto START
 		}
 		// task exits
 		panicked = false
-		return
 	}
+	// add new task
 	runTask(c.ctx, task)
 	return true
 }
