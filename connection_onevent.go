@@ -154,7 +154,8 @@ func (c *connection) onDisconnect() {
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	if onConnect == nil {
 		// no need lock if onConnect is nil
-		c.changeState(connStateNone, connStateDisconnected)
+		// it's ok to force set state to disconnected since onConnect is nil
+		c.setState(connStateDisconnected)
 		onDisconnect(c.ctx, c)
 		return
 	}

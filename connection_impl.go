@@ -547,11 +547,10 @@ func (c *connection) getState() connState {
 	return atomic.LoadInt32(&c.state)
 }
 
+func (c *connection) setState(newState connState) {
+	atomic.StoreInt32(&c.state, newState)
+}
+
 func (c *connection) changeState(from, to connState) bool {
-	if from == connStateNone {
-		// state none can change to any state directly
-		atomic.StoreInt32(&c.state, to)
-		return true
-	}
 	return atomic.CompareAndSwapInt32(&c.state, from, to)
 }
