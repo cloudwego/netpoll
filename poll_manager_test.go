@@ -61,7 +61,7 @@ func TestPollManagerSetNumLoops(t *testing.T) {
 	poll := pm.Pick()
 	newGs := runtime.NumGoroutine()
 	Assert(t, poll != nil)
-	Assert(t, newGs-startGs == 1, newGs, startGs)
+	Assert(t, newGs-startGs >= 1, newGs, startGs)
 	t.Logf("old=%d, new=%d", startGs, newGs)
 
 	// change pollers

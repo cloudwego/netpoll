@@ -24,8 +24,14 @@ import (
 	"time"
 )
 
+type connState = int32
+
 const (
 	defaultZeroCopyTimeoutSec = 60
+
+	connStateNone         = 0
+	connStateConnected    = 1
+	connStateDisconnected = 2
 )
 
 // connection is the implement of Connection
@@ -45,9 +51,9 @@ type connection struct {
 	outputBuffer    *LinkBuffer
 	outputBarrier   *barrier
 	supportZeroCopy bool
-	maxSize         int   // The maximum size of data between two Release().
-	bookSize        int   // The size of data that can be read at once.
-	state           int32 // 0: not connected, 1: connected, 2: disconnected. Connection state should be changed sequentially.
+	maxSize         int       // The maximum size of data between two Release().
+	bookSize        int       // The size of data that can be read at once.
+	state           connState // Connection state should be changed sequentially.
 }
 
 var (
@@ -333,7 +339,7 @@ func (c *connection) init(conn Conn, opts *options) (err error) {
 	c.bookSize, c.maxSize = defaultLinkBufferSize, defaultLinkBufferSize
 	c.inputBuffer, c.outputBuffer = NewLinkBuffer(defaultLinkBufferSize), NewLinkBuffer()
 	c.outputBarrier = barrierPool.Get().(*barrier)
-	c.state = 0
+	c.state = connStateNone
 
 	c.initNetFD(conn) // conn must be *netFD{}
 	c.initFDOperator()
@@ -535,4 +541,16 @@ func (c *connection) waitFlush() (err error) {
 		c.operator.Control(PollRW2R)
 		return Exception(ErrWriteTimeout, c.remoteAddr.String())
 	}
+}
+
+func (c *connection) getState() connState {
+	return atomic.LoadInt32(&c.state)
+}
+
+func (c *connection) setState(newState connState) {
+	atomic.StoreInt32(&c.state, newState)
+}
+
+func (c *connection) changeState(from, to connState) bool {
+	return atomic.CompareAndSwapInt32(&c.state, from, to)
 }

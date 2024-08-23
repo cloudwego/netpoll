@@ -32,6 +32,30 @@ import (
 	"time"
 )
 
+func BenchmarkConnectionIO(b *testing.B) {
+	var dataSize = 1024 * 16
+	var writeBuffer = make([]byte, dataSize)
+	var rfd, wfd = GetSysFdPairs()
+	var rconn, wconn = new(connection), new(connection)
+	rconn.init(&netFD{fd: rfd}, &options{onRequest: func(ctx context.Context, connection Connection) error {
+		read, _ := connection.Reader().Next(dataSize)
+		_ = wconn.Reader().Release()
+		_, _ = connection.Writer().WriteBinary(read)
+		_ = connection.Writer().Flush()
+		return nil
+	}})
+	wconn.init(&netFD{fd: wfd}, new(options))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = wconn.WriteBinary(writeBuffer)
+		_ = wconn.Flush()
+		_, _ = wconn.Reader().Next(dataSize)
+		_ = wconn.Reader().Release()
+	}
+}
+
 func TestConnectionWrite(t *testing.T) {
 	var cycle, caps = 10000, 256
 	var msg, buf = make([]byte, caps), make([]byte, caps)
