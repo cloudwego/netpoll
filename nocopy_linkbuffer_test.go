@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -109,6 +110,60 @@ func TestLinkBufferGetBytes(t *testing.T) {
 	}
 	Equal(t, actualLen, expectedLen)
 
+}
+
+func TestLinkBufferGetBytesAndSkip(t *testing.T) {
+	buf := NewLinkBuffer()
+	t.Run("without bs", func(t *testing.T) {
+		var (
+			num         = 10
+			expectedLen = 0
+		)
+		for i := num - 1; i >= 0; i-- {
+			b := int(math.Pow10(i))
+			expectedLen += b
+			n, err := buf.WriteBinary(make([]byte, b))
+			MustNil(t, err)
+			Equal(t, n, b)
+		}
+		buf.Flush()
+		Equal(t, int(buf.length), expectedLen)
+
+		bs := buf.GetBytesAndSkip(nil)
+		actualLen := 0
+		for i := 0; i < len(bs); i++ {
+			actualLen += len(bs[i])
+		}
+		Equal(t, actualLen, expectedLen)
+		Equal(t, buf.Len(), 0)
+		Equal(t, buf.read, buf.flush)
+		Equal(t, buf.read.off, len(buf.read.buf))
+	})
+	t.Run("with bs", func(t *testing.T) {
+		var (
+			num         = 10
+			expectedLen = 0
+		)
+		for i := num - 1; i >= 0; i-- {
+			b := int(math.Pow10(i))
+			expectedLen += b
+			n, err := buf.WriteBinary(make([]byte, b))
+			MustNil(t, err)
+			Equal(t, n, b)
+		}
+		buf.Flush()
+		Equal(t, int(buf.length), expectedLen)
+
+		bs := buf.GetBytesAndSkip(make([][]byte, 5))
+		actualLen := 0
+		for i := 0; i < len(bs); i++ {
+			actualLen += len(bs[i])
+		}
+		Equal(t, actualLen, 1111100000)
+		Equal(t, buf.Len(), 11111)
+		Assert(t, buf.read != buf.flush)
+		Assert(t, buf.read.off+10000 == len(buf.read.buf))
+	})
 }
 
 // TestLinkBufferWithZero test more case with n is invalid.

@@ -630,6 +630,39 @@ func (b *UnsafeLinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 	return p[:i]
 }
 
+// GetBytesAndSkip will read and fill the slice p as much as possible.
+// If p is not passed, return all readable bytes.
+// It will also skip n bytes which has read to the p.
+func (b *UnsafeLinkBuffer) GetBytesAndSkip(p [][]byte) (vs [][]byte) {
+	node, flush := b.read, b.flush
+	if len(p) == 0 {
+		n := 0
+		for ; node != flush; node = node.next {
+			n++
+		}
+		node = b.read
+		p = make([][]byte, n)
+	}
+	var i, n int
+	for i = 0; node != flush && i < len(p); node = node.next {
+		if node.Len() > 0 {
+			p[i] = node.buf[node.off:]
+			i++
+			n += node.Len()
+		}
+	}
+	// read the flush node
+	if i < len(p) && node.Len() > 0 {
+		p[i] = node.buf[node.off:]
+		i++
+		n += node.Len()
+		node.off = len(node.buf)
+	}
+	b.read = node
+	b.recalLen(-n) // re-cal length
+	return p[:i]
+}
+
 // book will grow and malloc buffer to hold data.
 //
 // bookSize: The size of data that can be read at once.
