@@ -214,6 +214,21 @@ func TestDialerThenClose(t *testing.T) {
 	wg.Wait()
 }
 
+func TestNewFDConnection(t *testing.T) {
+	r, w := GetSysFdPairs()
+	rconn, err := NewFDConnection(r)
+	MustNil(t, err)
+	wconn, err := NewFDConnection(w)
+	MustNil(t, err)
+	_, err = rconn.Writer().WriteString("hello")
+	MustNil(t, err)
+	err = rconn.Writer().Flush()
+	MustNil(t, err)
+	buf, err := wconn.Reader().Next(5)
+	MustNil(t, err)
+	Equal(t, string(buf), "hello")
+}
+
 func mockDialerEventLoop(idx int) EventLoop {
 	el, _ := NewEventLoop(func(ctx context.Context, conn Connection) (err error) {
 		defer func() {

@@ -28,6 +28,22 @@ func DialConnection(network, address string, timeout time.Duration) (connection 
 	return defaultDialer.DialConnection(network, address, timeout)
 }
 
+// NewFDConnection create a Connection initialed by any fd
+// It's useful for write unit test for functions have args with the type of netpoll.Connection
+// The typical usage like:
+//
+//	rfd, wfd := netpoll.GetSysFdPairs()
+//	rconn, _ = netpoll.NewFDConnection(rfd)
+//	wconn, _ = netpoll.NewFDConnection(wfd)
+func NewFDConnection(fd int) (Connection, error) {
+	conn := new(connection)
+	err := conn.init(&netFD{fd: fd}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
+}
+
 // NewDialer only support TCP and unix socket now.
 func NewDialer() Dialer {
 	return &dialer{}
