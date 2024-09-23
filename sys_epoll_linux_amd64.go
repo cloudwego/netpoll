@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build arm64
-// +build arm64
+//go:build !arm64 && !loong64
+// +build !arm64,!loong64
 
 package netpoll
 
@@ -21,11 +21,10 @@ import (
 	"syscall"
 )
 
-const EPOLLET = syscall.EPOLLET
-const SYS_EPOLL_WAIT = syscall.SYS_EPOLL_PWAIT
+const EPOLLET = -syscall.EPOLLET
+const SYS_EPOLL_WAIT = syscall.SYS_EPOLL_WAIT
 
 type epollevent struct {
 	events uint32
-	_      int32
 	data   [8]byte // unaligned uintptr
 }

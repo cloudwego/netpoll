@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !arm64 && !loong64
-// +build !arm64,!loong64
+//go:build linux
+// +build linux
 
 package netpoll
 
@@ -22,12 +22,24 @@ import (
 	"unsafe"
 )
 
-const EPOLLET = -syscall.EPOLLET
+//go:linkname entersyscallblock runtime.entersyscallblock
+func entersyscallblock()
 
-type epollevent struct {
-	events uint32
-	data   [8]byte // unaligned uintptr
+//go:linkname exitsyscall runtime.exitsyscall
+func exitsyscall()
+
+//go:nosplit
+func callEntersyscallblock() {
+	entersyscallblock()
 }
+
+//go:nosplit
+func callExitsyscall() {
+	exitsyscall()
+}
+
+//go:noescape
+func BlockSyscall6(num, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, errno uintptr)
 
 // EpollCreate implements epoll_create1.
 func EpollCreate(flag int) (fd int, err error) {
@@ -51,14 +63,28 @@ func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
 // EpollWait implements epoll_wait.
 func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
 	var r0 uintptr
-	var _p0 = unsafe.Pointer(&events[0])
-	if msec == 0 {
-		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
-	} else {
-		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
-	}
+	r0, _, err = syscall.Syscall6(SYS_EPOLL_WAIT, uintptr(epfd), uintptr(unsafe.Pointer(&events[0])), uintptr(len(events)), uintptr(msec), 0, 0)
 	if err == syscall.Errno(0) {
 		err = nil
+	}
+	return int(r0), err
+}
+
+func EpollWaitRaw(epfd int, events []epollevent, msec int) (n int, err error) {
+	var r0 uintptr
+	r0, _, err = syscall.RawSyscall6(SYS_EPOLL_WAIT, uintptr(epfd), uintptr(unsafe.Pointer(&events[0])), uintptr(len(events)), uintptr(msec), 0, 0)
+	if err == syscall.Errno(0) {
+		err = nil
+	}
+	return int(r0), err
+}
+
+func EpollWaitBlock(epfd int, events []epollevent, msec int) (n int, err error) {
+	r0, _, errno := BlockSyscall6(SYS_EPOLL_WAIT, uintptr(epfd), uintptr(unsafe.Pointer(&events[0])), uintptr(len(events)), uintptr(msec), 0, 0)
+	if errno == 0 {
+		err = nil
+	} else {
+		err = syscall.Errno(errno)
 	}
 	return int(r0), err
 }

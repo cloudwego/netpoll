@@ -12,54 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build linux && loong64
-// +build linux,loong64
+//go:build loong64
+// +build loong64
 
 package netpoll
 
 import (
 	"syscall"
-	"unsafe"
 )
 
 const EPOLLET = syscall.EPOLLET
+const SYS_EPOLL_WAIT = syscall.SYS_EPOLL_PWAIT
 
 type epollevent struct {
 	events uint32
 	_      int32
 	data   [8]byte // unaligned uintptr
-}
-
-// EpollCreate implements epoll_create1.
-func EpollCreate(flag int) (fd int, err error) {
-	var r0 uintptr
-	r0, _, err = syscall.RawSyscall(syscall.SYS_EPOLL_CREATE1, uintptr(flag), 0, 0)
-	if err == syscall.Errno(0) {
-		err = nil
-	}
-	return int(r0), err
-}
-
-// EpollCtl implements epoll_ctl.
-func EpollCtl(epfd int, op int, fd int, event *epollevent) (err error) {
-	_, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_CTL, uintptr(epfd), uintptr(op), uintptr(fd), uintptr(unsafe.Pointer(event)), 0, 0)
-	if err == syscall.Errno(0) {
-		err = nil
-	}
-	return err
-}
-
-// EpollWait implements epoll_wait.
-func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
-	var r0 uintptr
-	var _p0 = unsafe.Pointer(&events[0])
-	if msec == 0 {
-		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
-	} else {
-		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
-	}
-	if err == syscall.Errno(0) {
-		err = nil
-	}
-	return int(r0), err
 }
