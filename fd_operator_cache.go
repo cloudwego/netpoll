@@ -28,13 +28,13 @@ func newOperatorCache() *operatorCache {
 }
 
 type operatorCache struct {
-	locked int32
 	first  *FDOperator
 	cache  []*FDOperator
+	locked int32
 	// freelist store the freeable operator
 	// to reduce GC pressure, we only store op index here
-	freelist   []int32
 	freelocked int32
+	freelist   []int32
 }
 
 func (c *operatorCache) alloc() *FDOperator {
