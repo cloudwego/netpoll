@@ -69,6 +69,10 @@ func (c *connection) onClose() error {
 
 // closeBuffer recycle input & output LinkBuffer.
 func (c *connection) closeBuffer() {
+	// if c is not closed by user, we shouldn't reuse buffer because user may still hold the buffer
+	if !c.isCloseBy(user) {
+		return
+	}
 	var onConnect, _ = c.onConnectCallback.Load().(OnConnect)
 	var onRequest, _ = c.onRequestCallback.Load().(OnRequest)
 	// if client close the connection, we cannot ensure that the poller is not process the buffer,
