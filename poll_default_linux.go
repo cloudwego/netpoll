@@ -97,13 +97,23 @@ func (p *defaultPoll) Wait() (err error) {
 		if n == p.size && p.size < 128*1024 {
 			p.Reset(p.size<<1, caps)
 		}
-		n, err = EpollWait(p.fd, p.events, msec)
+		// msec: 0(raw) => 1ms(sched,raw) => -1(block_syscall)
+		// poller's G will hold P at most 1ms
+		if msec >= 0 {
+			n, err = EpollWaitRaw(p.fd, p.events, msec)
+		} else { // < 0
+			n, err = EpollWaitBlock(p.fd, p.events, msec)
+		}
 		if err != nil && err != syscall.EINTR {
 			return err
 		}
 		if n <= 0 {
-			msec = -1
-			runtime.Gosched()
+			if msec > 0 {
+				msec = -1 // no need to sched, because we will use block syscall
+			} else if msec == 0 {
+				msec = 1
+				runtime.Gosched()
+			}
 			continue
 		}
 		msec = 0
