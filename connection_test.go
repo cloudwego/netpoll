@@ -33,10 +33,10 @@ import (
 )
 
 func BenchmarkConnectionIO(b *testing.B) {
-	var dataSize = 1024 * 16
-	var writeBuffer = make([]byte, dataSize)
-	var rfd, wfd = GetSysFdPairs()
-	var rconn, wconn = new(connection), new(connection)
+	dataSize := 1024 * 16
+	writeBuffer := make([]byte, dataSize)
+	rfd, wfd := GetSysFdPairs()
+	rconn, wconn := new(connection), new(connection)
 	rconn.init(&netFD{fd: rfd}, &options{onRequest: func(ctx context.Context, connection Connection) error {
 		read, _ := connection.Reader().Next(dataSize)
 		_ = wconn.Reader().Release()
@@ -57,13 +57,13 @@ func BenchmarkConnectionIO(b *testing.B) {
 }
 
 func TestConnectionWrite(t *testing.T) {
-	var cycle, caps = 10000, 256
-	var msg, buf = make([]byte, caps), make([]byte, caps)
+	cycle, caps := 10000, 256
+	msg, buf := make([]byte, caps), make([]byte, caps)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	var count int32
-	var expect = int32(cycle * caps)
-	var opts = &options{}
+	expect := int32(cycle * caps)
+	opts := &options{}
 	opts.onRequest = func(ctx context.Context, connection Connection) error {
 		n, err := connection.Read(buf)
 		MustNil(t, err)
@@ -74,7 +74,7 @@ func TestConnectionWrite(t *testing.T) {
 	}
 
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, opts)
 	wconn.init(&netFD{fd: w}, opts)
 
@@ -91,10 +91,10 @@ func TestConnectionWrite(t *testing.T) {
 func TestConnectionLargeWrite(t *testing.T) {
 	// ci machine don't have 4GB memory, so skip test
 	t.Skipf("skip large write test for ci job")
-	var totalSize = 1024 * 1024 * 1024 * 4
+	totalSize := 1024 * 1024 * 1024 * 4
 	var wg sync.WaitGroup
 	wg.Add(1)
-	var opts = &options{}
+	opts := &options{}
 	opts.onRequest = func(ctx context.Context, connection Connection) error {
 		if connection.Reader().Len() < totalSize {
 			return nil
@@ -108,7 +108,7 @@ func TestConnectionLargeWrite(t *testing.T) {
 	}
 
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, opts)
 	wconn.init(&netFD{fd: w}, opts)
 
@@ -124,15 +124,15 @@ func TestConnectionLargeWrite(t *testing.T) {
 
 func TestConnectionRead(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	err := rconn.init(&netFD{fd: r}, nil)
 	MustNil(t, err)
 	err = wconn.init(&netFD{fd: w}, nil)
 	MustNil(t, err)
 
-	var size = 256
-	var cycleTime = 1000
-	var msg = make([]byte, size)
+	size := 256
+	cycleTime := 1000
+	msg := make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -162,14 +162,14 @@ func TestConnectionNoCopyReadString(t *testing.T) {
 	}()
 
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 	wconn.init(&netFD{fd: w}, nil)
 
-	var size, cycleTime = 256, 100
+	size, cycleTime := 256, 100
 	// record historical data, check data consistency
-	var readBucket = make([]string, cycleTime)
-	var trigger = make(chan struct{})
+	readBucket := make([]string, cycleTime)
+	trigger := make(chan struct{})
 
 	// read data
 	go func() {
@@ -188,7 +188,7 @@ func TestConnectionNoCopyReadString(t *testing.T) {
 	}()
 
 	// write data
-	var msg = make([]byte, size)
+	msg := make([]byte, size)
 	for i := 0; i < cycleTime; i++ {
 		byt := 'a' + byte(i%26)
 		for c := 0; c < size; c++ {
@@ -213,15 +213,15 @@ func TestConnectionNoCopyReadString(t *testing.T) {
 
 func TestConnectionReadAfterClosed(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn = &connection{}
+	rconn := &connection{}
 	rconn.init(&netFD{fd: r}, nil)
-	var size = 256
-	var msg = make([]byte, size)
+	size := 256
+	msg := make([]byte, size)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var buf, err = rconn.Reader().Next(size)
+		buf, err := rconn.Reader().Next(size)
 		MustNil(t, err)
 		Equal(t, len(buf), size)
 	}()
@@ -233,10 +233,10 @@ func TestConnectionReadAfterClosed(t *testing.T) {
 
 func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn = &connection{}
+	rconn := &connection{}
 	rconn.init(&netFD{fd: r}, nil)
-	var size = pagesize * 2
-	var msg = make([]byte, size)
+	size := pagesize * 2
+	msg := make([]byte, size)
 
 	// write half packet
 	syscall.Write(w, msg[:size/2])
@@ -250,7 +250,7 @@ func TestConnectionWaitReadHalfPacket(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var buf, err = rconn.Reader().Next(size)
+		buf, err := rconn.Reader().Next(size)
 		Equal(t, atomic.LoadInt64(&rconn.waitReadSize), int64(0))
 		MustNil(t, err)
 		Equal(t, len(buf), size)
@@ -323,7 +323,7 @@ func TestLargeBufferWrite(t *testing.T) {
 	wg.Add(1)
 	bufferSize := 2 * 1024 * 1024 // 2MB
 	round := 128
-	//start large buffer writing
+	// start large buffer writing
 	go func() {
 		defer wg.Done()
 		for i := 1; i <= round+1; i++ {
@@ -410,11 +410,11 @@ func TestConnectionLargeMemory(t *testing.T) {
 	runtime.ReadMemStats(&start)
 
 	r, w := GetSysFdPairs()
-	var rconn = &connection{}
+	rconn := &connection{}
 	rconn.init(&netFD{fd: r}, nil)
 
 	var wg sync.WaitGroup
-	var rn, wn = 1024, 1 * 1024 * 1024
+	rn, wn := 1024, 1*1024*1024
 
 	wg.Add(1)
 	go func() {
@@ -423,7 +423,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 		MustNil(t, err)
 	}()
 
-	var msg = make([]byte, rn)
+	msg := make([]byte, rn)
 	for i := 0; i < wn/rn; i++ {
 		n, err := syscall.Write(w, msg)
 		if err != nil {
@@ -441,6 +441,7 @@ func TestConnectionLargeMemory(t *testing.T) {
 // TestSetTCPNoDelay is used to verify the connection initialization set the TCP_NODELAY correctly
 func TestSetTCPNoDelay(t *testing.T) {
 	fd, err := sysSocket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	MustNil(t, err)
 	conn := &connection{}
 	conn.init(&netFD{network: "tcp", fd: fd}, nil)
 
@@ -602,9 +603,10 @@ func TestParallelShortConnection(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		//t.Logf("conn[%s] received: %d, active: %v", connection.RemoteAddr(), len(data), connection.IsActive())
+		// t.Logf("conn[%s] received: %d, active: %v", connection.RemoteAddr(), len(data), connection.IsActive())
 		return nil
 	})
+	MustNil(t, err)
 	go func() {
 		el.Serve(ln)
 	}()
@@ -654,7 +656,7 @@ func TestConnectionServerClose(t *testing.T) {
 	var wg sync.WaitGroup
 	el, err := NewEventLoop(
 		func(ctx context.Context, connection Connection) error {
-			//t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
+			// t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			buf, err := connection.Reader().Next(len(PONG)) // pong
 			Equal(t, string(buf), PONG)
@@ -677,18 +679,20 @@ func TestConnectionServerClose(t *testing.T) {
 			err = connection.Writer().Flush()
 			MustNil(t, err)
 			connection.AddCloseCallback(func(connection Connection) error {
-				//t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
+				// t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
 				wg.Done()
 				return nil
 			})
 			return ctx
 		}),
 		WithOnPrepare(func(connection Connection) context.Context {
-			//t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
+			// t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			return context.WithValue(context.Background(), "prepare", "true")
 		}),
 	)
+	MustNil(t, err)
+
 	defer el.Shutdown(context.Background())
 	go func() {
 		err := el.Serve(ln)
@@ -725,7 +729,7 @@ func TestConnectionServerClose(t *testing.T) {
 			err = conn.SetOnRequest(clientOnRequest)
 			MustNil(t, err)
 			conn.AddCloseCallback(func(connection Connection) error {
-				//t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
+				// t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
 				defer wg.Done()
 				return nil
 			})

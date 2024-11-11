@@ -20,14 +20,9 @@ import (
 	"time"
 )
 
-var (
-	// aLongTimeAgo is a non-zero time, far in the past, used for
-	// immediate cancelation of dials.
-	aLongTimeAgo = time.Unix(1, 0)
-	// nonDeadline and noCancel are just zero values for
-	// readability with functions taking too many parameters.
-	noDeadline = time.Time{}
-)
+// nonDeadline and noCancel are just zero values for
+// readability with functions taking too many parameters.
+var noDeadline = time.Time{}
 
 type netFD struct {
 	// file descriptor
@@ -55,7 +50,7 @@ type netFD struct {
 }
 
 func newNetFD(fd, family, sotype int, net string) *netFD {
-	var ret = &netFD{}
+	ret := &netFD{}
 	ret.fd = fd
 	ret.network = net
 	ret.family = family

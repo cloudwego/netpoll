@@ -44,7 +44,7 @@ const ErrnoMask = 0xFF
 
 // wrap Errno, implement xerrors.Wrapper
 func Exception(err error, suffix string) error {
-	var no, ok = err.(syscall.Errno)
+	no, ok := err.(syscall.Errno)
 	if !ok {
 		if suffix == "" {
 			return err
@@ -54,9 +54,7 @@ func Exception(err error, suffix string) error {
 	return &exception{no: no, suffix: suffix}
 }
 
-var (
-	_ net.Error = (*exception)(nil)
-)
+var _ net.Error = (*exception)(nil)
 
 type exception struct {
 	no     syscall.Errno
@@ -100,10 +98,7 @@ func (e *exception) Timeout() bool {
 	case ErrDialTimeout, ErrReadTimeout, ErrWriteTimeout:
 		return true
 	}
-	if e.no.Timeout() {
-		return true
-	}
-	return false
+	return e.no.Timeout()
 }
 
 func (e *exception) Temporary() bool {

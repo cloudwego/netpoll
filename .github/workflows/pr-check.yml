@@ -6,13 +6,8 @@ jobs:
   compatibility-test:
     strategy:
       matrix:
-        go: [ 1.15, 1.22 ]
-        # - "ubuntu-latest" is for Linux with X64 CPU, hosted by GitHub,
-        # fewer CPUs but high speed international network
-        # - "ARM64" is for Linux with ARM64 CPU, hosted by bytedance,
-        # more CPUs but inside CN internet which may download go cache slowly.
-        # GitHub don't have free runner with ARM CPU.
-        os: [ ubuntu-latest, ARM64 ]
+        go: [ 1.18, 1.23 ]
+        os: [ X64, ARM64 ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -20,10 +15,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
+          cache: false
       - name: Unit Test
-        run: go test -timeout=2m -v -race -covermode=atomic -coverprofile=coverage.out ./...
+        run: go test -timeout=2m -race ./...
       - name: Benchmark
-        run: go test -bench=. -benchmem -run=none ./...
+        run: go test -bench=. -benchmem -run=none ./... -benchtime=100ms
+
   windows-test:
     runs-on: windows-latest
     steps:
@@ -31,22 +28,38 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22
+          go-version: stable
       - name: Build Test
-        run: go vet -v ./...
-  style-test:
+        run: go vet ./...
+
+  compliant:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check License Header
+        uses: apache/skywalking-eyes/header@v0.4.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Spell
+        uses: crate-ci/typos@v1.13.14
+
+  golangci-lint:
+    runs-on: [ self-hosted, X64 ]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.16
-      - name: Check License Header
-        uses: apache/skywalking-eyes/header@v0.4.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Lint
-        run: |
-          test -z "$(gofmt -s -l .)"
-          go vet -stdmethods=false $(go list ./...)
+          go-version: stable
+          # for self-hosted, the cache path is shared across projects
+          # and it works well without the cache of github actions
+          # Enable it if we're going to use Github only
+          cache: false
+
+      - name: Golangci Lint
+        # https://golangci-lint.run/
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest

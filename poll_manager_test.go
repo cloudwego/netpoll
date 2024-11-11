@@ -25,13 +25,13 @@ import (
 
 func TestPollManager(t *testing.T) {
 	r, w := GetSysFdPairs()
-	var rconn, wconn = &connection{}, &connection{}
+	rconn, wconn := &connection{}, &connection{}
 	err := rconn.init(&netFD{fd: r}, nil)
 	MustNil(t, err)
 	err = wconn.init(&netFD{fd: w}, nil)
 	MustNil(t, err)
 
-	var msg = []byte("hello world")
+	msg := []byte("hello world")
 	n, err := wconn.Write(msg)
 	MustNil(t, err)
 	Equal(t, n, len(msg))
@@ -75,7 +75,6 @@ func TestPollManagerSetNumLoops(t *testing.T) {
 	// trigger polls adjustment
 	var wg sync.WaitGroup
 	finish := make(chan struct{})
-	oldGs = startGs + 32 // 32 self goroutines
 	for i := 0; i < 32; i++ {
 		wg.Add(1)
 		go func() {

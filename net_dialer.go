@@ -105,7 +105,7 @@ func (d *dialer) dialTCP(ctx context.Context, network, address string) (connecti
 	}
 
 	var firstErr error // The error from the first address is most relevant.
-	var tcpAddr = &TCPAddr{}
+	tcpAddr := &TCPAddr{}
 	for _, ipaddr := range ipaddrs {
 		tcpAddr.IP = ipaddr.IP
 		tcpAddr.Port = portnum

@@ -28,5 +28,4 @@ func (p *defaultPoll) setOperator(ptr unsafe.Pointer, operator *FDOperator) {
 }
 
 func (p *defaultPoll) delOperator(operator *FDOperator) {
-
 }

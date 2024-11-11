@@ -27,7 +27,7 @@ func TestPersistFDOperator(t *testing.T) {
 	opcache := newOperatorCache()
 	// init
 	size := 2048
-	var ops = make([]*FDOperator, size)
+	ops := make([]*FDOperator, size)
 	for i := 0; i < size; i++ {
 		op := opcache.alloc()
 		op.FD = i
