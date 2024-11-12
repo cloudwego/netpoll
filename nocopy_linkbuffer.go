@@ -31,17 +31,19 @@ const BinaryInplaceThreshold = block4k
 // LinkBufferCap that can be modified marks the minimum value of each node of LinkBuffer.
 var LinkBufferCap = block4k
 
-var _ Reader = &LinkBuffer{}
-var _ Writer = &LinkBuffer{}
+var (
+	_ Reader = &LinkBuffer{}
+	_ Writer = &LinkBuffer{}
+)
 
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
-	var buf = &LinkBuffer{}
+	buf := &LinkBuffer{}
 	var l int
 	if len(size) > 0 {
 		l = size[0]
 	}
-	var node = newLinkBufferNode(l)
+	node := newLinkBufferNode(l)
 	buf.head, buf.read, buf.flush, buf.write = node, node, node, node
 	return buf
 }
@@ -343,7 +345,7 @@ func (b *UnsafeLinkBuffer) Slice(n int) (r Reader, err error) {
 		return p, nil
 	}
 	// multiple nodes
-	var l = b.read.Len()
+	l := b.read.Len()
 	node := b.read.Refer(l)
 	b.read = b.read.next
 
@@ -428,7 +430,7 @@ func (b *UnsafeLinkBuffer) Flush() (err error) {
 
 // Append implements Writer.
 func (b *UnsafeLinkBuffer) Append(w Writer) (err error) {
-	var buf, ok = w.(*LinkBuffer)
+	buf, ok := w.(*LinkBuffer)
 	if !ok {
 		return errors.New("unsupported writer which is not LinkBuffer")
 	}
@@ -683,7 +685,6 @@ func (b *UnsafeLinkBuffer) resetTail(maxSize int) {
 	b.write.next = newLinkBufferNode(0)
 	b.write = b.write.next
 	b.flush = b.write
-	return
 }
 
 // indexByte returns the index of the first instance of c in buffer, or -1 if c is not present in buffer.
@@ -778,7 +779,7 @@ func (b *LinkBuffer) memorySize() (bytes int) {
 // newLinkBufferNode create or reuse linkBufferNode.
 // Nodes with size <= 0 are marked as readonly, which means the node.buf is not allocated by this mcache.
 func newLinkBufferNode(size int) *linkBufferNode {
-	var node = linkedPool.Get().(*linkBufferNode)
+	node := linkedPool.Get().(*linkBufferNode)
 	// reset node offset
 	node.off, node.malloc, node.refer, node.mode = 0, 0, 1, defaultLinkBufferMode
 	if size <= 0 {
@@ -824,7 +825,6 @@ func (node *linkBufferNode) Reset() {
 	}
 	node.off, node.malloc = 0, 0
 	node.buf = node.buf[:0]
-	return
 }
 
 func (node *linkBufferNode) Next(n int) (p []byte) {

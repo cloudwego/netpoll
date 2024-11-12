@@ -30,8 +30,8 @@ import (
 func TestPollTrigger(t *testing.T) {
 	t.Skip()
 	var trigger int
-	var stop = make(chan error)
-	var p, err = openDefaultPoll()
+	stop := make(chan error)
+	p, err := openDefaultPoll()
 	MustNil(t, err)
 
 	go func() {
@@ -54,28 +54,28 @@ func TestPollTrigger(t *testing.T) {
 
 func TestPollMod(t *testing.T) {
 	var rn, wn, hn int32
-	var read = func(p Poll) error {
+	read := func(p Poll) error {
 		atomic.AddInt32(&rn, 1)
 		return nil
 	}
-	var write = func(p Poll) error {
+	write := func(p Poll) error {
 		atomic.AddInt32(&wn, 1)
 		return nil
 	}
-	var hup = func(p Poll) error {
+	hup := func(p Poll) error {
 		atomic.AddInt32(&hn, 1)
 		return nil
 	}
-	var stop = make(chan error)
-	var p, err = openDefaultPoll()
+	stop := make(chan error)
+	p, err := openDefaultPoll()
 	MustNil(t, err)
 	go func() {
 		stop <- p.Wait()
 	}()
 
-	var rfd, wfd = GetSysFdPairs()
-	var rop = &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
-	var wop = &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
+	rfd, wfd := GetSysFdPairs()
+	rop := &FDOperator{FD: rfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
+	wop := &FDOperator{FD: wfd, OnRead: read, OnWrite: write, OnHup: hup, poll: p}
 	var r, w, h int32
 	r, w, h = atomic.LoadInt32(&rn), atomic.LoadInt32(&wn), atomic.LoadInt32(&hn)
 	Assert(t, r == 0 && w == 0 && h == 0, r, w, h)
@@ -115,7 +115,7 @@ func TestPollMod(t *testing.T) {
 }
 
 func TestPollClose(t *testing.T) {
-	var p, err = openDefaultPoll()
+	p, err := openDefaultPoll()
 	MustNil(t, err)
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -129,9 +129,9 @@ func TestPollClose(t *testing.T) {
 
 func BenchmarkPollMod(b *testing.B) {
 	b.StopTimer()
-	var p, _ = openDefaultPoll()
+	p, _ := openDefaultPoll()
 	r, _ := GetSysFdPairs()
-	var operator = &FDOperator{FD: r}
+	operator := &FDOperator{FD: r}
 	p.Control(operator, PollReadable)
 
 	// benchmark

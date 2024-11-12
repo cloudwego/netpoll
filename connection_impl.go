@@ -484,8 +484,8 @@ func (c *connection) flush() error {
 		return nil
 	}
 	// TODO: Let the upper layer pass in whether to use ZeroCopy.
-	var bs = c.outputBuffer.GetBytes(c.outputBarrier.bs)
-	var n, err = sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
+	bs := c.outputBuffer.GetBytes(c.outputBarrier.bs)
+	n, err := sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
 	if err != nil && err != syscall.EAGAIN {
 		return Exception(err, "when flush")
 	}
@@ -510,10 +510,7 @@ func (c *connection) flush() error {
 
 func (c *connection) waitFlush() (err error) {
 	if c.writeTimeout == 0 {
-		select {
-		case err = <-c.writeTrigger:
-		}
-		return err
+		return <-c.writeTrigger
 	}
 
 	// set write timeout

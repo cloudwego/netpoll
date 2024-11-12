@@ -28,16 +28,16 @@ func openPoll() (Poll, error) {
 }
 
 func openDefaultPoll() (*defaultPoll, error) {
-	var poll = new(defaultPoll)
+	poll := new(defaultPoll)
 
 	poll.buf = make([]byte, 8)
-	var p, err = EpollCreate(0)
+	p, err := EpollCreate(0)
 	if err != nil {
 		return nil, err
 	}
 	poll.fd = p
 
-	var r0, _, e0 = syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
+	r0, _, e0 := syscall.Syscall(syscall.SYS_EVENTFD2, 0, 0, 0)
 	if e0 != 0 {
 		_ = syscall.Close(poll.fd)
 		return nil, e0
@@ -63,7 +63,7 @@ type defaultPoll struct {
 	wop     *FDOperator    // eventfd, wake epoll_wait
 	buf     []byte         // read wfd trigger msg
 	trigger uint32         // trigger flag
-	m       sync.Map       // only used in go:race
+	m       sync.Map       //nolint:unused // only used in go:race
 	opcache *operatorCache // operator cache
 	// fns for handle events
 	Reset   func(size, caps int)
@@ -90,7 +90,7 @@ func (a *pollArgs) reset(size, caps int) {
 // Wait implements Poll.
 func (p *defaultPoll) Wait() (err error) {
 	// init
-	var caps, msec, n = barriercap, -1, 0
+	caps, msec, n := barriercap, -1, 0
 	p.Reset(128, caps)
 	// wait
 	for {
@@ -153,9 +153,9 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				operator.OnRead(p)
 			} else if operator.Inputs != nil {
 				// for connection
-				var bs = operator.Inputs(p.barriers[i].bs)
+				bs := operator.Inputs(p.barriers[i].bs)
 				if len(bs) > 0 {
-					var n, err = ioread(operator.FD, bs, p.barriers[i].ivs)
+					n, err := ioread(operator.FD, bs, p.barriers[i].ivs)
 					operator.InputAck(n)
 					totalRead += n
 					if err != nil {
@@ -199,10 +199,10 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				operator.OnWrite(p)
 			} else if operator.Outputs != nil {
 				// for connection
-				var bs, supportZeroCopy = operator.Outputs(p.barriers[i].bs)
+				bs, supportZeroCopy := operator.Outputs(p.barriers[i].bs)
 				if len(bs) > 0 {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
-					var n, err = iosend(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
+					n, err := iosend(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
 					operator.OutputAck(n)
 					if err != nil {
 						p.appendHup(operator)
@@ -243,7 +243,7 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	// op.inuse()       op.unused()
 	// op.FD  -- T1     op.FD = 0  -- T2
 	// T1 and T2 may happen together
-	var fd = operator.FD
+	fd := operator.FD
 	var op int
 	var evt epollevent
 	p.setOperator(unsafe.Pointer(&evt.data), operator)

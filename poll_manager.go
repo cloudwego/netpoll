@@ -88,7 +88,7 @@ func (m *manager) Run() (err error) {
 	if numLoops == len(m.polls) {
 		return nil
 	}
-	var polls = make([]Poll, numLoops)
+	polls := make([]Poll, numLoops)
 	if numLoops < len(m.polls) {
 		// shrink polls
 		copy(polls, m.polls[:numLoops])
