@@ -276,13 +276,13 @@ func unsafeSliceToString(b []byte) string {
 }
 
 // zero-copy slice convert to string
-func unsafeStringToSlice(s string) (b []byte) {
-	p := unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&s)).Data)
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	hdr.Data = uintptr(p)
-	hdr.Cap = len(s)
-	hdr.Len = len(s)
-	return b
+func unsafeStringToSlice(s string) []byte {
+	return *(*[]byte)(unsafe.Pointer(
+		&struct {
+			string
+			int
+		}{s, len(s)},
+	))
 }
 
 // malloc limits the cap of the buffer from mcache.
