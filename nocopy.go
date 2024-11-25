@@ -16,7 +16,6 @@ package netpoll
 
 import (
 	"io"
-	"reflect"
 	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
