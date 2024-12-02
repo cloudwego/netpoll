@@ -27,7 +27,7 @@ import (
 )
 
 func TestEpollEvent(t *testing.T) {
-	var epollfd, err = EpollCreate(0)
+	epollfd, err := EpollCreate(0)
 	MustNil(t, err)
 	defer syscall.Close(epollfd)
 
@@ -83,6 +83,7 @@ func TestEpollEvent(t *testing.T) {
 	MustNil(t, err)
 	n, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
+	Equal(t, n, 1)
 	Equal(t, events[0].data, eventdata3)
 	_, err = syscall.Read(rfd, recv)
 	MustTrue(t, err == nil && string(recv) == string(send))
@@ -94,7 +95,7 @@ func TestEpollEvent(t *testing.T) {
 }
 
 func TestEpollWait(t *testing.T) {
-	var epollfd, err = EpollCreate(0)
+	epollfd, err := EpollCreate(0)
 	MustNil(t, err)
 	defer syscall.Close(epollfd)
 
@@ -148,6 +149,7 @@ func TestEpollWait(t *testing.T) {
 	rfd2, wfd2 := GetSysFdPairs()
 	defer syscall.Close(wfd2)
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd2, event)
+	MustNil(t, err)
 	err = syscall.Close(rfd2)
 	MustNil(t, err)
 	_, err = epollWaitUntil(epollfd, events, -1)
@@ -162,7 +164,7 @@ func TestEpollWait(t *testing.T) {
 }
 
 func TestEpollETClose(t *testing.T) {
-	var epollfd, err = EpollCreate(0)
+	epollfd, err := EpollCreate(0)
 	MustNil(t, err)
 	defer syscall.Close(epollfd)
 	rfd, wfd := GetSysFdPairs()
@@ -175,6 +177,7 @@ func TestEpollETClose(t *testing.T) {
 
 	// EPOLL: init state
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	MustNil(t, err)
 	_, err = epollWaitUntil(epollfd, events, -1)
 	MustNil(t, err)
 	Assert(t, events[0].events&syscall.EPOLLIN == 0)
@@ -196,6 +199,7 @@ func TestEpollETClose(t *testing.T) {
 	// EPOLLIN and EPOLLOUT
 	rfd, wfd = GetSysFdPairs()
 	err = EpollCtl(epollfd, unix.EPOLL_CTL_ADD, rfd, event)
+	MustNil(t, err)
 	err = syscall.Close(wfd)
 	MustNil(t, err)
 	n, err = epollWaitUntil(epollfd, events, 100)
@@ -212,7 +216,7 @@ func TestEpollETClose(t *testing.T) {
 }
 
 func TestEpollETDel(t *testing.T) {
-	var epollfd, err = EpollCreate(0)
+	epollfd, err := EpollCreate(0)
 	MustNil(t, err)
 	defer syscall.Close(epollfd)
 	rfd, wfd := GetSysFdPairs()
@@ -244,7 +248,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 		Port: 12345,
 		Addr: [4]byte{127, 0, 0, 1},
 	}
-	var loop = newTestEventLoop("tcp", "127.0.0.1:12345",
+	loop := newTestEventLoop("tcp", "127.0.0.1:12345",
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(connection.Reader().Len())
 			return err
@@ -252,7 +256,7 @@ func TestEpollConnectSameFD(t *testing.T) {
 	)
 	defer loop.Shutdown(context.Background())
 
-	var epollfd, err = EpollCreate(0)
+	epollfd, err := EpollCreate(0)
 	MustNil(t, err)
 	defer syscall.Close(epollfd)
 	events := make([]epollevent, 128)
@@ -287,8 +291,8 @@ func TestEpollConnectSameFD(t *testing.T) {
 	Assert(t, events[0].events&syscall.EPOLLRDHUP == 0)
 	Assert(t, events[0].events&syscall.EPOLLERR == 0)
 	// forget to del fd
-	//err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, fd1, event1)
-	//MustNil(t, err)
+	// err = EpollCtl(epollfd, unix.EPOLL_CTL_DEL, fd1, event1)
+	// MustNil(t, err)
 	err = syscall.Close(fd1) // close fd1
 	MustNil(t, err)
 

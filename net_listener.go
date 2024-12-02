@@ -89,7 +89,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 		return ln.UDPAccept()
 	}
 	// tcp
-	var fd, sa, err = syscall.Accept(ln.fd)
+	fd, sa, err := syscall.Accept(ln.fd)
 	if err != nil {
 		/* https://man7.org/linux/man-pages/man2/accept.2.html
 		EAGAIN or EWOULDBLOCK
@@ -104,7 +104,7 @@ func (ln *listener) Accept() (net.Conn, error) {
 		}
 		return nil, err
 	}
-	var nfd = &netFD{}
+	nfd := &netFD{}
 	nfd.fd = fd
 	nfd.localAddr = ln.addr
 	nfd.network = ln.addr.Network()

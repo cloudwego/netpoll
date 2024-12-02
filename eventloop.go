@@ -68,13 +68,14 @@ type OnPrepare func(connection Connection) context.Context
 //
 // An example usage in TCP Proxy scenario:
 //
-//  func onConnect(ctx context.Context, upstream netpoll.Connection) context.Context {
-//	  downstream, _ := netpoll.DialConnection("tcp", downstreamAddr, time.Second)
-//	  return context.WithValue(ctx, downstreamKey, downstream)
-//  }
-//  func onRequest(ctx context.Context, upstream netpoll.Connection) error {
-//    downstream := ctx.Value(downstreamKey).(netpoll.Connection)
-//  }
+//	func onConnect(ctx context.Context, upstream netpoll.Connection) context.Context {
+//		downstream, _ := netpoll.DialConnection("tcp", downstreamAddr, time.Second)
+//		return context.WithValue(ctx, downstreamKey, downstream)
+//	}
+//
+//	func onRequest(ctx context.Context, upstream netpoll.Connection) error {
+//		downstream := ctx.Value(downstreamKey).(netpoll.Connection)
+//	}
 type OnConnect func(ctx context.Context, connection Connection) context.Context
 
 // OnDisconnect is called once connection is going to be closed.
@@ -89,7 +90,7 @@ type OnDisconnect func(ctx context.Context, connection Connection)
 //	func OnRequest(ctx context, connection Connection) error {
 //		input := connection.Reader().Next(n)
 //		handling input data...
-//  	send, _ := connection.Writer().Malloc(l)
+//		send, _ := connection.Writer().Malloc(l)
 //		copy(send, output)
 //		connection.Flush()
 //		return nil

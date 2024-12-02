@@ -56,11 +56,10 @@ func (p *defaultPoll) onhups() {
 
 // readall read all left data before close connection
 func readall(op *FDOperator, br barrier) (total int, err error) {
-	var bs = br.bs
-	var ivs = br.ivs
+	ivs := br.ivs
 	var n int
 	for {
-		bs = op.Inputs(br.bs)
+		bs := op.Inputs(br.bs)
 		if len(bs) == 0 {
 			return total, nil
 		}
