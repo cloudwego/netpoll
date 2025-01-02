@@ -21,10 +21,10 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/cloudwego/gopkg/concurrency/gopool"
 )
 
-var runTask = gopool.CtxGo
+var runTask = gopool.GoCtx
 
 func setRunner(runner func(ctx context.Context, f func())) {
 	runTask = runner
