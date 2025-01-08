@@ -21,7 +21,7 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/cloudwego/gopkg/concurrency/gopool"
 )
 
 var runTask = gopool.CtxGo
