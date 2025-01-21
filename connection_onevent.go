@@ -39,11 +39,6 @@ func disableGopool() error {
 
 // ------------------------------------ implement OnPrepare, OnRequest, CloseCallback ------------------------------------
 
-type gracefulExit interface {
-	isIdle() (yes bool)
-	Close() (err error)
-}
-
 // onEvent is the collection of event processing.
 // OnPrepare, OnRequest, CloseCallback share the lock processing,
 // which is a CAS lock and can only be cleared by OnRequest.
@@ -310,7 +305,6 @@ func (c *connection) register() (err error) {
 	return nil
 }
 
-// isIdle implements gracefulExit.
 func (c *connection) isIdle() (yes bool) {
 	return c.isUnlock(processing) &&
 		c.inputBuffer.IsEmpty() &&

@@ -66,9 +66,13 @@ func (s *server) Close(ctx context.Context) error {
 	for {
 		activeConn := 0
 		s.connections.Range(func(key, value interface{}) bool {
-			conn, ok := value.(gracefulExit)
+			conn, ok := value.(*connection)
 			if !ok || conn.isIdle() {
-				value.(Connection).Close()
+				if conn.wasIdle {
+					value.(Connection).Close()
+				} else {
+					conn.wasIdle = true
+				}
 			} else {
 				activeConn++
 			}
@@ -83,8 +87,8 @@ func (s *server) Close(ctx context.Context) error {
 		waitTime := time.Millisecond * time.Duration(activeConn)
 		if waitTime > time.Second { // max wait time is 1000 ms
 			waitTime = time.Millisecond * 1000
-		} else if waitTime < time.Millisecond*50 { // min wait time is 50 ms
-			waitTime = time.Millisecond * 50
+		} else if waitTime < time.Millisecond*200 { // min wait time is 200 ms
+			waitTime = time.Millisecond * 200
 		}
 		select {
 		case <-ctx.Done():

@@ -54,6 +54,7 @@ type connection struct {
 	maxSize         int       // The maximum size of data between two Release().
 	bookSize        int       // The size of data that can be read at once.
 	state           connState // Connection state should be changed sequentially.
+	wasIdle         bool      // It's for double checking a conn is really idle, avoiding closing a conn that may receive traffic immediately.
 }
 
 var (
