@@ -18,8 +18,11 @@ package runner
 
 import (
 	"context"
+	"os"
+	"strconv"
 
-	"github.com/bytedance/gopkg/util/gopool"
+	bgopool "github.com/bytedance/gopkg/util/gopool"
+	cgopool "github.com/cloudwego/gopkg/concurrency/gopool"
 )
 
 // RunTask runs the `f` in background, and `ctx` is optional.
@@ -31,11 +34,14 @@ func goRunTask(ctx context.Context, f func()) {
 }
 
 func init() {
-	// TODO(xiaost): Disable gopool by default in the future.
-	// Once we move to use gopool of cloudwego/gopkg in other repos,
-	// there should be no reason to continue using bytedance/gopkg version,
-	// and for most users, using the 'go' keyword directly is more suitable.
-	RunTask = gopool.CtxGo
+	// netpoll uses github.com/bytedance/gopkg/util/gopool by default
+	// if the env is set, change it to cloudwego/gopkg
+	// for most users, using the 'go' keyword directly is more suitable.
+	if yes, _ := strconv.ParseBool(os.Getenv("USE_CLOUDWEGO_GOPOOL")); yes {
+		RunTask = cgopool.CtxGo
+	} else {
+		RunTask = bgopool.CtxGo
+	}
 }
 
 // UseGoRunTask updates RunTask with goRunTask which creates
