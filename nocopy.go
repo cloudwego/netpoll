@@ -208,9 +208,17 @@ func NewReader(r io.Reader) Reader {
 	return newZCReader(r)
 }
 
+func NewReaderReuseBuffer(r io.Reader) Reader {
+	return newZCReaderWithSize(r, defaultLinkBufferSize)
+}
+
 // NewWriter convert io.Writer to nocopy Writer
 func NewWriter(w io.Writer) Writer {
 	return newZCWriter(w)
+}
+
+func NewWriterReuseBuffer(w io.Writer) Writer {
+	return newZCWriterWithSize(w, defaultLinkBufferSize)
 }
 
 // NewReadWriter convert io.ReadWriter to nocopy ReadWriter

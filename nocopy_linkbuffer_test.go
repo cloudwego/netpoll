@@ -26,6 +26,10 @@ import (
 	"testing"
 )
 
+func TestLinkBufferReuse(t *testing.T) {
+	//buf := NewLinkBuffer()
+}
+
 func TestLinkBuffer(t *testing.T) {
 	// clean & new
 	LinkBufferCap = 128

@@ -28,6 +28,13 @@ func newZCReader(r io.Reader) *zcReader {
 	}
 }
 
+func newZCReaderWithSize(r io.Reader, s int) *zcReader {
+	return &zcReader{
+		r:   r,
+		buf: NewLinkBuffer(s),
+	}
+}
+
 var _ Reader = &zcReader{}
 
 // zcReader implements Reader.
@@ -62,7 +69,8 @@ func (r *zcReader) Skip(n int) (err error) {
 
 // Release implements Reader.
 func (r *zcReader) Release() (err error) {
-	return r.buf.Release()
+	//return r.buf.Release()
+	return r.buf.ReleaseWritten()
 }
 
 // Slice implements Reader.
@@ -123,7 +131,7 @@ func (r *zcReader) waitRead(n int) (err error) {
 func (r *zcReader) fill(n int) (err error) {
 	var buf []byte
 	var num int
-	for i := 0; i < maxReadCycle && r.buf.Len() < n && err == nil; i++ {
+	for i := 0; i < maxReadCycle && r.buf.Len() < n; i++ {
 		buf, err = r.buf.Malloc(block4k)
 		if err != nil {
 			return err
@@ -151,6 +159,13 @@ func newZCWriter(w io.Writer) *zcWriter {
 	}
 }
 
+func newZCWriterWithSize(w io.Writer, s int) *zcWriter {
+	return &zcWriter{
+		w:   w,
+		buf: NewLinkBuffer(s),
+	}
+}
+
 var _ Writer = &zcWriter{}
 
 // zcWriter implements Writer.
@@ -175,7 +190,7 @@ func (w *zcWriter) Flush() (err error) {
 	n, err := w.w.Write(w.buf.Bytes())
 	if n > 0 {
 		w.buf.Skip(n)
-		w.buf.Release()
+		w.buf.Release() //Written()
 	}
 	return err
 }

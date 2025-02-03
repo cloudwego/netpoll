@@ -205,6 +205,7 @@ func (b *UnsafeLinkBuffer) Skip(n int) (err error) {
 // Release the node that has been read.
 // b.flush == nil indicates that this LinkBuffer is created by LinkBuffer.Slice
 func (b *UnsafeLinkBuffer) Release() (err error) {
+	//logger.Printf("Release the buffer\n")
 	for b.read != b.flush && b.read.Len() == 0 {
 		b.read = b.read.next
 	}
@@ -221,6 +222,15 @@ func (b *UnsafeLinkBuffer) Release() (err error) {
 	if b.cachePeek != nil {
 		free(b.cachePeek)
 		b.cachePeek = nil
+	}
+	return nil
+}
+
+func (b *UnsafeLinkBuffer) ReleaseWritten() error {
+	for b.flush != b.write.next {
+		node := b.flush
+		b.flush = b.flush.next
+		node.Release()
 	}
 	return nil
 }
@@ -871,6 +881,7 @@ func (node *linkBufferNode) Release() (err error) {
 	if atomic.AddInt32(&node.refer, -1) == 0 {
 		// readonly nodes cannot recycle node.buf, other node.buf are recycled to mcache.
 		if node.reusable() {
+			//logger.Printf("reuse the buffer\n")
 			free(node.buf)
 		}
 		node.buf, node.origin, node.next = nil, nil, nil
