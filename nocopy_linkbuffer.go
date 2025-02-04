@@ -38,6 +38,28 @@ var (
 	_ Writer = &LinkBuffer{}
 )
 
+var linkBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &LinkBuffer{}
+	},
+}
+
+func NewLinkBufferFromPool(size ...int) *LinkBuffer {
+	buf := linkBufferPool.Get().(*LinkBuffer)
+	var l int
+	if len(size) > 0 {
+		l = size[0]
+	}
+	node := newLinkBufferNode(l)
+	buf.head, buf.read, buf.flush, buf.write = node, node, node, node
+	return buf
+}
+
+func ReleaseLinkBuffer(buf *LinkBuffer) {
+	buf.Release()
+	buf.head, buf.read, buf.flush, buf.write = nil, nil, nil, nil
+}
+
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
 	buf := &LinkBuffer{}

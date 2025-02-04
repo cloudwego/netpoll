@@ -31,7 +31,7 @@ func newZCReader(r io.Reader) *zcReader {
 func newZCReaderWithSize(r io.Reader, s int) *zcReader {
 	return &zcReader{
 		r:   r,
-		buf: NewLinkBuffer(s),
+		buf: NewLinkBufferFromPool(s),
 	}
 }
 
@@ -162,7 +162,7 @@ func newZCWriter(w io.Writer) *zcWriter {
 func newZCWriterWithSize(w io.Writer, s int) *zcWriter {
 	return &zcWriter{
 		w:   w,
-		buf: NewLinkBuffer(s),
+		buf: NewLinkBufferFromPool(s),
 	}
 }
 
