@@ -187,10 +187,15 @@ func (w *zcWriter) MallocLen() (length int) {
 // Flush implements Writer.
 func (w *zcWriter) Flush() (err error) {
 	w.buf.Flush()
+	bufLen := w.buf.Len()
 	n, err := w.w.Write(w.buf.Bytes())
 	if n > 0 {
 		w.buf.Skip(n)
-		w.buf.Release() //Written()
+	}
+	if n == bufLen {
+		w.buf.ReleaseWritten()
+	} else {
+		logger.Printf("write partial\n")
 	}
 	return err
 }
