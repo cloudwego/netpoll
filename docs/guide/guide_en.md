@@ -3,7 +3,7 @@
 This tutorial gets you started with [Netpoll][Netpoll] through some simple [examples][Examples], includes how to
 use [Server](#1-use-sever), [Client](#2-use-dialer) and [nocopy APIs](#3-use-nocopy-api).
 
-## 1. Use Sever
+## 1. Use Server
 
 [Here][server-example] is a simple server demo, we will explain how it is constructed next.
 
