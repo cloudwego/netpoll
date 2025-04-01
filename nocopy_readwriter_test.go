@@ -50,6 +50,36 @@ func TestZCReader(t *testing.T) {
 	MustNil(t, err)
 }
 
+func TestZCReaderReuse(t *testing.T) {
+	reader := &MockIOReadWriter{
+		read: func(p []byte) (n int, err error) {
+			copy(p, make([]byte, len(p)))
+			return len(p), nil
+		},
+	}
+	r := newZCReaderWithSize(reader, 4096)
+	buf, err := r.buf.Malloc(10)
+	MustNil(t, err)
+	buf[0] = 1
+	r.buf.write.buf = r.buf.write.buf[:10]
+	MustTrue(t, r.buf.write.buf[0] == buf[0])
+	r.Release()
+}
+
+func TestZCWriterReuse(t *testing.T) {
+	writer := &MockIOReadWriter{
+		write: func(p []byte) (n int, err error) {
+			return len(p), nil
+		},
+	}
+	w := newZCWriterWithSize(writer, 4096)
+
+	p, err := w.WriteBinary(make([]byte, 10))
+	MustTrue(t, p == 10)
+	MustNil(t, err)
+	MustNil(t, w.Flush())
+}
+
 func TestZCWriter(t *testing.T) {
 	writer := &MockIOReadWriter{
 		write: func(p []byte) (n int, err error) {

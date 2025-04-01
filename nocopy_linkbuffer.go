@@ -38,6 +38,28 @@ var (
 	_ Writer = &LinkBuffer{}
 )
 
+var linkBufferPool = sync.Pool{
+	New: func() interface{} {
+		return &LinkBuffer{}
+	},
+}
+
+func NewLinkBufferFromPool(size ...int) *LinkBuffer {
+	buf := linkBufferPool.Get().(*LinkBuffer)
+	var l int
+	if len(size) > 0 {
+		l = size[0]
+	}
+	node := newLinkBufferNode(l)
+	buf.head, buf.read, buf.flush, buf.write = node, node, node, node
+	return buf
+}
+
+func ReleaseLinkBuffer(buf *LinkBuffer) {
+	buf.Release()
+	buf.head, buf.read, buf.flush, buf.write = nil, nil, nil, nil
+}
+
 // NewLinkBuffer size defines the initial capacity, but there is no readable data.
 func NewLinkBuffer(size ...int) *LinkBuffer {
 	buf := &LinkBuffer{}
@@ -205,6 +227,7 @@ func (b *UnsafeLinkBuffer) Skip(n int) (err error) {
 // Release the node that has been read.
 // b.flush == nil indicates that this LinkBuffer is created by LinkBuffer.Slice
 func (b *UnsafeLinkBuffer) Release() (err error) {
+	//logger.Printf("Release the buffer\n")
 	for b.read != b.flush && b.read.Len() == 0 {
 		b.read = b.read.next
 	}
@@ -221,6 +244,15 @@ func (b *UnsafeLinkBuffer) Release() (err error) {
 	if b.cachePeek != nil {
 		free(b.cachePeek)
 		b.cachePeek = nil
+	}
+	return nil
+}
+
+func (b *UnsafeLinkBuffer) ReleaseWritten() error {
+	for b.flush != b.write.next {
+		node := b.flush
+		b.flush = b.flush.next
+		node.Release()
 	}
 	return nil
 }
@@ -871,6 +903,7 @@ func (node *linkBufferNode) Release() (err error) {
 	if atomic.AddInt32(&node.refer, -1) == 0 {
 		// readonly nodes cannot recycle node.buf, other node.buf are recycled to mcache.
 		if node.reusable() {
+			//logger.Printf("reuse the buffer\n")
 			free(node.buf)
 		}
 		node.buf, node.origin, node.next = nil, nil, nil
