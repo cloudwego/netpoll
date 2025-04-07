@@ -203,11 +203,11 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				if len(bs) > 0 {
 					// TODO: Let the upper layer pass in whether to use ZeroCopy.
 					n, err := iosend(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
-					operator.OutputAck(n)
 					if err != nil {
 						p.appendHup(operator)
 						continue
 					}
+					operator.OutputAck(n)
 				}
 			} else {
 				logger.Printf("NETPOLL: operator has critical problem! event=%d operator=%v", evt, operator)
