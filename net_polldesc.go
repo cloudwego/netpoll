@@ -56,18 +56,18 @@ func (pd *pollDesc) WaitWrite(ctx context.Context) (err error) {
 		// no need to detach, since poller has done it in OnHup.
 		return Exception(ErrConnClosed, "by peer")
 	case <-pd.writeTrigger: // triggered by poller
-		err = nil
+		return nil
 	case <-ctx.Done(): // triggered by ctx
 		// deregister from poller, upper caller function will close fd
 		pd.detach()
-		err = mapErr(ctx.Err())
+		return mapErr(ctx.Err())
 	}
 	// double check close trigger
 	select {
 	case <-pd.closeTrigger:
 		return Exception(ErrConnClosed, "by peer")
 	default:
-		return err
+		return nil
 	}
 }
 
