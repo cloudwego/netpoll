@@ -1,7 +1,19 @@
-output:
-  # Format: colored-line-number|line-number|json|tab|checkstyle|code-climate|junit-xml|github-actions
-  format: colored-line-number
-# All available settings of specific linters.
+# Options for analysis running.
+run:
+  timeout: 3m
+
+linters: # https://golangci-lint.run/usage/linters/
+  disable-all: true
+  enable:
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - unconvert
+    - goimports
+    - gofumpt
+
 # Refer to https://golangci-lint.run/usage/linters
 linters-settings:
   gofumpt:
@@ -11,22 +23,7 @@ linters-settings:
   goimports:
     # Put imports beginning with prefix after 3rd-party packages.
     # It's a comma-separated list of prefixes.
-    local-prefixes: github.com/cloudwego/kitex
-  govet:
-    # Disable analyzers by name.
-    # Run `go tool vet help` to see all analyzers.
-    disable:
-      - stdmethods
-linters:
-  enable:
-    - gofumpt
-    - goimports
-    - gofmt
-  disable:
-    - errcheck
-    - typecheck
-    - deadcode
-    - varcheck
-    - staticcheck
+    local-prefixes: github.com/cloudwego/netpoll
+
 issues:
   exclude-use-default: true

@@ -20,9 +20,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/bytedance/gopkg/util/gopool"
-
 	"github.com/cloudwego/netpoll"
+	"github.com/cloudwego/netpoll/internal/runner"
 )
 
 /* DOC:
@@ -137,7 +136,7 @@ func (q *ShardQueue) foreach() {
 	if atomic.AddInt32(&q.runNum, 1) > 1 {
 		return
 	}
-	gopool.CtxGo(nil, func() {
+	runner.RunTask(nil, func() {
 		var negNum int32 // is negative number of triggerNum
 		for triggerNum := atomic.LoadInt32(&q.trigger); triggerNum > 0; {
 			q.r = (q.r + 1) % q.size

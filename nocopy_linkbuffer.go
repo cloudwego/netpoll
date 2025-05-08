@@ -31,6 +31,8 @@ const BinaryInplaceThreshold = block4k
 // LinkBufferCap that can be modified marks the minimum value of each node of LinkBuffer.
 var LinkBufferCap = block4k
 
+var untilErr = errors.New("link buffer read slice cannot find delim")
+
 var (
 	_ Reader = &LinkBuffer{}
 	_ Writer = &LinkBuffer{}
@@ -309,7 +311,7 @@ func (b *UnsafeLinkBuffer) ReadByte() (p byte, err error) {
 func (b *UnsafeLinkBuffer) Until(delim byte) (line []byte, err error) {
 	n := b.indexByte(delim, 0)
 	if n < 0 {
-		return nil, fmt.Errorf("link buffer read slice cannot find: '%b'", delim)
+		return nil, untilErr
 	}
 	return b.Next(n + 1)
 }

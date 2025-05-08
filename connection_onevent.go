@@ -21,21 +21,8 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/cloudwego/netpoll/internal/runner"
 )
-
-var runTask = gopool.CtxGo
-
-func setRunner(runner func(ctx context.Context, f func())) {
-	runTask = runner
-}
-
-func disableGopool() error {
-	runTask = func(ctx context.Context, f func()) {
-		go f()
-	}
-	return nil
-}
 
 // ------------------------------------ implement OnPrepare, OnRequest, CloseCallback ------------------------------------
 
@@ -272,7 +259,7 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 	} // end of task closure func
 
 	// add new task
-	runTask(c.ctx, task)
+	runner.RunTask(c.ctx, task)
 	return true
 }
 

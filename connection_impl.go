@@ -331,7 +331,7 @@ var barrierPool = sync.Pool{
 	},
 }
 
-// init initialize the connection with options
+// init initializes the connection with options
 func (c *connection) init(conn Conn, opts *options) (err error) {
 	// init buffer, barrier, finalizer
 	c.readTrigger = make(chan error, 1)
@@ -478,7 +478,7 @@ RET:
 	return err
 }
 
-// flush write data directly.
+// flush writes data directly.
 func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
