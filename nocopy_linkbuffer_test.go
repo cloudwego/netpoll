@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"reflect"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -776,6 +777,34 @@ func TestLinkBufferPeekOutOfMemory(t *testing.T) {
 			Equal(t, buf.memorySize(), memorySize)
 		}
 	}
+}
+
+func TestMallocAck(t *testing.T) {
+	sLen := 1024 * 7
+	buf1 := []byte{1, 2, 3, 4}
+	buf2 := []byte{5, 6, 7, 8}
+	lb := NewLinkBuffer(0)
+
+	buf, err := lb.Malloc(4 + sLen)
+	MustNil(t, err)
+	copy(buf[:4], buf1)
+	s := make([]byte, sLen)
+	err = lb.WriteDirect(s, sLen)
+	MustNil(t, err)
+
+	err = lb.MallocAck(4 + sLen)
+	MustNil(t, err)
+	lb.Flush()
+
+	buf, err = lb.Malloc(4)
+	MustNil(t, err)
+	copy(buf[:4], buf2)
+	lb.Flush()
+
+	buf, err = lb.Next(8 + sLen)
+	MustNil(t, err)
+
+	MustTrue(t, reflect.DeepEqual(buf, append(append(buf1, s...), buf2...)))
 }
 
 func BenchmarkStringToSliceByte(b *testing.B) {
