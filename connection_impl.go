@@ -27,8 +27,6 @@ import (
 type connState = int32
 
 const (
-	defaultZeroCopyTimeoutSec = 60
-
 	connStateNone         = 0
 	connStateConnected    = 1
 	connStateDisconnected = 2
@@ -39,21 +37,20 @@ type connection struct {
 	netFD
 	onEvent
 	locker
-	operator        *FDOperator
-	readTimeout     time.Duration
-	readTimer       *time.Timer
-	readTrigger     chan error
-	waitReadSize    int64
-	writeTimeout    time.Duration
-	writeTimer      *time.Timer
-	writeTrigger    chan error
-	inputBuffer     *LinkBuffer
-	outputBuffer    *LinkBuffer
-	outputBarrier   *barrier
-	supportZeroCopy bool
-	maxSize         int       // The maximum size of data between two Release().
-	bookSize        int       // The size of data that can be read at once.
-	state           connState // Connection state should be changed sequentially.
+	operator      *FDOperator
+	readTimeout   time.Duration
+	readTimer     *time.Timer
+	readTrigger   chan error
+	waitReadSize  int64
+	writeTimeout  time.Duration
+	writeTimer    *time.Timer
+	writeTrigger  chan error
+	inputBuffer   *LinkBuffer
+	outputBuffer  *LinkBuffer
+	outputBarrier *barrier
+	maxSize       int       // The maximum size of data between two Release().
+	bookSize      int       // The size of data that can be read at once.
+	state         connState // Connection state should be changed sequentially.
 }
 
 var (
@@ -351,10 +348,6 @@ func (c *connection) init(conn Conn, opts *options) (err error) {
 	case "tcp", "tcp4", "tcp6":
 		setTCPNoDelay(c.fd, true)
 	}
-	// check zero-copy
-	if setZeroCopy(c.fd) == nil && setBlockZeroCopySend(c.fd, defaultZeroCopyTimeoutSec, 0) == nil {
-		c.supportZeroCopy = true
-	}
 
 	// connection initialized and prepare options
 	return c.onPrepare(opts)
@@ -483,9 +476,8 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	// TODO: Let the upper layer pass in whether to use ZeroCopy.
 	bs := c.outputBuffer.GetBytes(c.outputBarrier.bs)
-	n, err := sendmsg(c.fd, bs, c.outputBarrier.ivs, false && c.supportZeroCopy)
+	n, err := sendmsg(c.fd, bs, c.outputBarrier.ivs, false)
 	if err != nil && err != syscall.EAGAIN {
 		return Exception(err, "when flush")
 	}

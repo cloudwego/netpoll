@@ -22,8 +22,6 @@ import (
 	"unsafe"
 )
 
-var supportZeroCopySend bool
-
 // sendmsg wraps the sendmsg system call.
 // Must len(iovs) >= len(vs)
 func sendmsg(fd int, bs [][]byte, ivs []syscall.Iovec, zerocopy bool) (n int, err error) {
@@ -39,7 +37,7 @@ func sendmsg(fd int, bs [][]byte, ivs []syscall.Iovec, zerocopy bool) (n int, er
 	r, _, e := syscall.RawSyscall(syscall.SYS_SENDMSG, uintptr(fd), uintptr(unsafe.Pointer(&msghdr)), uintptr(0))
 	resetIovecs(bs, ivs[:iovLen])
 	if e != 0 {
-		return int(r), syscall.Errno(e)
+		return int(r), e
 	}
 	return int(r), nil
 }

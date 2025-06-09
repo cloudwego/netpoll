@@ -119,13 +119,13 @@ func (c *connection) inputAck(n int) (err error) {
 }
 
 // outputs implements FDOperator.
-func (c *connection) outputs(vs [][]byte) (rs [][]byte, supportZeroCopy bool) {
+func (c *connection) outputs(vs [][]byte) (rs [][]byte, _ bool) {
 	if c.outputBuffer.IsEmpty() {
 		c.rw2r()
-		return rs, c.supportZeroCopy
+		return rs, false
 	}
 	rs = c.outputBuffer.GetBytes(vs)
-	return rs, c.supportZeroCopy
+	return rs, false
 }
 
 // outputAck implements FDOperator.

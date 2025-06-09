@@ -59,11 +59,11 @@ type locker struct {
 }
 
 func (l *locker) closeBy(w who) (success bool) {
-	return atomic.CompareAndSwapInt32(&l.keychain[closing], 0, int32(w))
+	return atomic.CompareAndSwapInt32(&l.keychain[closing], 0, w)
 }
 
 func (l *locker) isCloseBy(w who) (yes bool) {
-	return atomic.LoadInt32(&l.keychain[closing]) == int32(w)
+	return atomic.LoadInt32(&l.keychain[closing]) == w
 }
 
 func (l *locker) status(k key) int32 {

@@ -688,6 +688,7 @@ func TestConnectionServerClose(t *testing.T) {
 		WithOnPrepare(func(connection Connection) context.Context {
 			// t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
+			//nolint:staticcheck // SA1029 no built-in type string as key
 			return context.WithValue(context.Background(), "prepare", "true")
 		}),
 	)

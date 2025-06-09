@@ -80,7 +80,7 @@ func TestListenerDialer(t *testing.T) {
 		conn.SetOnRequest(onRequest)
 
 		MustNil(t, err)
-		n, err := conn.Write([]byte(msg))
+		n, err := conn.Write(msg)
 		MustNil(t, err)
 		Equal(t, n, len(msg))
 		time.Sleep(10 * time.Millisecond)
