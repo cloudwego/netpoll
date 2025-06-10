@@ -18,10 +18,6 @@ package runner
 
 import (
 	"context"
-	"os"
-	"strconv"
-
-	bgopool "github.com/bytedance/gopkg/util/gopool"
 	cgopool "github.com/cloudwego/gopkg/concurrency/gopool"
 )
 
@@ -37,11 +33,12 @@ func init() {
 	// netpoll uses github.com/bytedance/gopkg/util/gopool by default
 	// if the env is set, change it to cloudwego/gopkg
 	// for most users, using the 'go' keyword directly is more suitable.
-	if yes, _ := strconv.ParseBool(os.Getenv("USE_CLOUDWEGO_GOPOOL")); yes {
-		RunTask = cgopool.CtxGo
-	} else {
-		RunTask = bgopool.CtxGo
-	}
+	//if yes, _ := strconv.ParseBool(os.Getenv("USE_CLOUDWEGO_GOPOOL")); yes {
+	//	RunTask = cgopool.CtxGo
+	//} else {
+	//	RunTask = bgopool.CtxGo
+	//}
+	RunTask = cgopool.CtxGo
 }
 
 // UseGoRunTask updates RunTask with goRunTask which creates

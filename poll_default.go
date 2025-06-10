@@ -17,6 +17,8 @@
 
 package netpoll
 
+import cgopool "github.com/cloudwego/gopkg/concurrency/gopool"
+
 func (p *defaultPoll) Alloc() (operator *FDOperator) {
 	op := p.opcache.alloc()
 	op.poll = p
@@ -45,13 +47,20 @@ func (p *defaultPoll) onhups() {
 	}
 	hups := p.hups
 	p.hups = nil
-	go func(onhups []func(p Poll) error) {
-		for i := range onhups {
-			if onhups[i] != nil {
-				onhups[i](p)
+	cgopool.Go(func() {
+		for i := range hups {
+			if hups[i] != nil {
+				hups[i](p)
 			}
 		}
-	}(hups)
+	})
+	//go func(onhups []func(p Poll) error) {
+	//	for i := range onhups {
+	//		if onhups[i] != nil {
+	//			onhups[i](p)
+	//		}
+	//	}
+	//}(hups)
 }
 
 // readall read all left data before close connection
