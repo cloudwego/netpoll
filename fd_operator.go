@@ -36,6 +36,7 @@ type FDOperator struct {
 	InputAck func(n int) (err error)
 
 	// Outputs will locked if len(rs) > 0, which need unlocked by OutputAck.
+	// supportZeroCopy is not implemented, and it will be ignored
 	Outputs   func(vs [][]byte) (rs [][]byte, supportZeroCopy bool)
 	OutputAck func(n int) (err error)
 

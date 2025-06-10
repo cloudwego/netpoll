@@ -144,6 +144,7 @@ START:
 	// m.Run() will finish very quickly, so will not many goroutines block on Pick.
 	_ = m.Run()
 
+	//nolint:staticcheck // SA9003: empty branch
 	if !atomic.CompareAndSwapInt32(&m.status, managerInitializing, managerInitialized) {
 		// SetNumLoops called during m.Run() which cause CAS failed
 		// The polls will be adjusted next Pick
