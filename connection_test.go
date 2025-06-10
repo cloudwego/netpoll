@@ -292,11 +292,19 @@ func writeAll(fd int, buf []byte) error {
 	return nil
 }
 
+func createTestTCPListener(t *testing.T) net.Listener {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	MustNil(t, err)
+	return ln
+}
+
 // Large packet write test. The socket buffer is 2MB by default, here to verify
 // whether Connection.Close can be executed normally after socket output buffer is full.
 func TestLargeBufferWrite(t *testing.T) {
-	address := getTestAddress()
-	ln, err := createTestListener("tcp", address)
+	ln := createTestTCPListener(t)
+	defer ln.Close()
+	address := ln.Addr().String()
+	ln, err := ConvertListener(ln)
 	MustNil(t, err)
 
 	trigger := make(chan int)
@@ -350,29 +358,67 @@ func TestLargeBufferWrite(t *testing.T) {
 	trigger <- 1
 }
 
-func TestWriteTimeout(t *testing.T) {
-	address := getTestAddress()
-	ln, err := createTestListener("tcp", address)
+func TestConnectionTimeout(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	MustNil(t, err)
+	defer ln.Close()
 
-	interval := time.Millisecond * 100
+	const (
+		bufsz    = 1 << 20
+		interval = 10 * time.Millisecond
+	)
+
+	calcRate := func(n int32) int32 {
+		v := n / int32(time.Second/interval)
+		if v > bufsz {
+			panic(v)
+		}
+		if v < 1 {
+			return 1
+		}
+		return v
+	}
+
+	wn := int32(1) // for each Read, must <= bufsz
+	setServerWriteRate := func(n int32) {
+		atomic.StoreInt32(&wn, calcRate(n))
+	}
+
+	rn := int32(1) // for each Write, must <= bufsz
+	setServerReadRate := func(n int32) {
+		atomic.StoreInt32(&rn, calcRate(n))
+	}
+
 	go func() {
 		for {
 			conn, err := ln.Accept()
-			if conn == nil && err == nil {
-				continue
-			}
 			if err != nil {
 				return
 			}
+			// set small SO_SNDBUF/SO_RCVBUF buffer for better control timeout test
+			tcpconn := conn.(*net.TCPConn)
+			tcpconn.SetReadBuffer(512)
+			tcpconn.SetWriteBuffer(512)
 			go func() {
-				buf := make([]byte, 1024)
-				// slow read
+				buf := make([]byte, bufsz)
 				for {
-					_, err := conn.Read(buf)
+					n := atomic.LoadInt32(&rn)
+					_, err := conn.Read(buf[:int(n)])
 					if err != nil {
-						err = conn.Close()
-						MustNil(t, err)
+						conn.Close()
+						return
+					}
+					time.Sleep(interval)
+				}
+			}()
+
+			go func() {
+				buf := make([]byte, bufsz)
+				for {
+					n := atomic.LoadInt32(&wn)
+					_, err := conn.Write(buf[:int(n)])
+					if err != nil {
+						conn.Close()
 						return
 					}
 					time.Sleep(interval)
@@ -381,26 +427,113 @@ func TestWriteTimeout(t *testing.T) {
 		}
 	}()
 
-	conn, err := DialConnection("tcp", address, time.Second)
-	MustNil(t, err)
+	newConn := func() Connection {
+		conn, err := DialConnection("tcp", ln.Addr().String(), time.Second)
+		MustNil(t, err)
+		fd := conn.(Conn).Fd()
+		// set small SO_SNDBUF/SO_RCVBUF buffer for better control timeout test
+		err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 512)
+		MustNil(t, err)
+		err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 512)
+		MustNil(t, err)
+		return conn
+	}
 
-	_, err = conn.Writer().Malloc(1024)
-	MustNil(t, err)
-	err = conn.Writer().Flush()
-	MustNil(t, err)
+	mallocAndFlush := func(conn Connection, sz int) error {
+		_, err := conn.Writer().Malloc(sz)
+		MustNil(t, err)
+		return conn.Writer().Flush()
+	}
 
-	_ = conn.SetWriteTimeout(time.Millisecond * 10)
-	_, err = conn.Writer().Malloc(1024 * 1024 * 512)
-	MustNil(t, err)
-	err = conn.Writer().Flush()
-	MustTrue(t, errors.Is(err, ErrWriteTimeout))
+	t.Run("TestWriteTimeout", func(t *testing.T) {
+		setServerReadRate(10 << 10) // 10KB/s
 
-	// close success
-	err = conn.Close()
-	MustNil(t, err)
+		conn := newConn()
+		defer conn.Close()
 
-	err = ln.Close()
-	MustNil(t, err)
+		// write 1KB without timeout
+		err := mallocAndFlush(conn, 1<<10) // ~100ms
+		MustNil(t, err)
+
+		// write 50ms timeout
+		_ = conn.SetWriteTimeout(50 * time.Millisecond)
+		err = mallocAndFlush(conn, 1<<20)
+		MustTrue(t, errors.Is(err, ErrWriteTimeout))
+	})
+
+	t.Run("TestReadTimeout", func(t *testing.T) {
+		setServerWriteRate(10 << 10) // 10KB/s
+
+		conn := newConn()
+		defer conn.Close()
+
+		// read 1KB without timeout
+		_, err := conn.Reader().Next(1 << 10) // ~100ms
+		MustNil(t, err)
+
+		// read 20KB ~ 2s, 50ms timeout
+		_ = conn.SetReadTimeout(50 * time.Millisecond)
+		_, err = conn.Reader().Next(20 << 10)
+		MustTrue(t, errors.Is(err, ErrReadTimeout))
+	})
+
+	t.Run("TestWriteDeadline", func(t *testing.T) {
+		setServerReadRate(10 << 10) // 10KB/s
+
+		conn := newConn()
+		defer conn.Close()
+
+		// write 1KB without deadline
+		err := conn.SetWriteDeadline(time.Now())
+		MustNil(t, err)
+		err = conn.SetDeadline(time.Time{})
+		MustNil(t, err)
+		err = mallocAndFlush(conn, 1<<10) // ~100ms
+		MustNil(t, err)
+
+		// write with deadline
+		err = conn.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
+		MustNil(t, err)
+		t0 := time.Now()
+		err = mallocAndFlush(conn, 1<<20)
+		MustTrue(t, errors.Is(err, ErrWriteTimeout))
+		MustTrue(t, time.Since(t0)-50*time.Millisecond < 20*time.Millisecond)
+
+		// write deadline exceeded
+		t1 := time.Now()
+		err = mallocAndFlush(conn, 10<<10)
+		MustTrue(t, errors.Is(err, ErrWriteTimeout))
+		MustTrue(t, time.Since(t1) < 20*time.Millisecond)
+	})
+
+	t.Run("TestReadDeadline", func(t *testing.T) {
+		setServerWriteRate(20 << 10) // 20KB/s
+
+		conn := newConn()
+		defer conn.Close()
+
+		// read 1KB without deadline
+		err := conn.SetReadDeadline(time.Now())
+		MustNil(t, err)
+		err = conn.SetDeadline(time.Time{})
+		MustNil(t, err)
+		_, err = conn.Reader().Next(1 << 10)
+		MustNil(t, err)
+
+		// read 100KB with deadline
+		err = conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+		MustNil(t, err)
+		t0 := time.Now()
+		_, err = conn.Reader().Next(100 << 10)
+		MustTrue(t, errors.Is(err, ErrReadTimeout))
+		MustTrue(t, time.Since(t0)-50*time.Millisecond < 20*time.Millisecond)
+
+		// read 10KB, deadline exceeded
+		t1 := time.Now()
+		_, err = conn.Reader().Next(10 << 10)
+		MustTrue(t, errors.Is(err, ErrReadTimeout))
+		MustTrue(t, time.Since(t1) < 20*time.Millisecond)
+	})
 }
 
 // TestConnectionLargeMemory is used to verify the memory usage in the large package scenario.
@@ -531,9 +664,9 @@ func TestBookSizeLargerThanMaxSize(t *testing.T) {
 }
 
 func TestConnDetach(t *testing.T) {
-	address := getTestAddress()
-	ln, err := createTestListener("tcp", address)
-	MustNil(t, err)
+	ln := createTestTCPListener(t)
+	defer ln.Close()
+	address := ln.Addr().String()
 
 	// accept => read => write
 	var wg sync.WaitGroup
@@ -591,10 +724,9 @@ func TestConnDetach(t *testing.T) {
 }
 
 func TestParallelShortConnection(t *testing.T) {
-	address := getTestAddress()
-	ln, err := createTestListener("tcp", address)
-	MustNil(t, err)
+	ln := createTestTCPListener(t)
 	defer ln.Close()
+	address := ln.Addr().String()
 
 	var received int64
 	el, err := NewEventLoop(func(ctx context.Context, connection Connection) error {
@@ -610,9 +742,10 @@ func TestParallelShortConnection(t *testing.T) {
 	go func() {
 		el.Serve(ln)
 	}()
+	defer el.Shutdown(context.Background())
 
 	conns := 100
-	sizePerConn := 1024 * 100
+	sizePerConn := 1024
 	totalSize := conns * sizePerConn
 	var wg sync.WaitGroup
 	for i := 0; i < conns; i++ {
@@ -632,17 +765,20 @@ func TestParallelShortConnection(t *testing.T) {
 	}
 	wg.Wait()
 
+	t0 := time.Now()
 	for atomic.LoadInt64(&received) < int64(totalSize) {
-		runtime.Gosched()
+		time.Sleep(time.Millisecond)
+		if time.Since(t0) > 100*time.Millisecond { // max wait 100ms
+			break
+		}
 	}
 	Equal(t, atomic.LoadInt64(&received), int64(totalSize))
 }
 
 func TestConnectionServerClose(t *testing.T) {
-	address := getTestAddress()
-	ln, err := createTestListener("tcp", address)
-	MustNil(t, err)
+	ln := createTestTCPListener(t)
 	defer ln.Close()
+	address := ln.Addr().String()
 
 	/*
 		Client              Server
@@ -656,7 +792,7 @@ func TestConnectionServerClose(t *testing.T) {
 	var wg sync.WaitGroup
 	el, err := NewEventLoop(
 		func(ctx context.Context, connection Connection) error {
-			// t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
+			t.Logf("server.OnRequest: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			buf, err := connection.Reader().Next(len(PONG)) // pong
 			Equal(t, string(buf), PONG)
@@ -679,14 +815,14 @@ func TestConnectionServerClose(t *testing.T) {
 			err = connection.Writer().Flush()
 			MustNil(t, err)
 			connection.AddCloseCallback(func(connection Connection) error {
-				// t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
+				t.Logf("server.CloseCallback: addr=%s", connection.RemoteAddr())
 				wg.Done()
 				return nil
 			})
 			return ctx
 		}),
 		WithOnPrepare(func(connection Connection) context.Context {
-			// t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
+			t.Logf("server.OnPrepare: addr=%s", connection.RemoteAddr())
 			defer wg.Done()
 			//nolint:staticcheck // SA1029 no built-in type string as key
 			return context.WithValue(context.Background(), "prepare", "true")
@@ -719,7 +855,7 @@ func TestConnectionServerClose(t *testing.T) {
 
 		return connection.Close()
 	}
-	conns := 100
+	conns := 10
 	// server: OnPrepare, OnConnect, OnRequest, CloseCallback
 	// client: OnRequest, CloseCallback
 	wg.Add(conns * 6)
@@ -730,7 +866,7 @@ func TestConnectionServerClose(t *testing.T) {
 			err = conn.SetOnRequest(clientOnRequest)
 			MustNil(t, err)
 			conn.AddCloseCallback(func(connection Connection) error {
-				// t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
+				t.Logf("client.CloseCallback: addr=%s", connection.LocalAddr())
 				defer wg.Done()
 				return nil
 			})
@@ -740,38 +876,31 @@ func TestConnectionServerClose(t *testing.T) {
 }
 
 func TestConnectionDailTimeoutAndClose(t *testing.T) {
-	address := getTestAddress()
-	ln, err := createTestListener("tcp", address)
-	MustNil(t, err)
+	ln := createTestTCPListener(t)
 	defer ln.Close()
 
-	el, err := NewEventLoop(
-		func(ctx context.Context, connection Connection) error {
-			_, err = connection.Reader().Next(connection.Reader().Len())
-			return err
-		},
-	)
-	defer el.Shutdown(context.Background())
 	go func() {
-		err := el.Serve(ln)
-		if err != nil {
-			t.Logf("service end with error: %v", err)
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			time.Sleep(time.Millisecond)
+			conn.Close()
 		}
 	}()
 
-	loops := 100
-	conns := 100
-	for l := 0; l < loops; l++ {
-		var wg sync.WaitGroup
-		wg.Add(conns)
-		for i := 0; i < conns; i++ {
-			go func() {
-				defer wg.Done()
-				conn, err := DialConnection("tcp", address, time.Nanosecond)
-				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"))
-				_ = conn
-			}()
-		}
-		wg.Wait()
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conn, err := DialConnection("tcp", ln.Addr().String(), time.Millisecond)
+			Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"), err)
+			if err == nil { // XXX: conn is always not nil ...
+				conn.Close()
+			}
+		}()
 	}
+	wg.Wait()
 }

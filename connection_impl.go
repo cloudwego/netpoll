@@ -39,10 +39,12 @@ type connection struct {
 	locker
 	operator      *FDOperator
 	readTimeout   time.Duration
+	readDeadline  int64 // UnixNano(). it overwrites readTimeout. 0 if not set.
 	readTimer     *time.Timer
 	readTrigger   chan error
 	waitReadSize  int64
 	writeTimeout  time.Duration
+	writeDeadline int64 // UnixNano(). it overwrites writeTimeout. 0 if not set.
 	writeTimer    *time.Timer
 	writeTrigger  chan error
 	inputBuffer   *LinkBuffer
@@ -87,6 +89,7 @@ func (c *connection) SetReadTimeout(timeout time.Duration) error {
 	if timeout >= 0 {
 		c.readTimeout = timeout
 	}
+	c.readDeadline = 0
 	return nil
 }
 
@@ -94,6 +97,38 @@ func (c *connection) SetReadTimeout(timeout time.Duration) error {
 func (c *connection) SetWriteTimeout(timeout time.Duration) error {
 	if timeout >= 0 {
 		c.writeTimeout = timeout
+	}
+	c.writeDeadline = 0
+	return nil
+}
+
+// SetDeadline implements net.Conn.SetDeadline
+func (c *connection) SetDeadline(t time.Time) error {
+	v := int64(0)
+	if !t.IsZero() {
+		v = t.UnixNano()
+	}
+	c.readDeadline = v
+	c.writeDeadline = v
+	return nil
+}
+
+// SetReadDeadline implements net.Conn.SetReadDeadline
+func (c *connection) SetReadDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.readDeadline = 0
+	} else {
+		c.readDeadline = t.UnixNano()
+	}
+	return nil
+}
+
+// SetWriteDeadline implements net.Conn.SetWriteDeadline
+func (c *connection) SetWriteDeadline(t time.Time) error {
+	if t.IsZero() {
+		c.writeDeadline = 0
+	} else {
+		c.writeDeadline = t.UnixNano()
 	}
 	return nil
 }
@@ -408,8 +443,14 @@ func (c *connection) waitRead(n int) (err error) {
 	}
 	atomic.StoreInt64(&c.waitReadSize, int64(n))
 	defer atomic.StoreInt64(&c.waitReadSize, 0)
-	if c.readTimeout > 0 {
-		return c.waitReadWithTimeout(n)
+	if dl := c.readDeadline; dl > 0 {
+		timeout := time.Duration(dl - time.Now().UnixNano())
+		if timeout <= 0 {
+			return Exception(ErrReadTimeout, c.remoteAddr.String())
+		}
+		return c.waitReadWithTimeout(n, timeout)
+	} else if c.readTimeout > 0 {
+		return c.waitReadWithTimeout(n, c.readTimeout)
 	}
 	// wait full n
 	for c.inputBuffer.Len() < n {
@@ -429,12 +470,11 @@ func (c *connection) waitRead(n int) (err error) {
 }
 
 // waitReadWithTimeout will wait full n bytes or until timeout.
-func (c *connection) waitReadWithTimeout(n int) (err error) {
-	// set read timeout
+func (c *connection) waitReadWithTimeout(n int, timeout time.Duration) (err error) {
 	if c.readTimer == nil {
-		c.readTimer = time.NewTimer(c.readTimeout)
+		c.readTimer = time.NewTimer(timeout)
 	} else {
-		c.readTimer.Reset(c.readTimeout)
+		c.readTimer.Reset(timeout)
 	}
 
 	for c.inputBuffer.Len() < n {
@@ -501,15 +541,22 @@ func (c *connection) flush() error {
 }
 
 func (c *connection) waitFlush() (err error) {
-	if c.writeTimeout == 0 {
+	timeout := c.writeTimeout
+	if dl := c.writeDeadline; dl > 0 {
+		timeout = time.Duration(dl - time.Now().UnixNano())
+		if timeout <= 0 {
+			return Exception(ErrWriteTimeout, c.remoteAddr.String())
+		}
+	}
+	if timeout == 0 {
 		return <-c.writeTrigger
 	}
 
 	// set write timeout
 	if c.writeTimer == nil {
-		c.writeTimer = time.NewTimer(c.writeTimeout)
+		c.writeTimer = time.NewTimer(timeout)
 	} else {
-		c.writeTimer.Reset(c.writeTimeout)
+		c.writeTimer.Reset(timeout)
 	}
 
 	select {

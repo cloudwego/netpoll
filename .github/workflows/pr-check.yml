@@ -6,8 +6,8 @@ jobs:
   compatibility-test:
     strategy:
       matrix:
-        go: [ 1.18, 1.23 ]
-        os: [ X64, ARM64 ]
+        go: [ 1.18, 1.24 ]
+        os: [ ubuntu-latest, ubuntu-24.04-arm, macos-latest ]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -15,7 +15,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
-          cache: false
       - name: Unit Test
         run: go test -timeout=2m -race ./...
       - name: Benchmark
@@ -46,7 +45,7 @@ jobs:
         uses: crate-ci/typos@v1.13.14
 
   golangci-lint:
-    runs-on: [ Linux, X64 ]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
