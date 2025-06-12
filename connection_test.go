@@ -768,7 +768,7 @@ func TestConnectionDailTimeoutAndClose(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				conn, err := DialConnection("tcp", address, time.Nanosecond)
-				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"))
+				Assert(t, err == nil || strings.Contains(err.Error(), "i/o timeout"), err)
 				_ = conn
 			}()
 		}
