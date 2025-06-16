@@ -403,7 +403,7 @@ func (b *UnsafeLinkBuffer) MallocAck(n int) (err error) {
 	}
 	// discard the rest
 	for node := b.write.next; node != nil; node = node.next {
-		node.off, node.malloc, node.refer, node.buf = 0, 0, 1, node.buf[:0]
+		node.malloc, node.refer, node.buf = node.off, 1, node.buf[:node.off]
 	}
 	return nil
 }

@@ -199,10 +199,9 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				operator.OnWrite(p)
 			} else if operator.Outputs != nil {
 				// for connection
-				bs, supportZeroCopy := operator.Outputs(p.barriers[i].bs)
+				bs, _ := operator.Outputs(p.barriers[i].bs)
 				if len(bs) > 0 {
-					// TODO: Let the upper layer pass in whether to use ZeroCopy.
-					n, err := iosend(operator.FD, bs, p.barriers[i].ivs, false && supportZeroCopy)
+					n, err := iosend(operator.FD, bs, p.barriers[i].ivs, false)
 					operator.OutputAck(n)
 					if err != nil {
 						p.appendHup(operator)
