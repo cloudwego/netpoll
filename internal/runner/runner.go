@@ -49,3 +49,9 @@ func init() {
 func UseGoRunTask() {
 	RunTask = goRunTask
 }
+
+// SetPanicHandler sets the panic handler for the global pool.
+func SetPanicHandler(f func(context.Context, interface{})) {
+	bgopool.SetPanicHandler(f)
+	cgopool.SetPanicHandler(f)
+}
