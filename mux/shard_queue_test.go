@@ -57,7 +57,7 @@ func TestShardQueue(t *testing.T) {
 	// test
 	queue := NewShardQueue(4, conn)
 	count, pkgsize := 16, 11
-	for i := 0; i < int(count); i++ {
+	for i := 0; i < count; i++ {
 		var getter WriterGetter = func() (buf netpoll.Writer, isNil bool) {
 			buf = netpoll.NewLinkBuffer(pkgsize)
 			buf.Malloc(pkgsize)
