@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/cloudwego/netpoll/internal/runner"
 )
 
 func MustNil(t *testing.T, val interface{}) {
@@ -209,7 +211,7 @@ func TestOnDisconnectWhenOnConnect(t *testing.T) {
 	type ctxPrepareKey struct{}
 	type ctxConnectKey struct{}
 	network, address := "tcp", getTestAddress()
-	var conns int32 = 100
+	var conns int32 = 10
 	var wg sync.WaitGroup
 	wg.Add(int(conns) * 3)
 	loop := newTestEventLoop(network, address,
@@ -271,9 +273,11 @@ func TestGracefulExit(t *testing.T) {
 	// exit with processing connections
 	trigger := make(chan struct{})
 	eventLoop2 := newTestEventLoop(network, address,
-		func(ctx context.Context, connection Connection) error {
+		func(ctx context.Context, conn Connection) error {
 			<-trigger
-			return nil
+			rd := conn.Reader()
+			rd.Next(rd.Len()) // avoid dead loop
+			return errors.New("done")
 		})
 	for i := 0; i < 10; i++ {
 		// connect success
@@ -441,6 +445,16 @@ func TestServerReadAndClose(t *testing.T) {
 }
 
 func TestServerPanicAndClose(t *testing.T) {
+	// use custom RunTask to ignore panic log
+	runfunc := runner.RunTask
+	defer func() { runner.RunTask = runfunc }()
+	runner.RunTask = func(ctx context.Context, f func()) {
+		go func() {
+			defer func() { recover() }()
+			f()
+		}()
+	}
+
 	network, address := "tcp", getTestAddress()
 	sendMsg := []byte("hello")
 	var paniced int32

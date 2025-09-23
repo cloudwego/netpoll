@@ -397,11 +397,11 @@ func TestLinkBufferResetTail(t *testing.T) {
 	buf.WriteByte(except)
 	buf.Flush()
 	r1, _ := buf.Slice(1)
-	fmt.Printf("1: %x\n", buf.flush.buf)
+	t.Logf("1: %x\n", buf.flush.buf)
 	// 2. release & reset tail
 	buf.resetTail(LinkBufferCap)
 	buf.WriteByte(byte(2))
-	fmt.Printf("2: %x\n", buf.flush.buf)
+	t.Logf("2: %x\n", buf.flush.buf)
 
 	// check slice reader
 	got, _ := r1.ReadByte()
