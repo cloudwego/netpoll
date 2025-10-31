@@ -256,7 +256,7 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 	// single node
 	if b.isSingleNode(n) {
 		// TODO: enable nocopy read mode when ensure no legacy depend on copy-read
-		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not control by itself
+		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not controlled by itself
 		if !b.read.getMode(readonlyMask) {
 			// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
 			// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
@@ -798,7 +798,7 @@ func newLinkBufferNode(size int) *linkBufferNode {
 var linkedPool = sync.Pool{
 	New: func() interface{} {
 		return &linkBufferNode{
-			refer: 1, // 自带 1 引用
+			refer: 1, // comes with 1 reference
 		}
 	},
 }

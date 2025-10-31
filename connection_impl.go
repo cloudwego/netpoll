@@ -32,7 +32,7 @@ const (
 	connStateDisconnected = 2
 )
 
-// connection is the implement of Connection
+// connection is the implementation of Connection
 type connection struct {
 	netFD
 	onEvent

@@ -231,7 +231,7 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 		if closedBy != none {
 			//  if closed by user when processing, it "may" needs detach
 			needDetach := closedBy == user
-			// Here is a conor case that operator will be detached twice:
+			// Here is a corner case that operator will be detached twice:
 			//   If server closed the connection(client OnHup will detach op first and closeBy=poller),
 			//   and then client's OnRequest function also closed the connection(closeBy=user).
 			// But operator already prevent that detach twice will not cause any problem
@@ -240,7 +240,7 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 			return
 		}
 		c.unlock(processing)
-		// Note: Poller's closeCallback call will try to get processing lock failed but here already neer to unlock processing.
+		// Note: Poller's closeCallback call will try to get processing lock failed but here already near to unlock processing.
 		//       So here we need to check connection state again, to avoid connection leak
 		// double check close state
 		if c.status(closing) != 0 && c.lock(processing) {

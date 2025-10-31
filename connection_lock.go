@@ -53,7 +53,7 @@ const (
 )
 
 type locker struct {
-	// keychain use for lock/unlock/stop operation by who.
+	// keychain used for lock/unlock/stop operation by who.
 	// 0 means unlock, 1 means locked, 2 means stop.
 	keychain [total]int32
 }

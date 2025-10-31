@@ -28,9 +28,9 @@ func DialConnection(network, address string, timeout time.Duration) (connection 
 	return defaultDialer.DialConnection(network, address, timeout)
 }
 
-// NewFDConnection create a Connection initialed by any fd
-// It's useful for write unit test for functions have args with the type of netpoll.Connection
-// The typical usage like:
+// NewFDConnection create a Connection initialized by any fd
+// It's useful for writing unit tests for functions that have args with the type of netpoll.Connection
+// The typical usage is like:
 //
 //	rfd, wfd := netpoll.GetSysFdPairs()
 //	rconn, _ = netpoll.NewFDConnection(rfd)
