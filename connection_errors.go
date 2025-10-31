@@ -24,7 +24,7 @@ import (
 const (
 	// The connection closed when in use.
 	ErrConnClosed = syscall.Errno(0x101)
-	// Read I/O buffer timeout, calling by Connection.Reader
+	// Read I/O buffer timeout, called by Connection.Reader
 	ErrReadTimeout = syscall.Errno(0x102)
 	// Dial timeout
 	ErrDialTimeout = syscall.Errno(0x103)

@@ -203,7 +203,7 @@ func main() {
 	var conn netpoll.Connection
 	var reader, writer = conn.Reader(), conn.Writer()
 	
-	// reading 
+	// reading
 	buf, _ := reader.Next(n)
 	... parse the read data ...
 	reader.Release()
@@ -212,7 +212,7 @@ func main() {
 	var write_data []byte
 	... make the write data ...
 	alloc, _ := writer.Malloc(len(write_data))
-	copy(alloc, write_data) // write data 
+	copy(alloc, write_data) // write data
 	writer.Flush()
 }
 ```
@@ -457,7 +457,7 @@ func main() {
 	
 	// or
 	
-	// 2. setting with Option 
+	// 2. setting with Option
 	netpoll.NewEventLoop(handler, netpoll.WithReadTimeout(timeout))
 	...
 }
@@ -487,7 +487,7 @@ func main() {
 	
 	// or
 	
-	// 2. setting with Option 
+	// 2. setting with Option
 	netpoll.NewEventLoop(handler, netpoll.WithIdleTimeout(timeout))
 	...
 }

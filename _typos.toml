@@ -6,5 +6,4 @@ extend-exclude = ["go.mod", "go.sum"]
 [default.extend-identifiers]
 # *sigh* this just isn't worth the cost of fixing
 nd = "nd"
-paniced = "paniced"
 write_datas = "write_datas"

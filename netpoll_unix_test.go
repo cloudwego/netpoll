@@ -457,12 +457,12 @@ func TestServerPanicAndClose(t *testing.T) {
 
 	network, address := "tcp", getTestAddress()
 	sendMsg := []byte("hello")
-	var paniced int32
+	var panicked int32
 	loop := newTestEventLoop(network, address,
 		func(ctx context.Context, connection Connection) error {
 			_, err := connection.Reader().Next(len(sendMsg))
 			MustNil(t, err)
-			atomic.StoreInt32(&paniced, 1)
+			atomic.StoreInt32(&panicked, 1)
 			panic("test")
 		},
 	)
@@ -474,7 +474,7 @@ func TestServerPanicAndClose(t *testing.T) {
 	err = conn.Writer().Flush()
 	MustNil(t, err)
 
-	for atomic.LoadInt32(&paniced) == 0 {
+	for atomic.LoadInt32(&panicked) == 0 {
 		runtime.Gosched() // wait for poller close connection
 	}
 	for conn.IsActive() {

@@ -14,7 +14,7 @@ We use [git-flow](https://nvie.com/posts/a-successful-git-branching-model/) as o
 We are using [Github Issues](https://github.com/cloudwego/netpoll/issues) for our public bugs. We keep a close eye on this and try to make it clear when we have an internal fix in progress. Before filing a new task, try to make sure your problem doesn’t already exist.
 
 ### 2. Reporting New Issues
-Providing a reduced test code is a recommended way for reporting issues. Then can placed in:
+Providing a reduced test code is a recommended way for reporting issues. Then can be placed in:
 - Just in issues
 - [Golang Playground](https://play.golang.org/)
 
@@ -45,9 +45,9 @@ Before you submit your Pull Request (PR) consider the following guidelines:
 
 ## Contribution Prerequisites
 - Our development environment keeps up with [Go Official](https://golang.org/project/).
-- You need fully checking with lint tools before submit your pull request. [gofmt](https://golang.org/pkg/cmd/gofmt/) and [golangci-lint](https://github.com/golangci/golangci-lint)
+- You need to fully check with lint tools before submitting your pull request. [gofmt](https://golang.org/pkg/cmd/gofmt/) and [golangci-lint](https://github.com/golangci/golangci-lint)
 - You are familiar with [Github](https://github.com)
-- Maybe you need familiar with [Actions](https://github.com/features/actions)(our default workflow tool).
+- Maybe you need to be familiar with [Actions](https://github.com/features/actions)(our default workflow tool).
 
 ## Code Style Guides
 - [Effective Go](https://golang.org/doc/effective_go)

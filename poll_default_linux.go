@@ -173,7 +173,7 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 				var leftRead int
 				// read all left data if peer send and close
 				if leftRead, err = readall(operator, p.barriers[i]); err != nil && !errors.Is(err, ErrEOF) {
-					logger.Printf("NETPOLL: readall(fd=%d)=%d before close: %s", operator.FD, total, err.Error())
+					logger.Printf("NETPOLL: readall(fd=%d)=%d before close: %s", operator.FD, totalRead, err.Error())
 				}
 				totalRead += leftRead
 			}

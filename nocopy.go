@@ -265,7 +265,7 @@ const (
 	// which indicate that the buffer node memory is not controlled by itself,
 	// so we cannot reuse the buffer or nocopy read it.
 	readonlyMask uint8 = 1 << 0 // 0000 0001
-	// readonlyMask is used to set nocopyRead mode,
+	// nocopyReadMask is used to set nocopyRead mode,
 	// which indicate that the buffer node has been no copy read and cannot reuse the buffer.
 	nocopyReadMask uint8 = 1 << 1 // 0000 0010
 )
@@ -275,7 +275,7 @@ func unsafeSliceToString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
-// zero-copy slice convert to string
+// zero-copy string convert to slice
 func unsafeStringToSlice(s string) (b []byte) {
 	p := unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&s)).Data)
 	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
