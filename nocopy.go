@@ -243,8 +243,8 @@ func NewIOReadWriter(rw ReadWriter) io.ReadWriter {
 		return rwer
 	}
 	return &ioReadWriter{
-		ioReader: newIOReader(rw),
-		ioWriter: newIOWriter(rw),
+		Reader: NewIOReader(rw),
+		Writer: NewIOWriter(rw),
 	}
 }
 

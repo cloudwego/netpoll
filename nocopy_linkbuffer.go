@@ -202,6 +202,42 @@ func (b *UnsafeLinkBuffer) Skip(n int) (err error) {
 	return nil
 }
 
+// readTo copies up to len(p) bytes from the buffer into p and advances the read pointer.
+// It releases fully-consumed nodes inline when safe (head == node), so callers
+// don't need to call Release afterwards. When prior Next refs are outstanding
+// (head != read), nodes are left for the caller's eventual Release.
+func (b *UnsafeLinkBuffer) readTo(p []byte) (n int) {
+	n = len(p)
+	if n == 0 {
+		return 0
+	}
+	if has := b.Len(); has < n {
+		n = has
+	}
+	if n == 0 {
+		return 0
+	}
+	b.recalLen(-n)
+	var l, pIdx int
+	for ack := n; ack > 0; ack -= l {
+		l = b.read.Len()
+		if l >= ack {
+			pIdx += copy(p[pIdx:], b.read.Next(ack))
+			break
+		} else if l > 0 {
+			pIdx += copy(p[pIdx:], b.read.Next(l))
+		}
+		old := b.read
+		b.read = b.read.next
+		if b.head == old {
+			b.head = b.read
+			old.Release()
+		}
+	}
+	_ = pIdx
+	return n
+}
+
 // Release the node that has been read.
 // b.flush == nil indicates that this LinkBuffer is created by LinkBuffer.Slice
 func (b *UnsafeLinkBuffer) Release() (err error) {

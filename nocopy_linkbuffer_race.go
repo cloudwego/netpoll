@@ -59,6 +59,12 @@ func (b *SafeLinkBuffer) Until(delim byte) (line []byte, err error) {
 	return b.UnsafeLinkBuffer.Until(delim)
 }
 
+func (b *SafeLinkBuffer) readTo(p []byte) (n int) {
+	b.Lock()
+	defer b.Unlock()
+	return b.UnsafeLinkBuffer.readTo(p)
+}
+
 // Release implements Reader.
 func (b *SafeLinkBuffer) Release() (err error) {
 	b.Lock()

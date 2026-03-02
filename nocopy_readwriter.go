@@ -225,11 +225,17 @@ func newIOReader(r Reader) *ioReader {
 var _ io.Reader = &ioReader{}
 
 // ioReader implements io.Reader.
+// Deprecated: connection already implements Read directly with optimized buffer access.
+// This wrapper exists only for external Reader implementations.
 type ioReader struct {
 	r Reader
 }
 
 // Read implements io.Reader.
+//
+// BUG: Read calls Release which invalidates any slices previously returned by Next or Peek
+// on the same Reader. Do not mix Next/Peek and Read on the same Reader without first
+// calling Release.
 func (r *ioReader) Read(p []byte) (n int, err error) {
 	l := len(p)
 	if l == 0 {
@@ -283,6 +289,6 @@ func (w *ioWriter) Write(p []byte) (n int, err error) {
 
 // ioReadWriter implements io.ReadWriter.
 type ioReadWriter struct {
-	*ioReader
-	*ioWriter
+	io.Reader
+	io.Writer
 }

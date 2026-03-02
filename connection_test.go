@@ -122,7 +122,7 @@ func TestConnectionLargeWrite(t *testing.T) {
 	rconn.Close()
 }
 
-func TestConnectionRead(t *testing.T) {
+func TestConnectionReader(t *testing.T) {
 	r, w := GetSysFdPairs()
 	rconn, wconn := &connection{}, &connection{}
 	err := rconn.init(&netFD{fd: r}, nil)
@@ -150,6 +150,56 @@ func TestConnectionRead(t *testing.T) {
 		Equal(t, n, len(msg))
 	}
 	wg.Wait()
+	rconn.Close()
+}
+
+func TestConnectionRead(t *testing.T) {
+	r, w := GetSysFdPairs()
+	rconn := &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+
+	writeAndWait := func(data []byte) {
+		syscall.Write(w, data)
+		for rconn.inputBuffer.Len() < len(data) {
+			runtime.Gosched()
+		}
+	}
+
+	// multi-node read
+	size := pagesize*2 + 100
+	msg := make([]byte, size)
+	for i := range msg {
+		msg[i] = byte(i % 251)
+	}
+	writeAndWait(msg)
+	buf := make([]byte, size)
+	n, err := rconn.Read(buf)
+	MustNil(t, err)
+	Equal(t, n, size)
+	Equal(t, string(buf), string(msg))
+
+	// len(p) > available
+	writeAndWait([]byte("short"))
+	buf = make([]byte, 1024)
+	n, err = rconn.Read(buf)
+	MustNil(t, err)
+	Equal(t, n, 5)
+	Equal(t, string(buf[:n]), "short")
+
+	// mixed Next + Read: prior ref must stay valid
+	chunk1 := []byte("first chunk!")
+	chunk2 := []byte("second chunk")
+	writeAndWait(append(chunk1, chunk2...))
+	ref, err := rconn.Reader().Next(len(chunk1))
+	MustNil(t, err)
+	buf = make([]byte, len(chunk2))
+	n, err = rconn.Read(buf)
+	MustNil(t, err)
+	Equal(t, n, len(chunk2))
+	Equal(t, string(buf), string(chunk2))
+	Equal(t, string(ref), string(chunk1))
+
+	rconn.Reader().Release()
 	rconn.Close()
 }
 

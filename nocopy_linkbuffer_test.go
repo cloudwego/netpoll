@@ -911,3 +911,58 @@ func BenchmarkLinkBufferNoCopyRead(b *testing.B) {
 		}
 	})
 }
+
+func TestReadTo(t *testing.T) {
+	LinkBufferCap = 8
+
+	newBuf := func(data []byte) *LinkBuffer {
+		buf := NewLinkBuffer()
+		buf.WriteBinary(data)
+		buf.Flush()
+		return buf
+	}
+
+	// multi-node read
+	msg := make([]byte, 24)
+	for i := range msg {
+		msg[i] = byte(i)
+	}
+	buf := newBuf(msg)
+	p := make([]byte, 24)
+	Equal(t, buf.readTo(p), 24)
+	Equal(t, string(p), string(msg))
+
+	// len(p) > available: caps at available
+	buf = newBuf([]byte("short"))
+	p = make([]byte, 1024)
+	Equal(t, buf.readTo(p), 5)
+	Equal(t, string(p[:5]), "short")
+
+	// inline release: head advances with read when no prior refs
+	buf = newBuf(msg)
+	buf.readTo(make([]byte, 20))
+	MustTrue(t, buf.head == buf.read)
+
+	// mixed Next + readTo: head must NOT advance past unreleased Next refs
+	chunk1 := make([]byte, 10)
+	chunk2 := make([]byte, 10)
+	for i := range chunk1 {
+		chunk1[i] = byte('a' + i)
+	}
+	for i := range chunk2 {
+		chunk2[i] = byte('A' + i)
+	}
+	buf = newBuf(append(chunk1, chunk2...))
+	ref, err := buf.Next(len(chunk1))
+	MustNil(t, err)
+	MustTrue(t, buf.head != buf.read)
+
+	p = make([]byte, len(chunk2))
+	Equal(t, buf.readTo(p), len(chunk2))
+	Equal(t, string(p), string(chunk2))
+	MustTrue(t, buf.head != buf.read) // nodes retained
+	Equal(t, string(ref), string(chunk1))
+
+	buf.Release()
+	MustTrue(t, buf.head == buf.read)
+}
