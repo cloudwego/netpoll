@@ -258,16 +258,11 @@ const (
 	pagesize  = block8k
 	mallocMax = block8k * block1k // mallocMax is 8MB
 
-	minReuseBytes = 64 // only reuse bytes if n >= minReuseBytes
-
 	defaultLinkBufferMode = 0
-	// readonlyMask is used to set readonly mode,
-	// which indicate that the buffer node memory is not controlled by itself,
-	// so we cannot reuse the buffer or nocopy read it.
-	readonlyMask uint8 = 1 << 0 // 0000 0001
-	// nocopyReadMask is used to set nocopyRead mode,
-	// which indicate that the buffer node has been no copy read and cannot reuse the buffer.
-	nocopyReadMask uint8 = 1 << 1 // 0000 0010
+	// flagUnmanaged marks a buffer node whose memory is not allocated by the LinkBuffer
+	// (e.g. user-provided data via WriteDirect, or a zero-size node).
+	// Unmanaged nodes are not reusable and are skipped during buffer growth.
+	flagUnmanaged uint8 = 1 << 0 // 0000 0001
 )
 
 // zero-copy slice convert to string

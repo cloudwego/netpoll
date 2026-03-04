@@ -21,8 +21,7 @@ import (
 
 // global config
 var (
-	defaultLinkBufferSize   = pagesize
-	featureAlwaysNoCopyRead = false
+	defaultLinkBufferSize = pagesize
 )
 
 // Config expose some tuning parameters to control the internal behaviors of netpoll.
@@ -38,8 +37,6 @@ type Config struct {
 
 // Feature expose some new features maybe promoted as a default behavior but not yet.
 type Feature struct {
-	// AlwaysNoCopyRead allows some copy Read functions like ReadBinary/ReadString
-	// will use NoCopy read and will not reuse the underlying buffer.
-	// It gains more performance benefits when need read much big string/bytes in codec.
+	// Deprecated: AlwaysNoCopyRead has no effect and will be removed in a future release.
 	AlwaysNoCopyRead bool
 }

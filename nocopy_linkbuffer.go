@@ -255,21 +255,6 @@ func (b *UnsafeLinkBuffer) readBinary(n int) (p []byte) {
 
 	// single node
 	if b.isSingleNode(n) {
-		// TODO: enable nocopy read mode when ensure no legacy depend on copy-read
-		// we cannot nocopy read a readonly mode buffer, since readonly buffer's memory is not controlled by itself
-		if !b.read.getMode(readonlyMask) {
-			// if readBinary use no-copy mode, it will cause more memory used but get higher memory access efficiently
-			// for example, if user's codec need to decode 10 strings and each have 100 bytes, here could help the codec
-			// no need to malloc 10 times and the string slice could have the compact memory allocation.
-			if b.read.getMode(nocopyReadMask) {
-				return b.read.Next(n)
-			}
-			if featureAlwaysNoCopyRead && n >= minReuseBytes {
-				b.read.setMode(nocopyReadMask, true)
-				return b.read.Next(n)
-			}
-		}
-		// if the underlying buffer too large, we shouldn't use no-copy mode
 		p = dirtmake.Bytes(n, n)
 		copy(p, b.read.Next(n))
 		return p
@@ -542,9 +527,9 @@ func (b *UnsafeLinkBuffer) WriteDirect(extra []byte, remainLen int) error {
 		newNode.off = malloc
 		newNode.buf = origin.buf[:malloc]
 		newNode.malloc = origin.malloc
-		newNode.setMode(readonlyMask, false)
+		newNode.unsetFlag(flagUnmanaged)
 		origin.malloc = malloc
-		origin.setMode(readonlyMask, true)
+		origin.setFlag(flagUnmanaged)
 
 		// link nodes
 		dataNode.next = newNode
@@ -739,7 +724,7 @@ func (b *UnsafeLinkBuffer) growth(n int) {
 		return
 	}
 	// the memory of readonly node if not malloc by us so should skip them
-	for b.write.getMode(readonlyMask) || cap(b.write.buf)-b.write.malloc < n {
+	for b.write.getFlag(flagUnmanaged) || cap(b.write.buf)-b.write.malloc < n {
 		if b.write.next == nil {
 			b.write.next = newLinkBufferNode(n)
 			b.write = b.write.next
@@ -785,7 +770,7 @@ func newLinkBufferNode(size int) *linkBufferNode {
 	// reset node offset
 	node.off, node.malloc, node.refer, node.mode = 0, 0, 1, defaultLinkBufferMode
 	if size <= 0 {
-		node.setMode(readonlyMask, true)
+		node.setFlag(flagUnmanaged)
 		return node
 	}
 	if size < LinkBufferCap {
@@ -879,19 +864,20 @@ func (node *linkBufferNode) Release() (err error) {
 	return nil
 }
 
-func (node *linkBufferNode) getMode(mask uint8) bool {
-	return (node.mode & mask) > 0
+func (node *linkBufferNode) getFlag(flag uint8) bool {
+	return node.mode&flag > 0
 }
 
-func (node *linkBufferNode) setMode(mask uint8, enable bool) {
-	if enable {
-		node.mode = node.mode | mask
-	} else {
-		node.mode = node.mode &^ mask
-	}
+func (node *linkBufferNode) setFlag(flag uint8) {
+	node.mode |= flag
 }
 
-// only non-readonly and copied-read node should be reusable
+func (node *linkBufferNode) unsetFlag(flag uint8) {
+	node.mode &^= flag
+}
+
+// reusable reports whether the node's buffer memory is owned by the LinkBuffer and can be recycled.
+// Called during Release to decide if node.buf should be returned to mcache via free.
 func (node *linkBufferNode) reusable() bool {
-	return node.mode&(readonlyMask|nocopyReadMask) == 0
+	return node.mode&flagUnmanaged == 0
 }
