@@ -65,7 +65,6 @@ func Configure(config Config) (err error) {
 		}
 	}
 
-	featureAlwaysNoCopyRead = config.AlwaysNoCopyRead
 	return nil
 }
 

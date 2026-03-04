@@ -153,64 +153,6 @@ func TestConnectionRead(t *testing.T) {
 	rconn.Close()
 }
 
-func TestConnectionNoCopyReadString(t *testing.T) {
-	err := Configure(Config{Feature: Feature{AlwaysNoCopyRead: true}})
-	MustNil(t, err)
-	defer func() {
-		err = Configure(Config{Feature: Feature{AlwaysNoCopyRead: false}})
-		MustNil(t, err)
-	}()
-
-	r, w := GetSysFdPairs()
-	rconn, wconn := &connection{}, &connection{}
-	rconn.init(&netFD{fd: r}, nil)
-	wconn.init(&netFD{fd: w}, nil)
-
-	size, cycleTime := 256, 100
-	// record historical data, check data consistency
-	readBucket := make([]string, cycleTime)
-	trigger := make(chan struct{})
-
-	// read data
-	go func() {
-		for i := 0; i < cycleTime; i++ {
-			// nocopy read string
-			str, err := rconn.Reader().ReadString(size)
-			MustNil(t, err)
-			Equal(t, len(str), size)
-			// release buffer node
-			rconn.Release()
-			// record current read string
-			readBucket[i] = str
-			// write next msg
-			trigger <- struct{}{}
-		}
-	}()
-
-	// write data
-	msg := make([]byte, size)
-	for i := 0; i < cycleTime; i++ {
-		byt := 'a' + byte(i%26)
-		for c := 0; c < size; c++ {
-			msg[c] = byt
-		}
-		n, err := wconn.Write(msg)
-		MustNil(t, err)
-		Equal(t, n, len(msg))
-		<-trigger
-	}
-
-	for i := 0; i < cycleTime; i++ {
-		byt := 'a' + byte(i%26)
-		for _, c := range readBucket[i] {
-			Equal(t, byte(c), byt)
-		}
-	}
-
-	wconn.Close()
-	rconn.Close()
-}
-
 func TestConnectionReadAfterClosed(t *testing.T) {
 	r, w := GetSysFdPairs()
 	rconn := &connection{}
