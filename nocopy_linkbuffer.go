@@ -79,6 +79,70 @@ func (b *UnsafeLinkBuffer) IsEmpty() (ok bool) {
 	return b.Len() == 0
 }
 
+// ------------------------------------------ implement copy reader ------------------------------------------
+
+// readCopy copies up to len(p) bytes from the buffer into p without exposing
+// the underlying buffer to user code (flagReadExposed is not set).
+// After copying, it releases consumed nodes where readExposed is false.
+// Nodes with readExposed are left for the next Release call.
+func (b *UnsafeLinkBuffer) readCopy(p []byte) (n int) {
+	l := len(p)
+	if l == 0 || b.Len() == 0 {
+		return 0
+	}
+	if has := b.Len(); has < l {
+		l = has
+	}
+	b.recalLen(-l)
+
+	// copy from nodes
+	for ack := l; ack > 0; {
+		if b.read.Len() == 0 {
+			b.read = b.read.next
+			continue
+		}
+		rd := b.read.Len()
+		if rd >= ack {
+			n += copy(p[n:], b.read.buf[b.read.off:b.read.off+ack])
+			b.read.off += ack
+			break
+		}
+		n += copy(p[n:], b.read.buf[b.read.off:])
+		ack -= rd
+		b.read = b.read.next
+	}
+
+	// advance read past empty nodes
+	for b.read != b.flush && b.read.Len() == 0 {
+		b.read = b.read.next
+	}
+	// release consumed nodes that are not readExposed.
+	// exposed nodes stay in the chain so Release() can free them later.
+	//
+	// Example: [exposed/consumed] → [not-exposed/consumed] → [read/partial]
+	// After:   head → [exposed] → [read/partial]
+	//          the middle node is detached and released.
+	var prev *linkBufferNode
+	newHead := b.read
+	for cur := b.head; cur != b.read; {
+		next := cur.next
+		if cur.readExposed() {
+			if prev == nil {
+				newHead = cur
+			}
+			prev = cur
+		} else {
+			cur.Release()
+			if prev != nil {
+				prev.next = next
+			}
+		}
+		cur = next
+	}
+	b.head = newHead
+	return n
+}
+
 // ------------------------------------------ implement zero-copy reader ------------------------------------------
 
 // Next implements Reader.
@@ -94,6 +158,7 @@ func (b *UnsafeLinkBuffer) Next(n int) (p []byte, err error) {
 
 	// single node
 	if b.isSingleNode(n) {
+		b.read.setFlag(flagReadExposed)
 		return b.read.Next(n), nil
 	}
 	// multiple nodes
@@ -131,6 +196,7 @@ func (b *UnsafeLinkBuffer) Peek(n int) (p []byte, err error) {
 	}
 	// single node
 	if b.isSingleNode(n) {
+		b.read.setFlag(flagReadExposed)
 		return b.read.Peek(n), nil
 	}
 
@@ -327,12 +393,14 @@ func (b *UnsafeLinkBuffer) Slice(n int) (r Reader, err error) {
 
 	// single node
 	if b.isSingleNode(n) {
+		b.read.setFlag(flagReadExposed)
 		node := b.read.Refer(n)
 		p.head, p.read, p.flush = node, node, node
 		return p, nil
 	}
 	// multiple nodes
 	l := b.read.Len()
+	b.read.setFlag(flagReadExposed)
 	node := b.read.Refer(l)
 	b.read = b.read.next
 
@@ -340,10 +408,12 @@ func (b *UnsafeLinkBuffer) Slice(n int) (r Reader, err error) {
 	for ack := n - l; ack > 0; ack = ack - l {
 		l = b.read.Len()
 		if l >= ack {
+			b.read.setFlag(flagReadExposed)
 			p.flush.next = b.read.Refer(ack)
 			p.flush = p.flush.next
 			break
 		} else if l > 0 {
+			b.read.setFlag(flagReadExposed)
 			p.flush.next = b.read.Refer(l)
 			p.flush = p.flush.next
 		}
@@ -608,11 +678,13 @@ func (b *UnsafeLinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 	var i int
 	for i = 0; node != flush && i < len(p); node = node.next {
 		if node.Len() > 0 {
+			node.setFlag(flagReadExposed)
 			p[i] = node.buf[node.off:]
 			i++
 		}
 	}
 	if i < len(p) {
+		flush.setFlag(flagReadExposed)
 		p[i] = flush.buf[flush.off:]
 		i++
 	}
@@ -880,4 +952,10 @@ func (node *linkBufferNode) unsetFlag(flag uint8) {
 // Called during Release to decide if node.buf should be returned to mcache via free.
 func (node *linkBufferNode) reusable() bool {
 	return node.mode&flagUnmanaged == 0
+}
+
+// readExposed reports whether the node's buffer has been returned directly to user code
+// via a zero-copy Reader method and may still be referenced externally.
+func (node *linkBufferNode) readExposed() bool {
+	return node.mode&flagReadExposed > 0
 }
