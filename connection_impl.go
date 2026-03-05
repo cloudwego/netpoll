@@ -305,22 +305,13 @@ func (c *connection) WriteByte(b byte) (err error) {
 
 // Read behavior is the same as net.Conn, it will return io.EOF if buffer is empty.
 func (c *connection) Read(p []byte) (n int, err error) {
-	l := len(p)
-	if l == 0 {
+	if len(p) == 0 {
 		return 0, nil
 	}
 	if err = c.waitRead(1); err != nil {
 		return 0, err
 	}
-	if has := c.inputBuffer.Len(); has < l {
-		l = has
-	}
-	src, err := c.inputBuffer.Next(l)
-	n = copy(p, src)
-	if err == nil {
-		err = c.inputBuffer.Release()
-	}
-	return n, err
+	return c.inputBuffer.readCopy(p), nil
 }
 
 // Write will Flush soon.

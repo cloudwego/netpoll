@@ -243,8 +243,8 @@ func NewIOReadWriter(rw ReadWriter) io.ReadWriter {
 		return rwer
 	}
 	return &ioReadWriter{
-		ioReader: newIOReader(rw),
-		ioWriter: newIOWriter(rw),
+		Reader: NewIOReader(rw),
+		Writer: NewIOWriter(rw),
 	}
 }
 
@@ -263,6 +263,10 @@ const (
 	// (e.g. user-provided data via WriteDirect, or a zero-size node).
 	// Unmanaged nodes are not reusable and are skipped during buffer growth.
 	flagUnmanaged uint8 = 1 << 0 // 0000 0001
+	// flagReadExposed marks a buffer node whose underlying memory has been returned
+	// directly to user code via a zero-copy Reader method (Next, Peek, Slice, GetBytes).
+	// The buffer may still be referenced by user code until Release is called.
+	flagReadExposed uint8 = 1 << 1 // 0000 0010
 )
 
 // zero-copy slice convert to string

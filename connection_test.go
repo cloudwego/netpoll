@@ -153,6 +153,47 @@ func TestConnectionRead(t *testing.T) {
 	rconn.Close()
 }
 
+// TestConnectionIOReader tests the io.Reader Read method which uses readCopy internally.
+// Verifies that Read after Peek preserves exposed buffer until Release.
+func TestConnectionIOReader(t *testing.T) {
+	r, w := GetSysFdPairs()
+	rconn := &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+
+	msg := make([]byte, 64)
+	for i := range msg {
+		msg[i] = byte(i)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Peek exposes the underlying buffer
+		pk, err := rconn.Peek(16)
+		MustNil(t, err)
+		Equal(t, len(pk), 16)
+
+		// Read copies without exposing
+		buf := make([]byte, 64)
+		n, err := rconn.Read(buf)
+		MustNil(t, err)
+		Equal(t, n, 64)
+		for i := 0; i < 64; i++ {
+			Equal(t, buf[i], byte(i))
+		}
+
+		// Peek data still valid before Release
+		for i := 0; i < 16; i++ {
+			Equal(t, pk[i], byte(i))
+		}
+		rconn.Release()
+	}()
+	syscall.Write(w, msg)
+	wg.Wait()
+	rconn.Close()
+	syscall.Close(w)
+}
+
 func TestConnectionReadAfterClosed(t *testing.T) {
 	r, w := GetSysFdPairs()
 	rconn := &connection{}
