@@ -858,6 +858,45 @@ func TestConnectionServerClose(t *testing.T) {
 	wg.Wait()
 }
 
+func TestWriterAfterClose(t *testing.T) {
+	r, w := GetSysFdPairs()
+	rconn, wconn := &connection{}, &connection{}
+	rconn.init(&netFD{fd: r}, nil)
+	wconn.init(&netFD{fd: w}, nil)
+
+	err := wconn.Close()
+	MustNil(t, err)
+
+	for wconn.IsActive() {
+		runtime.Gosched()
+	}
+
+	methods := []struct {
+		name string
+		fn   func() error
+	}{
+		{"Malloc", func() error { _, err := wconn.Malloc(1); return err }},
+		{"MallocAck", func() error { return wconn.MallocAck(0) }},
+		{"WriteBinary", func() error { _, err := wconn.WriteBinary([]byte("hi")); return err }},
+		{"WriteString", func() error { _, err := wconn.WriteString("hi"); return err }},
+		{"WriteByte", func() error { return wconn.WriteByte('a') }},
+		{"WriteDirect", func() error { return wconn.WriteDirect([]byte("hi"), 0) }},
+		{"Flush", func() error { return wconn.Flush() }},
+	}
+	for _, tc := range methods {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("Writer.%s panicked after Close: %v", tc.name, r)
+				}
+			}()
+			err := tc.fn()
+			Assert(t, err != nil, fmt.Sprintf("Writer.%s should return error after Close", tc.name))
+		})
+	}
+	rconn.Close()
+}
+
 func TestConnectionDailTimeoutAndClose(t *testing.T) {
 	ln := createTestTCPListener(t)
 	defer ln.Close()
