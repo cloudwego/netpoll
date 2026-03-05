@@ -243,6 +243,9 @@ func (c *connection) ReadByte() (b byte, err error) {
 
 // Malloc implements Connection.
 func (c *connection) Malloc(n int) (buf []byte, err error) {
+	if !c.IsActive() {
+		return nil, Exception(ErrConnClosed, "when malloc")
+	}
 	return c.outputBuffer.Malloc(n)
 }
 
@@ -273,31 +276,49 @@ func (c *connection) Flush() error {
 
 // MallocAck implements Connection.
 func (c *connection) MallocAck(n int) (err error) {
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when malloc ack")
+	}
 	return c.outputBuffer.MallocAck(n)
 }
 
 // Append implements Connection.
 func (c *connection) Append(w Writer) (err error) {
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when append")
+	}
 	return c.outputBuffer.Append(w)
 }
 
 // WriteString implements Connection.
 func (c *connection) WriteString(s string) (n int, err error) {
+	if !c.IsActive() {
+		return 0, Exception(ErrConnClosed, "when write string")
+	}
 	return c.outputBuffer.WriteString(s)
 }
 
 // WriteBinary implements Connection.
 func (c *connection) WriteBinary(b []byte) (n int, err error) {
+	if !c.IsActive() {
+		return 0, Exception(ErrConnClosed, "when write binary")
+	}
 	return c.outputBuffer.WriteBinary(b)
 }
 
 // WriteDirect implements Connection.
 func (c *connection) WriteDirect(p []byte, remainCap int) (err error) {
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when write direct")
+	}
 	return c.outputBuffer.WriteDirect(p, remainCap)
 }
 
 // WriteByte implements Connection.
 func (c *connection) WriteByte(b byte) (err error) {
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when write byte")
+	}
 	return c.outputBuffer.WriteByte(b)
 }
 

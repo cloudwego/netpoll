@@ -172,6 +172,9 @@ func (q *ShardQueue) foreach() {
 
 // deal is used to get deal of netpoll.Writer.
 func (q *ShardQueue) deal(gts []WriterGetter) {
+	if !q.conn.IsActive() {
+		return
+	}
 	writer := q.conn.Writer()
 	for _, gt := range gts {
 		buf, isNil := gt()

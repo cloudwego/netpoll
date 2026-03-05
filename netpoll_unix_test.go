@@ -436,8 +436,6 @@ func TestServerReadAndClose(t *testing.T) {
 		runtime.Gosched() // wait for poller close connection
 	}
 	_, err = conn.Writer().WriteBinary(sendMsg)
-	MustNil(t, err)
-	err = conn.Writer().Flush()
 	Assert(t, errors.Is(err, ErrConnClosed), err)
 
 	err = loop.Shutdown(context.Background())
