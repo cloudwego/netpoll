@@ -28,7 +28,8 @@ import (
 func CreateListener(network, addr string) (l Listener, err error) {
 	if network == "udp" {
 		// TODO: udp listener.
-		return udpListener(network, addr)
+		return nil, errors.New("udp listener not supported yet")
+		//return udpListener(network, addr)
 	}
 	// tcp, tcp4, tcp6, unix
 	ln, err := net.Listen(network, addr)
