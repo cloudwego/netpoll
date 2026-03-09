@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //go:build !windows
-// +build !windows
 
 package netpoll
 
@@ -24,6 +23,7 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
+	"unsafe"
 )
 
 func TestLinkBuffer(t *testing.T) {
@@ -757,7 +757,7 @@ func BenchmarkLinkBufferConcurrentReadWrite(b *testing.B) {
 
 func TestUnsafeStringToSlice(t *testing.T) {
 	s := "hello world"
-	bs := unsafeStringToSlice(s)
+	bs := unsafe.Slice(unsafe.StringData(s), len(s))
 	s = "hi, boy"
 	_ = s
 	Equal(t, string(bs), "hello world")
@@ -883,7 +883,7 @@ func BenchmarkStringToSliceByte(b *testing.B) {
 	b.ReportAllocs()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		bs = unsafeStringToSlice(s)
+		bs = unsafe.Slice(unsafe.StringData(s), len(s))
 	}
 	_ = bs
 }

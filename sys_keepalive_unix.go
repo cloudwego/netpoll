@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //go:build netbsd || freebsd || dragonfly || linux
-// +build netbsd freebsd dragonfly linux
 
 package netpoll
 

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //go:build linux && race
-// +build linux,race
 
 package netpoll
 

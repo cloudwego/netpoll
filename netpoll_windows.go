@@ -13,7 +13,6 @@
 // limitations under the License.
 
 //go:build windows
-// +build windows
 
 // The following methods would not be used, but are intended to compile on Windows.
 package netpoll
