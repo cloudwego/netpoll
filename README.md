@@ -53,12 +53,6 @@ For more information, please refer to [Document](#document).
     - TCP, Unix Domain Socket
     - Linux, macOS (operating system)
 
-* **Future**
-    - [io_uring][io_uring]
-    - Shared Memory IPC
-    - TLS
-    - UDP
-
 * **Unsupported**
     - Windows (operating system)
 
@@ -100,4 +94,3 @@ More benchmarks reference [kitex-benchmark][kitex-benchmark] and [hertz-benchmar
 [LinkBuffer]: nocopy_linkbuffer.go
 [gopool]: https://github.com/bytedance/gopkg/tree/develop/util/gopool
 [mcache]: https://github.com/bytedance/gopkg/tree/develop/lang/mcache
-[io_uring]: https://github.com/axboe/liburing

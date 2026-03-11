@@ -33,8 +33,7 @@ type netFD struct {
 	pd *pollDesc
 	// closed marks whether fd has expired
 	closed uint32
-	// Whether this is a streaming descriptor, as opposed to a
-	// packet-based descriptor like a UDP socket. Immutable.
+	// Whether this is a streaming descriptor. Immutable.
 	isStream bool
 	// Whether a zero byte read indicates EOF. This is false for a
 	// message based socket connection.
@@ -42,7 +41,7 @@ type netFD struct {
 	family        int    // AF_INET, AF_INET6, syscall.AF_UNIX
 	sotype        int    // syscall.SOCK_STREAM, syscall.SOCK_DGRAM, syscall.SOCK_RAW
 	isConnected   bool   // handshake completed or use of association with peer
-	network       string // tcp tcp4 tcp6, udp, udp4, udp6, ip, ip4, ip6, unix, unixgram, unixpacket
+	network       string // tcp, tcp4, tcp6, unix, unixgram, unixpacket
 	localAddr     net.Addr
 	remoteAddr    net.Addr
 	// for detaching conn from poller

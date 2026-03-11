@@ -17,7 +17,7 @@ import (
 	"syscall"
 )
 
-// A sockaddr represents a TCP, UDP, IP or Unix network endpoint
+// A sockaddr represents a TCP, IP or Unix network endpoint
 // address that can be converted into a syscall.Sockaddr.
 type sockaddr interface {
 	net.Addr
@@ -55,8 +55,8 @@ func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, soty
 // address family, both AF_INET and AF_INET6, and a wildcard address
 // like the following:
 //
-//   - A listen for a wildcard communication domain, "tcp" or
-//     "udp", with a wildcard address: If the platform supports
+//   - A listen for a wildcard communication domain, "tcp",
+//     with a wildcard address: If the platform supports
 //     both IPv6 and IPv4-mapped IPv6 communication capabilities,
 //     or does not support IPv4, we use a dual stack, AF_INET6 and
 //     IPV6_V6ONLY=0, wildcard address listen. The dual stack
@@ -65,17 +65,17 @@ func internetSocket(ctx context.Context, net string, laddr, raddr sockaddr, soty
 //     Otherwise we prefer an IPv4-only, AF_INET, wildcard address
 //     listen.
 //
-//   - A listen for a wildcard communication domain, "tcp" or
-//     "udp", with an IPv4 wildcard address: same as above.
+//   - A listen for a wildcard communication domain, "tcp",
+//     with an IPv4 wildcard address: same as above.
 //
-//   - A listen for a wildcard communication domain, "tcp" or
-//     "udp", with an IPv6 wildcard address: same as above.
+//   - A listen for a wildcard communication domain, "tcp",
+//     with an IPv6 wildcard address: same as above.
 //
-//   - A listen for an IPv4 communication domain, "tcp4" or "udp4",
+//   - A listen for an IPv4 communication domain, "tcp4",
 //     with an IPv4 wildcard address: We use an IPv4-only, AF_INET,
 //     wildcard address listen.
 //
-//   - A listen for an IPv6 communication domain, "tcp6" or "udp6",
+//   - A listen for an IPv6 communication domain, "tcp6",
 //     with an IPv6 wildcard address: We use an IPv6-only, AF_INET6
 //     and IPV6_V6ONLY=1, wildcard address listen.
 //
