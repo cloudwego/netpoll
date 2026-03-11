@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
 )
@@ -300,7 +301,8 @@ func (b *UnsafeLinkBuffer) ReadString(n int) (s string, err error) {
 	if b.Len() < n {
 		return s, fmt.Errorf("link buffer read string[%d] not enough", n)
 	}
-	return unsafeSliceToString(b.readBinary(n)), nil
+	p := b.readBinary(n)
+	return unsafe.String(unsafe.SliceData(p), len(p)), nil
 }
 
 // ReadBinary implements Reader.
@@ -540,7 +542,7 @@ func (b *UnsafeLinkBuffer) WriteString(s string) (n int, err error) {
 	if len(s) == 0 {
 		return
 	}
-	buf := unsafeStringToSlice(s)
+	buf := unsafe.Slice(unsafe.StringData(s), len(s))
 	return b.WriteBinary(buf)
 }
 

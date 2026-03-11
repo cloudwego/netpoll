@@ -12,53 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !arm64 && !loong64
-// +build !arm64,!loong64
-
 package netpoll
 
 import (
-	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
-const EPOLLET = -syscall.EPOLLET
+const EPOLLET = unix.EPOLLET
 
 type epollevent struct {
-	events uint32
-	data   [8]byte // unaligned uintptr
+	unix.EpollEvent
+}
+
+// GetDataPtr returns a pointer to the 8-byte user data area of the epoll event.
+// The data area is used to store an FDOperator pointer for event dispatching.
+func (p *epollevent) GetDataPtr() unsafe.Pointer {
+	return unsafe.Pointer(&p.Fd) // Fd+Pad together form the 8-byte data area
+}
+
+func convertEpollEventPtr(p *epollevent) *unix.EpollEvent {
+	return (*unix.EpollEvent)(unsafe.Pointer(p))
 }
 
 // EpollCreate implements epoll_create1.
 func EpollCreate(flag int) (fd int, err error) {
-	var r0 uintptr
-	r0, _, err = syscall.RawSyscall(syscall.SYS_EPOLL_CREATE1, uintptr(flag), 0, 0)
-	if err == syscall.Errno(0) {
-		err = nil
-	}
-	return int(r0), err
+	return unix.EpollCreate1(flag)
 }
 
 // EpollCtl implements epoll_ctl.
 func EpollCtl(epfd, op, fd int, event *epollevent) (err error) {
-	_, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_CTL, uintptr(epfd), uintptr(op), uintptr(fd), uintptr(unsafe.Pointer(event)), 0, 0)
-	if err == syscall.Errno(0) {
-		err = nil
-	}
-	return err
-}
-
-// EpollWait implements epoll_wait.
-func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
-	var r0 uintptr
-	_p0 := unsafe.Pointer(&events[0])
-	if msec == 0 {
-		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
-	} else {
-		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_WAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
-	}
-	if err == syscall.Errno(0) {
-		err = nil
-	}
-	return int(r0), err
+	return unix.EpollCtl(epfd, op, fd, convertEpollEventPtr(event))
 }

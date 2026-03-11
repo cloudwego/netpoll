@@ -6,7 +6,6 @@
 // All CloudWeGo Modifications are Copyright 2022 CloudWeGo authors.
 
 //go:build aix || darwin || dragonfly || freebsd || linux || nacl || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux nacl netbsd openbsd solaris
 
 package netpoll
 

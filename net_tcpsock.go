@@ -6,7 +6,6 @@
 // All CloudWeGo Modifications are Copyright 2022 CloudWeGo authors.
 
 //go:build !windows
-// +build !windows
 
 package netpoll
 

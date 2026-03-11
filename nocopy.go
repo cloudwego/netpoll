@@ -16,8 +16,6 @@ package netpoll
 
 import (
 	"io"
-	"reflect"
-	"unsafe"
 
 	"github.com/bytedance/gopkg/lang/dirtmake"
 	"github.com/bytedance/gopkg/lang/mcache"
@@ -268,21 +266,6 @@ const (
 	// The buffer may still be referenced by user code until Release is called.
 	flagReadExposed uint8 = 1 << 1 // 0000 0010
 )
-
-// zero-copy slice convert to string
-func unsafeSliceToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-// zero-copy string convert to slice
-func unsafeStringToSlice(s string) (b []byte) {
-	p := unsafe.Pointer((*reflect.StringHeader)(unsafe.Pointer(&s)).Data)
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	hdr.Data = uintptr(p)
-	hdr.Cap = len(s)
-	hdr.Len = len(s)
-	return b
-}
 
 // malloc limits the cap of the buffer from mcache.
 func malloc(size, capacity int) []byte {

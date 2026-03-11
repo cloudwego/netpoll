@@ -20,7 +20,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"unsafe"
 )
 
 func openPoll() (Poll, error) {
@@ -119,13 +118,13 @@ func (p *defaultPoll) handler(events []epollevent) (closed bool) {
 	var triggerRead, triggerWrite, triggerHup, triggerError bool
 	var err error
 	for i := range events {
-		operator := p.getOperator(0, unsafe.Pointer(&events[i].data))
+		operator := p.getOperator(0, events[i].GetDataPtr())
 		if operator == nil || !operator.do() {
 			continue
 		}
 
 		var totalRead int
-		evt := events[i].events
+		evt := events[i].Events
 		triggerRead = evt&syscall.EPOLLIN != 0
 		triggerWrite = evt&syscall.EPOLLOUT != 0
 		triggerHup = evt&(syscall.EPOLLHUP|syscall.EPOLLRDHUP) != 0
@@ -245,21 +244,21 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	fd := operator.FD
 	var op int
 	var evt epollevent
-	p.setOperator(unsafe.Pointer(&evt.data), operator)
+	p.setOperator(evt.GetDataPtr(), operator)
 	switch event {
 	case PollReadable: // server accept a new connection and wait read
 		operator.inuse()
-		op, evt.events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_ADD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollWritable: // client create a new connection and wait connect finished
 		operator.inuse()
-		op, evt.events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_ADD, EPOLLET|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollDetach: // deregister
 		p.delOperator(operator)
-		op, evt.events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_DEL, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollR2RW: // connection wait read/write
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R: // connection wait read
-		op, evt.events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return EpollCtl(p.fd, op, fd, &evt)
 }
