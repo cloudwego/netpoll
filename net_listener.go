@@ -26,9 +26,8 @@ import (
 
 // CreateListener return a new Listener.
 func CreateListener(network, addr string) (l Listener, err error) {
-	if network == "udp" {
-		// TODO: udp listener.
-		return udpListener(network, addr)
+	if network == "udp" || network == "udp4" || network == "udp6" {
+		return nil, Exception(ErrUnsupported, "UDP")
 	}
 	// tcp, tcp4, tcp6, unix
 	ln, err := net.Listen(network, addr)
@@ -53,42 +52,17 @@ func ConvertListener(l net.Listener) (nl Listener, err error) {
 	return ln, syscall.SetNonblock(ln.fd, true)
 }
 
-// TODO: udpListener does not work now.
-func udpListener(network, addr string) (l Listener, err error) {
-	ln := &listener{}
-	ln.pconn, err = net.ListenPacket(network, addr)
-	if err != nil {
-		return nil, err
-	}
-	ln.addr = ln.pconn.LocalAddr()
-	switch pconn := ln.pconn.(type) {
-	case *net.UDPConn:
-		ln.file, err = pconn.File()
-	}
-	if err != nil {
-		return nil, err
-	}
-	ln.fd = int(ln.file.Fd())
-	return ln, syscall.SetNonblock(ln.fd, true)
-}
-
 var _ net.Listener = &listener{}
 
 type listener struct {
-	fd    int
-	addr  net.Addr       // listener's local addr
-	ln    net.Listener   // tcp|unix listener
-	pconn net.PacketConn // udp listener
-	file  *os.File
+	fd   int
+	addr net.Addr     // listener's local addr
+	ln   net.Listener // tcp|unix listener
+	file *os.File
 }
 
 // Accept implements Listener.
 func (ln *listener) Accept() (net.Conn, error) {
-	// udp
-	if ln.pconn != nil {
-		return ln.UDPAccept()
-	}
-	// tcp
 	fd, sa, err := syscall.Accept(ln.fd)
 	if err != nil {
 		/* https://man7.org/linux/man-pages/man2/accept.2.html
@@ -112,11 +86,6 @@ func (ln *listener) Accept() (net.Conn, error) {
 	return nfd, nil
 }
 
-// TODO: UDPAccept Not implemented.
-func (ln *listener) UDPAccept() (net.Conn, error) {
-	return nil, Exception(ErrUnsupported, "UDP")
-}
-
 // Close implements Listener.
 func (ln *listener) Close() error {
 	if ln.fd != 0 {
@@ -127,9 +96,6 @@ func (ln *listener) Close() error {
 	}
 	if ln.ln != nil {
 		ln.ln.Close()
-	}
-	if ln.pconn != nil {
-		ln.pconn.Close()
 	}
 	return nil
 }
