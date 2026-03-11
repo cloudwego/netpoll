@@ -49,9 +49,11 @@ type Connection interface {
 	// A zero value for timeout means Writer will not timeout.
 	SetWriteTimeout(timeout time.Duration) error
 
-	// SetIdleTimeout sets the idle timeout of connections.
-	// Idle connections that exceed the set timeout are no longer guaranteed to be active,
-	// but can be checked by calling IsActive.
+	// SetIdleTimeout sets the idle timeout of connections by enabling TCP KeepAlive
+	// and setting the KeepAlive interval to the given timeout duration.
+	// NOTE: Despite its name, this does not track application-level idle time.
+	// It configures OS-level TCP KeepAlive to detect dead peers on idle connections.
+	// The name is kept for backward compatibility.
 	SetIdleTimeout(timeout time.Duration) error
 
 	// SetOnRequest can set or replace the OnRequest method for a connection, but can't be set to nil.
