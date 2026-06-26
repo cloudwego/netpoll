@@ -12,17 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build linux && !arm64 && !amd64 && !riscv64
+//go:build linux && riscv64
 
 package netpoll
 
 import (
+	"syscall"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 // EpollWait implements epoll_wait.
+// riscv64 only provides SYS_EPOLL_PWAIT (no SYS_EPOLL_WAIT).
 func EpollWait(epfd int, events []epollevent, msec int) (n int, err error) {
-	return unix.EpollWait(epfd, unsafe.Slice(convertEpollEventPtr(unsafe.SliceData(events)), len(events)), msec)
+	var r0 uintptr
+	_p0 := unsafe.Pointer(&events[0])
+	if msec == 0 {
+		// When timeout is 0 (non-blocking poll), use RawSyscall6 to avoid the overhead
+		// of scheduler coordination (entersyscall/exitsyscall) since it won't block.
+		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
+	} else {
+		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
+	}
+	if err == syscall.Errno(0) {
+		err = nil
+	}
+	return int(r0), err
 }
