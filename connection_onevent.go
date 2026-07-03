@@ -209,6 +209,12 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 			c.unlock(connecting)
 		}
 	START:
+		// Reload the latest onRequest handler from the atomic to avoid using a
+		// stale snapshot when SetOnRequest is called from inside onConnect or
+		// the previous onRequest call. Otherwise the old (typically no-op)
+		// handler would be invoked repeatedly and the goroutine would fall
+		// into a dead loop because it never consumes the buffered input.
+		onRequest, _ = c.onRequestCallback.Load().(OnRequest)
 		// The `onRequest` must be executed at least once if conn have any readable data,
 		// which is in order to cover the `send & close by peer` case.
 		if onRequest != nil && c.Reader().Len() > 0 {
@@ -225,6 +231,8 @@ func (c *connection) onProcess(onConnect OnConnect, onRequest OnRequest) (proces
 				break
 			}
 			_ = onRequest(c.ctx, c)
+			// Reload to pick up handler changes (SetOnRequest) made by the call above.
+			onRequest, _ = c.onRequestCallback.Load().(OnRequest)
 		}
 		// handling callback if connection has been closed.
 		if closedBy != none {
