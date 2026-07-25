@@ -236,7 +236,22 @@ func TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller(t *test
 	}
 }
 
-func newReusableTCPPair(t *testing.T) (*TCPConnection, net.Conn) {
+func BenchmarkTCPConnectionIsHealthyForReuseIdle(b *testing.B) {
+	conn, _ := newReusableTCPPair(b)
+	if !conn.IsHealthyForReuse() {
+		b.Fatal("warmup rejected idle connection")
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !conn.IsHealthyForReuse() {
+			b.Fatal("idle connection was rejected")
+		}
+	}
+}
+
+func newReusableTCPPair(t testing.TB) (*TCPConnection, net.Conn) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
