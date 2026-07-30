@@ -37,9 +37,13 @@ import (
 // connection pool. It does not reserve the connection for a later write and
 // therefore cannot prevent a peer from closing it after this method returns.
 func (c *TCPConnection) IsHealthyForReuse(ownerWaitTimeout time.Duration) bool {
+	// Reject invalid, already-closing, or concurrently flushing connections
+	// before touching their receive operator. A non-positive budget cannot
+	// safely establish ownership and therefore fails closed.
 	if c == nil || ownerWaitTimeout <= 0 || !c.IsActive() || !c.lock(flushing) {
 		return false
 	}
+	// Keep close and flush transitions serialized for the entire observation.
 	defer c.unlock(flushing)
 
 	// Close stops the flushing lock before it can free and recycle the operator.
@@ -49,26 +53,41 @@ func (c *TCPConnection) IsHealthyForReuse(ownerWaitTimeout time.Duration) bool {
 		return false
 	}
 
+	// Try the uncontended owner transition first so the healthy idle fast path
+	// avoids both a clock read and a scheduler yield.
 	op := c.operator
 	if !op.do() {
+		// A poller currently owns the operator. Wait only within the caller's
+		// budget, while continuously rejecting lifecycle transitions that make
+		// this operator ineligible for reuse.
 		deadline := time.Now().Add(ownerWaitTimeout)
 		for {
+			// Stop waiting as soon as the connection closes or the operator starts
+			// its detach/recycle lifecycle.
 			if !c.IsActive() || op.isUnused() || atomic.LoadInt32(&op.detached) != 0 {
 				return false
 			}
+			// Check the absolute deadline before each ownership attempt so repeated
+			// contention cannot extend the caller-provided budget.
 			if !time.Now().Before(deadline) {
 				return false
 			}
 			if op.do() {
+				// Ownership may be acquired exactly as the deadline expires. Release
+				// it explicitly before failing so the poller is never left blocked.
 				if !time.Now().Before(deadline) {
 					op.done()
 					return false
 				}
 				break
 			}
+			// Yield instead of busy-spinning while the poller finishes its current
+			// read/InputAck critical section.
 			runtime.Gosched()
 		}
 	}
+	// Hold receive ownership through both buffer inspection and socket probing;
+	// every return below must hand it back to the poller.
 	defer op.done()
 
 	// appendHup detaches the operator and calls OnHup asynchronously. A detached
@@ -77,15 +96,21 @@ func (c *TCPConnection) IsHealthyForReuse(ownerWaitTimeout time.Duration) bool {
 		return false
 	}
 
+	// Buffered application data means the connection is not an idle reusable
+	// transport, even when the kernel receive queue is currently empty.
 	if !c.IsActive() || c.inputBuffer.Len() != 0 {
 		return false
 	}
 
+	// Peek one byte directly from the socket. MSG_PEEK preserves application
+	// data and MSG_DONTWAIT guarantees this probe never waits for network I/O.
 	var buffer [1]byte
 	_, _, err := syscall.Recvfrom(c.fd, buffer[:], syscall.MSG_PEEK|syscall.MSG_DONTWAIT)
 	return c.isHealthyForReuseAfterPeek(op, err)
 }
 
+// isHealthyForReuseAfterPeek classifies the single nonblocking socket probe
+// and revalidates connection state at the final reuse decision point.
 func (c *TCPConnection) isHealthyForReuseAfterPeek(op *FDOperator, err error) bool {
 	if err != syscall.EAGAIN { // EWOULDBLOCK is the same errno on Linux.
 		// Data, FIN, EINTR, and socket errors all fail closed. In particular,

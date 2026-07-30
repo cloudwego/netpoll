@@ -26,6 +26,8 @@ import (
 	"time"
 )
 
+// TestTCPConnectionIsHealthyForReuseIdle covers the uncontended healthy fast
+// path with no buffered or socket data.
 func TestTCPConnectionIsHealthyForReuseIdle(t *testing.T) {
 	conn, _ := newReusableTCPPair(t)
 	if !conn.IsHealthyForReuse(time.Second) {
@@ -33,10 +35,14 @@ func TestTCPConnectionIsHealthyForReuseIdle(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseWaitsForPoller proves temporary receive
+// ownership contention waits instead of immediately rejecting a healthy peer.
 func TestTCPConnectionIsHealthyForReuseWaitsForPoller(t *testing.T) {
+	// Arrange: hold the operator to model a poller inside its receive section.
 	conn, _ := newReusableTCPPair(t)
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 
+	// Act: start the probe and prove it cannot bypass the current owner.
 	result := make(chan bool, 1)
 	go func() {
 		result <- conn.IsHealthyForReuse(time.Second)
@@ -44,6 +50,7 @@ func TestTCPConnectionIsHealthyForReuseWaitsForPoller(t *testing.T) {
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
 
+	// Assert: releasing ownership lets the healthy connection remain reusable.
 	releaseOperator()
 	if !waitReuseCheckResult(t, result) {
 		t.Fatal("healthy connection should remain reusable after the poller releases it")
@@ -54,9 +61,11 @@ func TestTCPConnectionIsHealthyForReuseWaitsForPoller(t *testing.T) {
 // LinkBuffer. The reuse check must wait for that ownership interval, otherwise
 // it can see an empty kernel socket and an empty LinkBuffer at the same time.
 func TestTCPConnectionIsHealthyForReuseRejectsDataBeforeInputAck(t *testing.T) {
+	// Arrange: own the operator so the test controls the read/InputAck handoff.
 	conn, peer := newReusableTCPPair(t)
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 
+	// Move one byte out of the kernel queue without publishing it to LinkBuffer.
 	if _, err := peer.Write([]byte("x")); err != nil {
 		t.Fatalf("write peer data: %v", err)
 	}
@@ -67,6 +76,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsDataBeforeInputAck(t *testing.T) {
 		t.Fatalf("drain socket before InputAck: n=%d err=%v", n, err)
 	}
 
+	// Act: launch the probe in that handoff gap and require it to wait.
 	result := make(chan bool, 1)
 	go func() {
 		result <- conn.IsHealthyForReuse(time.Second)
@@ -74,6 +84,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsDataBeforeInputAck(t *testing.T) {
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
 
+	// Publish the byte and release ownership so the resumed probe can classify it.
 	if err := conn.inputAck(n); err != nil {
 		t.Fatalf("ack input: %v", err)
 	}
@@ -82,6 +93,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsDataBeforeInputAck(t *testing.T) {
 		t.Fatal("connection with data drained before InputAck must not be reusable")
 	}
 
+	// Assert: the pending byte rejects reuse but remains intact for the reader.
 	data, err := conn.Peek(1)
 	if err != nil {
 		t.Fatalf("peek data after reuse check: %v", err)
@@ -91,13 +103,17 @@ func TestTCPConnectionIsHealthyForReuseRejectsDataBeforeInputAck(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsUnreadDataWithoutConsuming proves
+// socket data is rejected while remaining available to the application reader.
 func TestTCPConnectionIsHealthyForReuseRejectsUnreadDataWithoutConsuming(t *testing.T) {
+	// Arrange: hold receive ownership so the peer byte stays in the socket queue.
 	conn, peer := newReusableTCPPair(t)
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 
 	if _, err := peer.Write([]byte("x")); err != nil {
 		t.Fatalf("write peer data: %v", err)
 	}
+	// Act: queue the probe behind the simulated poller, then release ownership.
 	result := make(chan bool, 1)
 	go func() {
 		result <- conn.IsHealthyForReuse(time.Second)
@@ -106,6 +122,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsUnreadDataWithoutConsuming(t *test
 	assertReuseCheckBlocked(t, result)
 	releaseOperator()
 
+	// Assert: unread data rejects reuse without being consumed by MSG_PEEK.
 	if waitReuseCheckResult(t, result) {
 		t.Fatal("connection with unread data must not be reusable")
 	}
@@ -118,10 +135,14 @@ func TestTCPConnectionIsHealthyForReuseRejectsUnreadDataWithoutConsuming(t *test
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsPeerClose covers a FIN observed
+// while the health check waits for receive ownership.
 func TestTCPConnectionIsHealthyForReuseRejectsPeerClose(t *testing.T) {
+	// Arrange: delay the probe behind receive ownership before sending FIN.
 	conn, peer := newReusableTCPPair(t)
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 
+	// Act: close the peer and queue the probe before releasing the operator.
 	if err := peer.Close(); err != nil {
 		t.Fatalf("close peer: %v", err)
 	}
@@ -133,6 +154,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerClose(t *testing.T) {
 	assertReuseCheckBlocked(t, result)
 	releaseOperator()
 
+	// Assert: either the direct probe or asynchronous HUP path must reject reuse.
 	if waitReuseCheckResult(t, result) {
 		if !waitForUnhealthyForReuse(conn) {
 			t.Fatal("peer-closed connection must not be reusable")
@@ -144,12 +166,14 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerClose(t *testing.T) {
 // published state directly so this contract test cannot unregister a live test
 // socket from the shared poller.
 func TestTCPConnectionIsHealthyForReuseRejectsDetachedOperatorBeforeOnHup(t *testing.T) {
+	// Arrange: publish only detached and restore it before shared-poller cleanup.
 	conn, _ := newReusableTCPPair(t)
 	atomic.StoreInt32(&conn.operator.detached, 1)
 	t.Cleanup(func() {
 		atomic.StoreInt32(&conn.operator.detached, 0)
 	})
 
+	// Assert the fixture isolates detach-before-OnHup, then reject reuse.
 	if !conn.IsActive() {
 		t.Fatal("probe setup unexpectedly published the closing state")
 	}
@@ -161,6 +185,8 @@ func TestTCPConnectionIsHealthyForReuseRejectsDetachedOperatorBeforeOnHup(t *tes
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsClosedConnection rejects a local
+// close before any receive-owner or socket work is attempted.
 func TestTCPConnectionIsHealthyForReuseRejectsClosedConnection(t *testing.T) {
 	conn, _ := newReusableTCPPair(t)
 	if err := conn.Close(); err != nil {
@@ -171,7 +197,10 @@ func TestTCPConnectionIsHealthyForReuseRejectsClosedConnection(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsPeerReset covers an RST returned by
+// the single nonblocking socket probe.
 func TestTCPConnectionIsHealthyForReuseRejectsPeerReset(t *testing.T) {
+	// Arrange: configure an abortive peer close so Linux reports RST.
 	conn, peer := newReusableTCPPair(t)
 	resetPeer, ok := peer.(*net.TCPConn)
 	if !ok {
@@ -181,6 +210,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerReset(t *testing.T) {
 		t.Fatalf("set linger: %v", err)
 	}
 
+	// Act: hold receive ownership, close the peer, and queue the probe.
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 	if err := peer.Close(); err != nil {
 		t.Fatalf("close reset peer: %v", err)
@@ -198,6 +228,8 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerReset(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsInterruptedProbe freezes the
+// fail-closed EINTR classification without installing process-wide signals.
 func TestTCPConnectionIsHealthyForReuseRejectsInterruptedProbe(t *testing.T) {
 	conn, _ := newReusableTCPPair(t)
 	if conn.isHealthyForReuseAfterPeek(conn.operator, syscall.EINTR) {
@@ -205,6 +237,8 @@ func TestTCPConnectionIsHealthyForReuseRejectsInterruptedProbe(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsNilConnection keeps the optional
+// capability safe for callers holding a typed nil connection.
 func TestTCPConnectionIsHealthyForReuseRejectsNilConnection(t *testing.T) {
 	var conn *TCPConnection
 	if conn.IsHealthyForReuse(time.Second) {
@@ -212,17 +246,23 @@ func TestTCPConnectionIsHealthyForReuseRejectsNilConnection(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseTimesOutWaitingForPoller verifies bounded
+// owner acquisition and proves a timeout does not leak operator ownership.
 func TestTCPConnectionIsHealthyForReuseTimesOutWaitingForPoller(t *testing.T) {
+	// Arrange: retain receive ownership beyond the short probe budget.
 	conn, _ := newReusableTCPPair(t)
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 	defer releaseOperator()
 
+	// Act: measure the bounded wait while the operator remains unavailable.
 	timeout := 20 * time.Millisecond
 	started := time.Now()
 	if conn.IsHealthyForReuse(timeout) {
 		t.Fatal("connection must not be reusable when owner acquisition times out")
 	}
 	elapsed := time.Since(started)
+
+	// Assert no early return and no unbounded wait beyond test-only tolerance.
 	if elapsed < timeout {
 		t.Fatalf("reuse check returned before timeout: elapsed=%v timeout=%v", elapsed, timeout)
 	}
@@ -235,7 +275,10 @@ func TestTCPConnectionIsHealthyForReuseTimesOutWaitingForPoller(t *testing.T) {
 	}
 }
 
+// TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller covers
+// close serialization while the probe is queued behind the receive owner.
 func TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller(t *testing.T) {
+	// Arrange: hold receive ownership and queue the probe behind it.
 	conn, _ := newReusableTCPPair(t)
 	releaseOperator := acquireOperatorForReuseTest(t, conn)
 
@@ -246,6 +289,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller(t *test
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, reuseResult)
 
+	// Act: start close only after the probe enters its flushing critical section.
 	closeResult := make(chan error, 1)
 	go func() {
 		closeResult <- conn.Close()
@@ -266,6 +310,8 @@ func TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller(t *test
 	}
 }
 
+// BenchmarkTCPConnectionIsHealthyForReuseIdle measures only the uncontended
+// healthy probe after one untimed warm-up on a single loopback connection.
 func BenchmarkTCPConnectionIsHealthyForReuseIdle(b *testing.B) {
 	conn, _ := newReusableTCPPair(b)
 	if !conn.IsHealthyForReuse(time.Second) {
@@ -281,6 +327,8 @@ func BenchmarkTCPConnectionIsHealthyForReuseIdle(b *testing.B) {
 	}
 }
 
+// newReusableTCPPair builds a real loopback connection through netpoll's
+// production dialer and registers complete cleanup for both endpoints.
 func newReusableTCPPair(t testing.TB) (*TCPConnection, net.Conn) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -332,6 +380,8 @@ func newReusableTCPPair(t testing.TB) (*TCPConnection, net.Conn) {
 	return conn, peer
 }
 
+// acquireOperatorForReuseTest models poller ownership and returns an idempotent
+// release function so tests can safely release it explicitly and in cleanup.
 func acquireOperatorForReuseTest(t *testing.T, conn *TCPConnection) func() {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
@@ -350,6 +400,8 @@ func acquireOperatorForReuseTest(t *testing.T, conn *TCPConnection) func() {
 	return release
 }
 
+// readForReuseTest drives the same ioread path as the poller until it observes
+// data, an error, or the bounded test deadline.
 func readForReuseTest(fd int, buffers [][]byte) (int, error) {
 	deadline := time.Now().Add(time.Second)
 	vectors := make([]syscall.Iovec, len(buffers))
@@ -362,6 +414,8 @@ func readForReuseTest(fd int, buffers [][]byte) (int, error) {
 	}
 }
 
+// assertReuseCheckBlocked proves the probe cannot complete while the simulated
+// poller still owns the receive operator.
 func assertReuseCheckBlocked(t *testing.T, result <-chan bool) {
 	t.Helper()
 	select {
@@ -371,6 +425,8 @@ func assertReuseCheckBlocked(t *testing.T, result <-chan bool) {
 	}
 }
 
+// waitForReuseCheckToLockFlushing waits until the probe has entered its close
+// serialization region before the test advances a competing lifecycle event.
 func waitForReuseCheckToLockFlushing(t *testing.T, conn *TCPConnection) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
@@ -382,6 +438,8 @@ func waitForReuseCheckToLockFlushing(t *testing.T, conn *TCPConnection) {
 	}
 }
 
+// assertCloseBlocked proves close remains serialized behind the in-flight
+// probe and receive-owner handoff.
 func assertCloseBlocked(t *testing.T, result <-chan error) {
 	t.Helper()
 	select {
@@ -391,6 +449,8 @@ func assertCloseBlocked(t *testing.T, result <-chan error) {
 	}
 }
 
+// waitReuseCheckResult converts an asynchronous probe into a bounded test
+// result and fails instead of allowing a stuck goroutine to hang the suite.
 func waitReuseCheckResult(t *testing.T, result <-chan bool) bool {
 	t.Helper()
 	select {
@@ -402,6 +462,8 @@ func waitReuseCheckResult(t *testing.T, result <-chan bool) bool {
 	}
 }
 
+// waitForUnhealthyForReuse allows asynchronous HUP publication to converge
+// when the first direct probe races the peer's FIN notification.
 func waitForUnhealthyForReuse(conn *TCPConnection) bool {
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
