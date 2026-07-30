@@ -82,22 +82,19 @@ func (c *TCPConnection) IsHealthyForReuse(ownerWaitTimeout time.Duration) bool {
 	}
 
 	var buffer [1]byte
-	for {
-		_, _, err := syscall.Recvfrom(c.fd, buffer[:], syscall.MSG_PEEK|syscall.MSG_DONTWAIT)
-		switch err {
-		case nil:
-			// A positive result is unread application data; a zero-length result
-			// is the peer's FIN. Neither connection is safe to reuse.
-			return false
-		case syscall.EAGAIN: // EWOULDBLOCK is the same errno on Linux.
-			// The operator is still owned, so the LinkBuffer cannot be between
-			// readv and InputAck while this decision is made. A concurrent user
-			// close can detach the operator, so reject it at the decision point.
-			return c.IsActive() && c.inputBuffer.Len() == 0 && atomic.LoadInt32(&op.detached) == 0
-		case syscall.EINTR:
-			continue
-		default:
-			return false
-		}
+	_, _, err := syscall.Recvfrom(c.fd, buffer[:], syscall.MSG_PEEK|syscall.MSG_DONTWAIT)
+	return c.isHealthyForReuseAfterPeek(op, err)
+}
+
+func (c *TCPConnection) isHealthyForReuseAfterPeek(op *FDOperator, err error) bool {
+	if err != syscall.EAGAIN { // EWOULDBLOCK is the same errno on Linux.
+		// Data, FIN, EINTR, and socket errors all fail closed. In particular,
+		// EINTR is not retried so this nonblocking probe remains bounded.
+		return false
 	}
+
+	// The operator is still owned, so the LinkBuffer cannot be between readv
+	// and InputAck while this decision is made. A concurrent user close can
+	// detach the operator, so reject it at the decision point.
+	return c.IsActive() && c.inputBuffer.Len() == 0 && atomic.LoadInt32(&op.detached) == 0
 }

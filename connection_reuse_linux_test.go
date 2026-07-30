@@ -198,6 +198,13 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerReset(t *testing.T) {
 	}
 }
 
+func TestTCPConnectionIsHealthyForReuseRejectsInterruptedProbe(t *testing.T) {
+	conn, _ := newReusableTCPPair(t)
+	if conn.isHealthyForReuseAfterPeek(conn.operator, syscall.EINTR) {
+		t.Fatal("interrupted nonblocking probe must fail closed")
+	}
+}
+
 func TestTCPConnectionIsHealthyForReuseRejectsNilConnection(t *testing.T) {
 	var conn *TCPConnection
 	if conn.IsHealthyForReuse(time.Second) {
