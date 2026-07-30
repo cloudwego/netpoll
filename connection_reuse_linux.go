@@ -20,10 +20,13 @@ import (
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 // IsHealthyForReuse reports whether a dialed TCP connection has no pending
-// inbound data and has not been closed by its peer.
+// inbound data and has not been closed by its peer. ownerWaitTimeout bounds
+// only the wait to acquire the receive owner's FDOperator; the socket probe
+// itself is non-blocking.
 //
 // The check is synchronized with the netpoll receive owner. In particular, it
 // keeps the FDOperator ownership across both the LinkBuffer check and the
@@ -33,8 +36,8 @@ import (
 // It is intended for an idle client connection that is exclusively owned by a
 // connection pool. It does not reserve the connection for a later write and
 // therefore cannot prevent a peer from closing it after this method returns.
-func (c *TCPConnection) IsHealthyForReuse() bool {
-	if c == nil || !c.IsActive() || !c.lock(flushing) {
+func (c *TCPConnection) IsHealthyForReuse(ownerWaitTimeout time.Duration) bool {
+	if c == nil || ownerWaitTimeout <= 0 || !c.IsActive() || !c.lock(flushing) {
 		return false
 	}
 	defer c.unlock(flushing)
@@ -47,14 +50,24 @@ func (c *TCPConnection) IsHealthyForReuse() bool {
 	}
 
 	op := c.operator
-	for {
-		if !c.IsActive() || op.isUnused() || atomic.LoadInt32(&op.detached) != 0 {
-			return false
+	if !op.do() {
+		deadline := time.Now().Add(ownerWaitTimeout)
+		for {
+			if !c.IsActive() || op.isUnused() || atomic.LoadInt32(&op.detached) != 0 {
+				return false
+			}
+			if !time.Now().Before(deadline) {
+				return false
+			}
+			if op.do() {
+				if !time.Now().Before(deadline) {
+					op.done()
+					return false
+				}
+				break
+			}
+			runtime.Gosched()
 		}
-		if op.do() {
-			break
-		}
-		runtime.Gosched()
 	}
 	defer op.done()
 

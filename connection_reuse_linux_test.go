@@ -28,7 +28,7 @@ import (
 
 func TestTCPConnectionIsHealthyForReuseIdle(t *testing.T) {
 	conn, _ := newReusableTCPPair(t)
-	if !conn.IsHealthyForReuse() {
+	if !conn.IsHealthyForReuse(time.Second) {
 		t.Fatal("idle connection should be reusable")
 	}
 }
@@ -39,7 +39,7 @@ func TestTCPConnectionIsHealthyForReuseWaitsForPoller(t *testing.T) {
 
 	result := make(chan bool, 1)
 	go func() {
-		result <- conn.IsHealthyForReuse()
+		result <- conn.IsHealthyForReuse(time.Second)
 	}()
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
@@ -69,7 +69,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsDataBeforeInputAck(t *testing.T) {
 
 	result := make(chan bool, 1)
 	go func() {
-		result <- conn.IsHealthyForReuse()
+		result <- conn.IsHealthyForReuse(time.Second)
 	}()
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
@@ -100,7 +100,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsUnreadDataWithoutConsuming(t *test
 	}
 	result := make(chan bool, 1)
 	go func() {
-		result <- conn.IsHealthyForReuse()
+		result <- conn.IsHealthyForReuse(time.Second)
 	}()
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
@@ -127,7 +127,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerClose(t *testing.T) {
 	}
 	result := make(chan bool, 1)
 	go func() {
-		result <- conn.IsHealthyForReuse()
+		result <- conn.IsHealthyForReuse(time.Second)
 	}()
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
@@ -156,7 +156,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsDetachedOperatorBeforeOnHup(t *tes
 	if conn.operator.isUnused() {
 		t.Fatal("probe setup unexpectedly released the operator")
 	}
-	if conn.IsHealthyForReuse() {
+	if conn.IsHealthyForReuse(time.Second) {
 		t.Fatal("detached operator before OnHup must not be reusable")
 	}
 }
@@ -166,7 +166,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsClosedConnection(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Fatalf("close connection: %v", err)
 	}
-	if conn.IsHealthyForReuse() {
+	if conn.IsHealthyForReuse(time.Second) {
 		t.Fatal("closed connection must not be reusable")
 	}
 }
@@ -187,7 +187,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerReset(t *testing.T) {
 	}
 	result := make(chan bool, 1)
 	go func() {
-		result <- conn.IsHealthyForReuse()
+		result <- conn.IsHealthyForReuse(time.Second)
 	}()
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, result)
@@ -200,8 +200,31 @@ func TestTCPConnectionIsHealthyForReuseRejectsPeerReset(t *testing.T) {
 
 func TestTCPConnectionIsHealthyForReuseRejectsNilConnection(t *testing.T) {
 	var conn *TCPConnection
-	if conn.IsHealthyForReuse() {
+	if conn.IsHealthyForReuse(time.Second) {
 		t.Fatal("nil connection must not be reusable")
+	}
+}
+
+func TestTCPConnectionIsHealthyForReuseTimesOutWaitingForPoller(t *testing.T) {
+	conn, _ := newReusableTCPPair(t)
+	releaseOperator := acquireOperatorForReuseTest(t, conn)
+	defer releaseOperator()
+
+	timeout := 20 * time.Millisecond
+	started := time.Now()
+	if conn.IsHealthyForReuse(timeout) {
+		t.Fatal("connection must not be reusable when owner acquisition times out")
+	}
+	elapsed := time.Since(started)
+	if elapsed < timeout {
+		t.Fatalf("reuse check returned before timeout: elapsed=%v timeout=%v", elapsed, timeout)
+	}
+	if elapsed > 10*timeout {
+		t.Fatalf("reuse check exceeded bounded wait: elapsed=%v timeout=%v", elapsed, timeout)
+	}
+	releaseOperator()
+	if !conn.IsHealthyForReuse(time.Second) {
+		t.Fatal("timeout must not leave operator ownership locked")
 	}
 }
 
@@ -211,7 +234,7 @@ func TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller(t *test
 
 	reuseResult := make(chan bool, 1)
 	go func() {
-		reuseResult <- conn.IsHealthyForReuse()
+		reuseResult <- conn.IsHealthyForReuse(time.Second)
 	}()
 	waitForReuseCheckToLockFlushing(t, conn)
 	assertReuseCheckBlocked(t, reuseResult)
@@ -238,14 +261,14 @@ func TestTCPConnectionIsHealthyForReuseRejectsCloseWhileWaitingForPoller(t *test
 
 func BenchmarkTCPConnectionIsHealthyForReuseIdle(b *testing.B) {
 	conn, _ := newReusableTCPPair(b)
-	if !conn.IsHealthyForReuse() {
+	if !conn.IsHealthyForReuse(time.Second) {
 		b.Fatal("warmup rejected idle connection")
 	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if !conn.IsHealthyForReuse() {
+		if !conn.IsHealthyForReuse(time.Second) {
 			b.Fatal("idle connection was rejected")
 		}
 	}
@@ -375,7 +398,7 @@ func waitReuseCheckResult(t *testing.T, result <-chan bool) bool {
 func waitForUnhealthyForReuse(conn *TCPConnection) bool {
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if !conn.IsHealthyForReuse() {
+		if !conn.IsHealthyForReuse(time.Second) {
 			return true
 		}
 		time.Sleep(time.Millisecond)
