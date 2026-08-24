@@ -19,7 +19,6 @@ package netpoll
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"testing"
 )
 
@@ -133,7 +132,7 @@ func TestIOReadWriter2(t *testing.T) {
 	MustNil(t, err)
 	Equal(t, n, len(msg))
 
-	p, err := ioutil.ReadAll(reader)
+	p, err := io.ReadAll(reader)
 	MustNil(t, err)
 	Equal(t, len(p), len(msg))
 }
