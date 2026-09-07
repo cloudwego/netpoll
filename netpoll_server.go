@@ -19,6 +19,7 @@ package netpoll
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"sync"
 	"syscall"
@@ -96,16 +97,27 @@ func (s *server) Close(ctx context.Context) error {
 
 // OnRead implements FDOperator.
 func (s *server) OnRead(p Poll) error {
-	// accept socket
-	conn, err := s.ln.Accept()
-	if err == nil {
-		if conn != nil {
-			s.onAccept(conn.(Conn))
+	// accept socket until there is no available connection (EAGAIN | EWOULDBLOCK).
+	// The listener is registered with level-triggered epoll, so with one accept
+	// per event each pending connection costs a full poll-loop round trip;
+	// draining the backlog in one round amortizes that cost.
+	var conn net.Conn
+	var err error
+	for {
+		conn, err = s.ln.Accept()
+		if err == nil {
+			if conn != nil {
+				s.onAccept(conn.(Conn))
+				// keep accepting until there is no available connection
+				continue
+			}
+			// EAGAIN | EWOULDBLOCK if conn and err both nil
+			return nil
 		}
-		// EAGAIN | EWOULDBLOCK if conn and err both nil
-		return nil
+		// real error: stop accepting and fall through to the error handling below
+		logger.Printf("NETPOLL: accept conn failed: %v", err)
+		break
 	}
-	logger.Printf("NETPOLL: accept conn failed: %v", err)
 
 	// delay accept when too many open files
 	if isOutOfFdErr(err) {
