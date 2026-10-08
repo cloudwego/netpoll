@@ -259,6 +259,18 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
 	case PollRW2R: // connection wait read
 		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollRW2W: // connection pause read while write is enabled
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollW2RW: // connection resume read while write is enabled
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollR2N: // connection pause read while write is disabled
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollN2R: // connection resume read while write is disabled
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLIN|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollN2W: // connection wait write while read is paused
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLOUT|syscall.EPOLLRDHUP|syscall.EPOLLERR
+	case PollW2N: // connection remove write while read is paused
+		op, evt.Events = syscall.EPOLL_CTL_MOD, syscall.EPOLLRDHUP|syscall.EPOLLERR
 	}
 	return EpollCtl(p.fd, op, fd, &evt)
 }

@@ -152,6 +152,44 @@ func TestConnectionRead(t *testing.T) {
 	rconn.Close()
 }
 
+func TestConnectionPauseResumeRead(t *testing.T) {
+	r, w := GetSysFdPairs()
+	notify := make(chan struct{}, 1)
+	rconn, wconn := &connection{}, &connection{}
+	err := rconn.init(&netFD{fd: r}, &options{onRequest: func(ctx context.Context, connection Connection) error {
+		buf, err := connection.Reader().Next(4)
+		MustNil(t, err)
+		Equal(t, string(buf), "ping")
+		MustNil(t, connection.Reader().Release())
+		notify <- struct{}{}
+		return nil
+	}})
+	MustNil(t, err)
+	err = wconn.init(&netFD{fd: w}, nil)
+	MustNil(t, err)
+	defer rconn.Close()
+	defer wconn.Close()
+
+	MustNil(t, rconn.PauseRead())
+	Assert(t, rconn.IsReadPaused())
+	_, err = wconn.Write([]byte("ping"))
+	MustNil(t, err)
+
+	select {
+	case <-notify:
+		t.Fatal("read event fired while paused")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	MustNil(t, rconn.ResumeRead())
+	Assert(t, !rconn.IsReadPaused())
+	select {
+	case <-notify:
+	case <-time.After(time.Second):
+		t.Fatal("read event did not fire after resume")
+	}
+}
+
 // TestConnectionIOReader tests the io.Reader Read method which uses readCopy internally.
 // Verifies that Read after Peek preserves exposed buffer until Release.
 func TestConnectionIOReader(t *testing.T) {

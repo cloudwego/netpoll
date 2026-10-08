@@ -63,4 +63,22 @@ const (
 
 	// PollRW2R is used to remove the writable monitor of FDOperator, generally used with PollR2RW.
 	PollRW2R PollEvent = 0x6
+
+	// PollRW2W is used to remove the readable monitor of FDOperator while keeping writable monitoring.
+	PollRW2W PollEvent = 0x7
+
+	// PollW2RW is used to add the readable monitor of FDOperator while keeping writable monitoring.
+	PollW2RW PollEvent = 0x8
+
+	// PollR2N is used to remove the readable monitor when writable monitoring is disabled.
+	PollR2N PollEvent = 0x9
+
+	// PollN2R is used to add the readable monitor when writable monitoring is disabled.
+	PollN2R PollEvent = 0xA
+
+	// PollN2W is used to add the writable monitor when readable monitoring is disabled.
+	PollN2W PollEvent = 0xB
+
+	// PollW2N is used to remove the writable monitor when readable monitoring is disabled.
+	PollW2N PollEvent = 0xC
 )

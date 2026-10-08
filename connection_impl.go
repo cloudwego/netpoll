@@ -49,9 +49,12 @@ type connection struct {
 	inputBuffer   *LinkBuffer
 	outputBuffer  *LinkBuffer
 	outputBarrier *barrier
+	pollEventMu   sync.Mutex
 	maxSize       int       // The maximum size of data between two Release().
 	bookSize      int       // The size of data that can be read at once.
 	state         connState // Connection state should be changed sequentially.
+	readPaused    bool      // true if readable event monitoring is paused. Guarded by pollEventMu.
+	writeWatching bool      // true if writable event monitoring is enabled. Guarded by pollEventMu.
 }
 
 var (
@@ -543,7 +546,17 @@ func (c *connection) flush() error {
 	if c.outputBuffer.IsEmpty() {
 		return nil
 	}
-	err = c.operator.Control(PollR2RW)
+	c.pollEventMu.Lock()
+	c.writeWatching = true
+	if c.readPaused {
+		err = c.operator.Control(PollN2W)
+	} else {
+		err = c.operator.Control(PollR2RW)
+	}
+	if err != nil {
+		c.writeWatching = false
+	}
+	c.pollEventMu.Unlock()
 	if err != nil {
 		return Exception(err, "when flush")
 	}
@@ -585,7 +598,14 @@ func (c *connection) waitFlush() (err error) {
 		}
 		// if timeout, remove write event from poller
 		// we cannot flush it again, since we don't if the poller is still process outputBuffer
-		c.operator.Control(PollRW2R)
+		c.pollEventMu.Lock()
+		c.writeWatching = false
+		if c.readPaused {
+			c.operator.Control(PollW2N)
+		} else {
+			c.operator.Control(PollRW2R)
+		}
+		c.pollEventMu.Unlock()
 		return Exception(ErrWriteTimeout, c.remoteAddr.String())
 	}
 }

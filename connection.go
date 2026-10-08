@@ -41,6 +41,17 @@ type Connection interface {
 	// IsActive checks whether the connection is active or not.
 	IsActive() bool
 
+	// PauseRead disables readable event monitoring for this connection.
+	// It only affects read readiness and does not disable pending write readiness.
+	PauseRead() error
+
+	// ResumeRead enables readable event monitoring for this connection.
+	// It only affects read readiness and does not disable pending write readiness.
+	ResumeRead() error
+
+	// IsReadPaused checks whether readable event monitoring is paused.
+	IsReadPaused() bool
+
 	// SetReadTimeout sets the timeout for future Read calls wait.
 	// A zero value for timeout means Reader will not timeout.
 	SetReadTimeout(timeout time.Duration) error

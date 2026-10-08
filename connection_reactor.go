@@ -141,6 +141,74 @@ func (c *connection) outputAck(n int) (err error) {
 
 // rw2r removed the monitoring of write events.
 func (c *connection) rw2r() {
-	c.operator.Control(PollRW2R)
+	c.pollEventMu.Lock()
+	c.writeWatching = false
+	if c.readPaused {
+		c.operator.Control(PollW2N)
+	} else {
+		c.operator.Control(PollRW2R)
+	}
+	c.pollEventMu.Unlock()
 	c.triggerWrite(nil)
+}
+
+// PauseRead removes readable event monitoring for this connection.
+// It is idempotent and preserves writable event monitoring if it is currently enabled.
+func (c *connection) PauseRead() error {
+	c.pollEventMu.Lock()
+	defer c.pollEventMu.Unlock()
+
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when pause read")
+	}
+	if c.readPaused {
+		return nil
+	}
+	c.readPaused = true
+
+	var err error
+	if c.writeWatching {
+		err = c.operator.Control(PollRW2W)
+	} else {
+		err = c.operator.Control(PollR2N)
+	}
+	if err != nil {
+		c.readPaused = false
+		return err
+	}
+	return nil
+}
+
+// ResumeRead adds readable event monitoring for this connection.
+// It is idempotent and preserves writable event monitoring if it is currently enabled.
+func (c *connection) ResumeRead() error {
+	c.pollEventMu.Lock()
+	defer c.pollEventMu.Unlock()
+
+	if !c.IsActive() {
+		return Exception(ErrConnClosed, "when resume read")
+	}
+	if !c.readPaused {
+		return nil
+	}
+	c.readPaused = false
+
+	var err error
+	if c.writeWatching {
+		err = c.operator.Control(PollW2RW)
+	} else {
+		err = c.operator.Control(PollN2R)
+	}
+	if err != nil {
+		c.readPaused = true
+		return err
+	}
+	return nil
+}
+
+// IsReadPaused checks whether readable event monitoring is paused.
+func (c *connection) IsReadPaused() bool {
+	c.pollEventMu.Lock()
+	defer c.pollEventMu.Unlock()
+	return c.readPaused
 }
