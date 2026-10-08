@@ -670,11 +670,18 @@ func (b *UnsafeLinkBuffer) Bytes() []byte {
 func (b *UnsafeLinkBuffer) GetBytes(p [][]byte) (vs [][]byte) {
 	node, flush := b.read, b.flush
 	if len(p) == 0 {
+		// Size p to hold every readable (non-empty) node, flush included, so that
+		// the flush node is never dropped even when every intermediate node is
+		// non-empty and read has already advanced past the empty head node.
 		n := 0
-		for ; node != flush; node = node.next {
-			n++
+		for node := b.read; ; node = node.next {
+			if node.Len() > 0 {
+				n++
+			}
+			if node == flush {
+				break
+			}
 		}
-		node = b.read
 		p = make([][]byte, n)
 	}
 	var i int

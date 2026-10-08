@@ -112,6 +112,64 @@ func TestLinkBufferGetBytes(t *testing.T) {
 	Equal(t, actualLen, expectedLen)
 }
 
+// getBytesFolds reconstructs the bytes exposed by GetBytes into a single slice.
+func getBytesFolds(vs [][]byte) []byte {
+	var out []byte
+	for _, s := range vs {
+		out = append(out, s...)
+	}
+	return out
+}
+
+// TestLinkBufferGetBytesExposesAllAfterHeadDrain ensures that GetBytes(nil) exposes
+// every readable byte even after read has advanced past the leading empty/unmanaged
+// head node. Before the fix the auto-sized slice left no slot for the flush node, so
+// GetBytes(nil) dropped the flush node's bytes (returning nothing when read == flush).
+func TestLinkBufferGetBytesExposesAllAfterHeadDrain(t *testing.T) {
+	orig := LinkBufferCap
+	LinkBufferCap = 64
+	defer func() { LinkBufferCap = orig }()
+
+	buf := NewLinkBuffer()
+	var want []byte
+	for k := 0; k < 4; k++ {
+		d := []byte{byte('A' + k), byte('a' + k), byte('0' + k)}
+		n, err := buf.WriteBinary(d)
+		MustNil(t, err)
+		Equal(t, n, len(d))
+		MustNil(t, buf.Flush())
+		want = append(want, d...)
+	}
+
+	// read == flush case: consume one byte so read lands on the flush node.
+	_, err := buf.ReadByte()
+	MustNil(t, err)
+	want = want[1:]
+	if got := getBytesFolds(buf.GetBytes(nil)); !bytes.Equal(got, want) {
+		t.Fatalf("read==flush: GetBytes(nil)=%q want %q", got, want)
+	}
+
+	// read != flush case: smaller nodes force several nodes; read past the head.
+	LinkBufferCap = 16
+	buf = NewLinkBuffer()
+	want = want[:0]
+	for k := 0; k < 20; k++ {
+		d := []byte{byte('A' + k%26), byte('a' + k%26), byte('0' + k%10)}
+		n, err := buf.WriteBinary(d)
+		MustNil(t, err)
+		Equal(t, n, len(d))
+		MustNil(t, buf.Flush())
+		want = append(want, d...)
+	}
+	_, err = buf.ReadByte()
+	MustNil(t, err)
+	want = want[1:]
+	if got := getBytesFolds(buf.GetBytes(nil)); !bytes.Equal(got, want) {
+		t.Fatalf("read!=flush: GetBytes(nil)=%q want %q", got, want)
+	}
+	Equal(t, len(getBytesFolds(buf.GetBytes(nil))), buf.Len())
+}
+
 // TestLinkBufferWithZero test more case with n is invalid.
 func TestLinkBufferWithInvalid(t *testing.T) {
 	// clean & new
