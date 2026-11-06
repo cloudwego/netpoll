@@ -601,3 +601,21 @@ func (c *connection) setState(newState connState) {
 func (c *connection) changeState(from, to connState) bool {
 	return atomic.CompareAndSwapInt32(&c.state, from, to)
 }
+
+// MarkRead and ConsumedSlices retain the normal Reader lifetime: the caller
+// must finish borrowing before Release. Neither method reads ahead or waits.
+func (c *connection) MarkRead() ReadMark { return c.inputBuffer.MarkRead() }
+
+func (c *connection) ConsumedLen(mark ReadMark) int { return c.inputBuffer.ConsumedLen(mark) }
+
+func (c *connection) ConsumedSlices(mark ReadMark, dst [][]byte) [][]byte {
+	return c.inputBuffer.ConsumedSlices(mark, dst)
+}
+
+func (c *connection) WaitReadable(n int) error { return c.waitRead(n) }
+func (c *connection) PeekSlices(n int, dst [][]byte) ([][]byte, error) {
+	if err := c.waitRead(n); err != nil {
+		return dst, err
+	}
+	return c.inputBuffer.PeekSlices(n, dst), nil
+}
