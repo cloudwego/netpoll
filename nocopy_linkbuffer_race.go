@@ -235,3 +235,27 @@ func (b *SafeLinkBuffer) indexByte(c byte, skip int) int {
 	defer b.Unlock()
 	return b.UnsafeLinkBuffer.indexByte(c, skip)
 }
+
+func (b *SafeLinkBuffer) MarkRead() ReadMark {
+	b.Lock()
+	defer b.Unlock()
+	return b.UnsafeLinkBuffer.MarkRead()
+}
+
+func (b *SafeLinkBuffer) ConsumedLen(mark ReadMark) int {
+	b.Lock()
+	defer b.Unlock()
+	return b.UnsafeLinkBuffer.ConsumedLen(mark)
+}
+
+func (b *SafeLinkBuffer) ConsumedSlices(mark ReadMark, dst [][]byte) [][]byte {
+	b.Lock()
+	defer b.Unlock()
+	return b.UnsafeLinkBuffer.ConsumedSlices(mark, dst)
+}
+
+func (b *SafeLinkBuffer) PeekSlices(n int, dst [][]byte) [][]byte {
+	b.Lock()
+	defer b.Unlock()
+	return b.UnsafeLinkBuffer.PeekSlices(n, dst)
+}
